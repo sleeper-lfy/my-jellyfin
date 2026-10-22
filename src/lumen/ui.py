@@ -58,7 +58,10 @@ class Job(QThread):
     def run(self):
         library = Library(self.directory)
         try:
-            self.done.emit(self.function(library, self.progress.emit))
+            def report(done, total, message):
+                self.progress.emit(done, total, message)
+            report.cancelled = self.isInterruptionRequested
+            self.done.emit(self.function(library, report))
         except Exception as exc:
             self.failed.emit(str(exc))
             with (self.directory / 'diagnostics.log').open('a', encoding='utf-8') as stream:
@@ -315,7 +318,8 @@ class Details(QWidget):
         self.files = QListWidget()
         for f in w['files']:
             title = (f"S{f['season']:02} E{f['episode']:02}  ·  " if w['kind'] == 'series' else '') + (f.get('title') or Path(f['path']).name)
-            item = QListWidgetItem(f"{title}   ·   {f['duration']/60:.1f} 分钟   ·   上次 {f['position']/60:.1f} 分钟")
+            duration_text = f"{f['duration']/60:.1f} 分钟" if f['duration'] > 0 else "时长待补充"
+            item = QListWidgetItem(f"{title}   ·   {duration_text}   ·   上次 {f['position']/60:.1f} 分钟")
             item.setToolTip(f['path'])
             item.setData(Qt.ItemDataRole.UserRole, f)
             self.files.addItem(item)
@@ -507,6 +511,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(STYLE)
         self.setAcceptDrops(True)
         self.jobs = []
+        self._closing = False
         self.section, self.subtab = 'home', 0
         self.filters = {}
         self.current_items = []
@@ -679,7 +684,18 @@ class MainWindow(QMainWindow):
         self.scheduler.setInterval(60_000)
         self.scheduler.timeout.connect(self.schedule_discovery)
         self.scheduler.start()
+        self.media_scheduler = QTimer(self)
+        self.media_scheduler.setInterval(1500)
+        self.media_scheduler.timeout.connect(self.schedule_media)
+        self.media_scheduler.start()
         QTimer.singleShot(4000, self.schedule_discovery)
+
+    def schedule_media(self):
+        if self.jobs or self._closing:
+            return
+        pending = self.library.db.execute('SELECT COUNT(*) FROM import_cache WHERE pending IN (1,2)').fetchone()[0]
+        if pending:
+            self.run_job(f'后台补充媒体信息 · 剩余 {pending} 个', lambda lib, progress: lib.enrich_pending(progress, cancelled=progress.cancelled))
 
     def open_favorites(self):
         self.navigate('home')
@@ -736,6 +752,11 @@ class MainWindow(QMainWindow):
 
     def change_view_mode(self):
         self.library.set_setting('view_mode', self.view_mode.currentData())
+        if self.view_mode.currentData() == 'thumbnail':
+            for file in self.library.db.execute('SELECT f.id,f.digest FROM files f JOIN import_cache c ON c.file_id=f.id WHERE c.pending=0').fetchall():
+                if not (self.library.directory / 'cache' / (file['digest'] + '.jpg')).exists():
+                    with self.library.db:
+                        self.library.db.execute('UPDATE import_cache SET pending=2 WHERE file_id=?',(file['id'],))
         self.refresh()
 
     def card_data(self, data, landscape=False):
@@ -934,7 +955,7 @@ class MainWindow(QMainWindow):
             self.navigate(kind)
             if kind != 'other':
                 self.auto_scrape_import(path, kind)
-        self.run_job('扫描、校验并生成缩略图', lambda lib, p: lib.import_folder(path, kind, p), complete)
+        self.run_job('快速导入 · 时长与缺失图片稍后补充', lambda lib, p: lib.import_folder(path, kind, p, fast=True, cancelled=p.cancelled), complete)
 
     def auto_scrape_import(self, path, kind):
         config = self.library.setting('partition:' + kind, {})
@@ -1000,6 +1021,8 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def run_job(self, title, function, callback=None):
+        if self._closing:
+            return
         if any(j.isRunning() for j in self.jobs):
             QMessageBox.information(self, '任务进行中', '请等待当前后台任务完成后再执行此操作。播放和浏览仍可继续。')
             return
@@ -1008,11 +1031,15 @@ class MainWindow(QMainWindow):
         self.job_progress.show()
         job = Job(self.library.directory, function, self)
         self.jobs.append(job)
+        last_refresh = [time.monotonic()]
         def show_progress(done, total, message):
             self.job_progress.setRange(0, total)
             self.job_progress.setValue(done)
             self.job_progress.setFormat('%v / %m · %p%')
             self.status.setText(title + ' · ' + message)
+            if title.startswith('快速导入') and self.detail_page is None and time.monotonic() - last_refresh[0] > 2:
+                self.refresh()
+                last_refresh[0] = time.monotonic()
         job.progress.connect(show_progress)
         # Deliver completion after the thread exits, allowing dependent jobs to start.
         outcome = {}
@@ -1022,10 +1049,16 @@ class MainWindow(QMainWindow):
             self.job_progress.hide()
             self.jobs.remove(job)
             job.deleteLater()
+            if self._closing:
+                if not self.jobs:
+                    QTimer.singleShot(0, self.close)
+                return
             self.refresh()
             if 'error' in outcome:
                 self.status.setText(title + '失败：' + outcome['error'])
                 QMessageBox.warning(self, title, outcome['error'])
+            elif isinstance(outcome.get('value'), dict) and outcome['value'].get('cancelled'):
+                self.status.setText('任务已停止，已入库记录保留')
             else:
                 self.status.setText(title + '完成')
                 if callback:
@@ -1137,6 +1170,8 @@ class MainWindow(QMainWindow):
             raise RuntimeError('\n'.join(errors))
 
     def schedule_discovery(self):
+        if self._closing:
+            return
         if any(j.isRunning() for j in self.jobs):
             return
         due = [p['id'] for p in Plugins(self.library).installed() if p['config'].get('enabled') and 'discover' in p['capabilities'] and p['config'].get('auto_refresh', False)
@@ -1188,7 +1223,12 @@ class MainWindow(QMainWindow):
                 self.run_job('恢复文件整理', lambda lib, p: execute_move(lib, task_id=task['id']))
             elif task['kind'] == 'import':
                 dialog.accept()
-                self.run_job('重试导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p))
+                self.run_job('重试导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p, fast=payload.get('fast',True), cancelled=p.cancelled))
+            elif task['kind'] == 'media':
+                dialog.accept()
+                with self.library.db:
+                    self.library.db.execute('UPDATE import_cache SET pending=1 WHERE file_id=?',(payload['file_id'],))
+                self.schedule_media()
             elif task['kind'] == 'match':
                 dialog.accept()
                 self.open_details(payload['work_id'])
@@ -1286,12 +1326,19 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def closeEvent(self, event):
-        if any(j.isRunning() for j in self.jobs):
-            QMessageBox.information(self, '后台任务尚未结束', '请等待当前导入或整理完成后退出，以便保存完整结果。')
+        self._closing = True
+        if self.jobs:
+            self._closing = True
+            self.scheduler.stop()
+            self.media_scheduler.stop()
+            self.status.setText('正在停止任务并保存已完成记录…')
+            for job in self.jobs:
+                job.requestInterruption()
             event.ignore()
             return
         self.player.close()
         self.scheduler.stop()
+        self.media_scheduler.stop()
         if self.lan_server:
             self.lan_server.stop()
         self.library.close()

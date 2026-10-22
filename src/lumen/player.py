@@ -164,7 +164,7 @@ class Player(QDialog):
             widget.setMouseTracking(True)
             widget.installEventFilter(self)
         self.media.tracksChanged.connect(self.tracks_changed)
-        self.media.durationChanged.connect(lambda value: self.timeline.setRange(0, value))
+        self.media.durationChanged.connect(self.duration_changed)
         self.media.positionChanged.connect(self.position_changed)
         self.media.mediaStatusChanged.connect(self.status_changed)
         self.media.playbackStateChanged.connect(self.state_changed)
@@ -262,6 +262,12 @@ class Player(QDialog):
         self.media.play()
         self.show()
         self.raise_()
+
+    def duration_changed(self, milliseconds):
+        self.timeline.setRange(0, milliseconds)
+        if self.file and milliseconds > 0:
+            with self.library.db:
+                self.library.db.execute('UPDATE files SET duration=? WHERE id=?',(milliseconds/1000,self.file['id']))
 
     def position_changed(self, position):
         if not self.timeline.isSliderDown():

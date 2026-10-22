@@ -183,6 +183,11 @@ class LanServer:
                             return self.send_json(200,{'ok':True})
                         if path == '/api/playback/start':
                             file=self.file(library,int(body.get('file_id',0)))
+                            if file['duration'] <= 0:
+                                from .core import probe
+                                file['duration'] = probe(file['path'])
+                                with library.db:
+                                    library.db.execute('UPDATE files SET duration=? WHERE id=?',(file['duration'],file['id']))
                             with service.lock:
                                 service.expire(library)
                                 if len(service.sessions)>=128:raise ApiError(429,'活动播放会话过多')

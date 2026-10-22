@@ -9,8 +9,28 @@ import xml.etree.ElementTree as ET
 MAX_NFO = 2_000_000
 
 
-def sibling(folder, name):
-    return next((p for p in folder.iterdir() if p.name.casefold() == name.casefold() and p.is_file() and not p.is_symlink()), None)
+def sibling(folder, name, cache=None):
+    if cache is None:
+        return next((p for p in folder.iterdir() if p.name.casefold() == name.casefold() and p.is_file() and not p.is_symlink()), None)
+    if folder not in cache:
+        cache[folder] = {p.name.casefold():p for p in folder.iterdir() if p.is_file() and not p.is_symlink()}
+    return cache[folder].get(name.casefold())
+
+
+def sidecar_signature(video, root, kind, cache, signatures):
+    folders = [video.parent]
+    if kind == 'series':
+        folders.extend(p for p in video.parent.parents if p.is_relative_to(root))
+    for folder in folders:
+        if folder not in signatures:
+            sibling(folder, '', cache)
+            records = []
+            for path in cache[folder].values():
+                if path.suffix.lower() in {'.nfo','.jpg','.png'}:
+                    stat = path.stat()
+                    records.append((path.name,stat.st_size,stat.st_mtime_ns))
+            signatures[folder] = hashlib.sha256(repr(sorted(records)).encode()).hexdigest()
+    return hashlib.sha256(''.join(signatures[p] for p in folders).encode()).hexdigest()
 
 
 def read(path):
@@ -71,7 +91,7 @@ def read(path):
             'path': path}
 
 
-def load(video, root, kind, warnings):
+def load(video, root, kind, warnings, cache=None):
     """Invalid sidecars are warnings; filename import remains available."""
     def safe(path):
         if not path: return None
@@ -79,12 +99,12 @@ def load(video, root, kind, warnings):
         except (ValueError, OSError, ET.ParseError, ZeroDivisionError) as exc:
             warnings.append({'path': str(path), 'reason': 'NFO: ' + str(exc)})
             return None
-    adjacent = sibling(video.parent, video.stem + '.nfo')
+    adjacent = sibling(video.parent, video.stem + '.nfo', cache)
     show = None
     if kind == 'series':
         folder = video.parent
         while folder.is_relative_to(root):
-            candidate = sibling(folder, 'tvshow.nfo')
+            candidate = sibling(folder, 'tvshow.nfo', cache)
             if candidate:
                 show = safe(candidate)
                 break
@@ -92,8 +112,15 @@ def load(video, root, kind, warnings):
             folder = folder.parent
     elif not adjacent:
         from .core import VIDEO_EXTENSIONS
-        if sum(p.suffix.lower() in VIDEO_EXTENSIONS for p in video.parent.iterdir() if p.is_file()) == 1:
-            adjacent = sibling(video.parent, 'movie.nfo')
+        count_key = (video.parent, 'video_count')
+        if cache is not None:
+            if count_key not in cache:
+                cache[count_key] = sum(p.suffix.lower() in VIDEO_EXTENSIONS for p in cache[video.parent].values())
+            count = cache[count_key]
+        else:
+            count = sum(p.suffix.lower() in VIDEO_EXTENSIONS for p in video.parent.iterdir() if p.is_file())
+        if count == 1:
+            adjacent = sibling(video.parent, 'movie.nfo', cache)
     entry = safe(adjacent)
     expected = 'episodedetails' if kind == 'series' else 'movie'
     if entry and entry['type'] != expected:
@@ -105,26 +132,26 @@ def load(video, root, kind, warnings):
     work = show if kind == 'series' else entry
     if kind == 'series' and not work and entry and entry['showtitle']:
         work = {**entry, 'metadata': {'title': entry['showtitle']}, 'rating': None, 'userrating': None, 'thumbs': []}
-    return {'work': work, 'entry': entry, 'poster': poster(video, root, work, kind, warnings),
-            'backdrop': backdrop(video, root, work)}
+    return {'work': work, 'entry': entry, 'poster': poster(video, root, work, kind, warnings, cache),
+            'backdrop': backdrop(video, root, work, cache)}
 
 
-def backdrop(video, root, work):
+def backdrop(video, root, work, cache=None):
     folder = work['path'].parent if work else video.parent
     for name in [video.stem + '-fanart.jpg', video.stem + '-fanart.png', 'fanart.jpg', 'fanart.png', 'backdrop.jpg', 'backdrop.png']:
-        candidate = sibling(folder, name)
+        candidate = sibling(folder, name, cache)
         if candidate and candidate.resolve().is_relative_to(root):
             return candidate
     return None
 
 
-def poster(video, root, work, kind, warnings):
+def poster(video, root, work, kind, warnings, cache=None):
     folder = work['path'].parent if work else video.parent
     candidates = []
     for value in (work or {}).get('thumbs', []):
         if value and not re.match(r'^[a-z]+:', value, re.I): candidates.append(folder / value)
     for name in [video.stem+'-poster.jpg', video.stem+'-poster.png', 'poster.jpg','poster.png','folder.jpg','folder.png']:
-        candidate = sibling(folder, name)
+        candidate = sibling(folder, name, cache)
         if candidate: candidates.append(candidate)
     for candidate in candidates:
         if candidate.is_file() and not candidate.is_symlink() and candidate.resolve().is_relative_to(root): return candidate
@@ -184,7 +211,7 @@ def apply(library, work_id, file_id, data, fresh_work, fresh_file, root, warning
             library.db.execute('UPDATE files SET season=?,episode=? WHERE id=?',(entry['season'],entry['episode'],file_id))
     if fresh_file and entry:
         duration = library.db.execute('SELECT duration FROM files WHERE id=?',(file_id,)).fetchone()[0]
-        position = min(entry['position'] or 0, duration)
+        position = min(entry['position'] or 0, duration) if duration > 0 else (entry['position'] or 0)
         library.db.execute('UPDATE files SET position=?,completed=? WHERE id=?',(0 if entry['completed'] else position,int(entry['completed']),file_id))
     if data['poster'] and 'poster' not in item['locked']:
         try:
