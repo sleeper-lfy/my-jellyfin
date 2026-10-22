@@ -4,21 +4,21 @@
 
 下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为已本地构建验证的 LibVLC 测试版，Android 8.0+，约 96 MiB。
 
-## Windows
+## Windows EXE 安装包
 
-Windows Actions 构建并验证成功后，会自动向本目录提交：
+优先从 [Releases](https://github.com/sleeper-lfy/my-jellyfin/releases) 下载 **Lumen-Setup-x64.exe**，双击安装。支持 Windows 10/11 x64，包含 Python/Qt 和 FFmpeg，不需额外安装开发环境。安装位置默认为当前用户的 `%LOCALAPPDATA%\Programs\Lumen`，可创建桌面和开始菜单快捷方式，并支持卸载。卸载不删除媒体或 `%LOCALAPPDATA%\Lumen` 资料库。
 
-- `windows-package.json`：来源提交和 SHA-256 校验值。
-- `Lumen-windows-x64.zip.part001` 等分片：每片不超过 48 MiB，适应 GitHub 单文件大小限制。
+Windows 工作流会先运行测试、打包程序，再静默安装、验证安装后的程序和卸载；成功后才发布 Releases 并提交到本目录。**当前目录没有 `windows-installer.json` 时，代表安装包尚未交付；构建脚本不是安装包。**
 
-**没有上述文件时，表示尚未交付 Windows 包，不能把脚本当成已构建程序。**
+本目录的交付方式：
 
-下载仓库 ZIP 并解压，确保 `target` 内的全部分片都在同一目录，然后在该目录运行：
+- 小于 99 MiB：直接提供 `Lumen-Setup-x64.exe`。
+- 更大时：提供 `.exe.part001` 等分片及 `windows-installer.json`。下载全部分片后运行以下命令，校验并合并出同一个 EXE，再双击安装：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Extract-Windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Prepare-Installer.ps1
 ```
 
-脚本先校验每片和完整 ZIP，再解压到 `windows-提交号` 文件夹；运行其中的 `Lumen\Lumen.exe`。原始资料库不受影响。不要只下载第一个分片。
+Releases 中的 EXE 始终是完整单文件，不需要合并。开发版本尚未进行商业代码签名。
 
 构建状态：https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/windows.yml

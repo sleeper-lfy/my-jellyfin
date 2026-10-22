@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Force '.local\ffmpeg-bundle' | Out-Null
 Copy-Item $LumenFfmpeg '.local\ffmpeg-bundle\ffmpeg.exe' -Force
 Copy-Item $LumenFfprobe '.local\ffmpeg-bundle\ffprobe.exe' -Force
 Get-ChildItem (Split-Path $LumenFfmpeg) -Filter '*.dll' | Copy-Item -Destination '.local\ffmpeg-bundle' -Force
-& $LumenPython -m pytest -q
+& $LumenPython -m pytest -q --junitxml=.local/test-results.xml
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
 & $LumenPython -m PyInstaller --noconfirm --clean --windowed --onedir --name Lumen --paths src `
   --hidden-import lumen.js_worker --hidden-import lumen.sandbox --collect-submodules PySide6.QtQml `

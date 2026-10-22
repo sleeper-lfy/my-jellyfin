@@ -91,3 +91,9 @@ Android `assembleDebug`、`lintDebug` 和 `testDebugUnitTest` 全部成功；5 �
 导入时读取同名 NFO、单视频目录 movie.nfo、剧集 tvshow.nfo 与单集 episodedetails；迁移非空资料、外部标识、来源评分、本地海报，以及首次入库时 NFO 中实际存在的个人评分/已看标记/播放位置。不创建虚假的观看会话。原始媒体及 NFO 不修改；再次扫描原路径可更新资料，保留现有个人数据及锁定字段。NFO 字段和海报优先于在线刷新，带 NFO 的作品跳过自动匹配/移动。原始标题也参与跨来源匹配。
 
 新增 14 项 NFO 测试，覆盖电影与剧集、季 0、重复扫描、评分隔离、本地图片、损坏/超限 XML、UTF-16 与实体拒绝、外部 ID 冲突回滚、在线补缺和别名匹配。完整回归 **72 项通过**，Linux 包重建并通过 UI/插件 worker 验证。Windows 原生构建交由仓库 Actions，本地未验证 Windows 实机。Jellyfin 数据库和未写入 NFO 的用户历史不在此次文件迁移范围内。操作说明见 `docs/jellyfin-migration.md`。
+
+## Windows EXE 安装器构建
+
+加入 Inno Setup 6 定义与 Windows 构建/验证脚本，目标为 `Lumen-Setup-x64.exe`。安装器提供按用户安装、开始菜单/桌面快捷方式和卸载，保留用户资料库。Windows CI 在发布前执行静默安装、安装后 UI/worker 验证及卸载检查。成功后向 Releases 发布完整 EXE，同时向 target 写入 EXE 或校验分片。
+
+当前 Linux 环境只完成 2 项交付文件测试（完整 EXE 与分片往返、校验、陈旧分片清理及拒绝 Linux 输入）和工作流 YAML 解析，未运行 Windows 安装器。GitHub API 仍不可访问，不能确认远端安装器构建或 Release 已成功。详见 windows-installer.md。

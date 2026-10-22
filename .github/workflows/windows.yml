@@ -22,15 +22,31 @@ jobs:
       - name: Install FFmpeg using verified package-manager download
         shell: pwsh
         run: |
-          choco install ffmpeg --no-progress -y
-          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed' }
+          choco install ffmpeg innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg / Inno Setup installation failed' }
       - name: Build and test
         shell: pwsh
         run: ./scripts/build-windows.ps1
+      - name: Build and verify EXE installer
+        shell: pwsh
+        run: |
+          ./scripts/build-installer-windows.ps1
+          ./scripts/verify-installer-windows.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: Lumen-windows-x64
-          path: dist/Lumen-windows-x64.zip
+          path: |
+            dist/Lumen-windows-x64.zip
+            dist/installer/Lumen-Setup-x64.exe
+            dist/installer/Lumen-Setup-x64.exe.sha256
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-build-diagnostics
+          path: |
+            .local/installer-test.log
+            .local/test-results.xml
+          if-no-files-found: ignore
 
   publish-target:
     needs: windows
@@ -52,13 +68,26 @@ jobs:
       - name: Package into target
         env:
           SOURCE_COMMIT: ${{ github.sha }}
-        run: python scripts/package-target.py .local/windows-artifact/Lumen-windows-x64.zip target --revision "$SOURCE_COMMIT"
+        run: python scripts/package-installer-target.py .local/windows-artifact/installer/Lumen-Setup-x64.exe target --revision "$SOURCE_COMMIT"
+      - name: Publish single-file installer download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          tag="windows-${SOURCE_COMMIT:0:12}"
+          installer=".local/windows-artifact/installer/Lumen-Setup-x64.exe"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$installer" "$installer.sha256" --clobber
+          else
+            gh release create "$tag" "$installer" "$installer.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows installer ${SOURCE_COMMIT:0:12}" --notes "Verified Windows x64 installer. Source commit: $SOURCE_COMMIT. Requires Windows 10 or newer."
+          fi
       - name: Commit Windows package
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add target/windows-package.json target/Lumen-windows-x64.zip.part*
+          git add --all -- target
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Publish verified Windows package to target [skip ci]"
+          git commit -m "Publish verified Windows installer to target [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
