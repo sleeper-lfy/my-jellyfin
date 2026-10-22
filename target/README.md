@@ -2,7 +2,7 @@
 
 ## Android
 
-下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为已本地构建验证的 LibVLC 测试版，Android 8.0+，约 96 MiB。
+下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.0 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
 
 ## Windows EXE 安装包
 
@@ -34,3 +34,7 @@ Releases 中的 EXE 始终是完整单文件，不需要合并。开发版本尚
 ## 快速导入与安全退出版本（658d19a）
 
 [下载对应源码包](Lumen-source-658d19a.zip)。本版新增快速增量导入、后台补充媒体信息，以及扫描中安全退出。Windows 安装包的 `source_commit` 应为 `658d19a734b093761d550865b32c0ce58141ac31` 或包含它的后续版本；源码 ZIP 不是安装程序。
+
+VR电影：桌面导入时选择“VR电影”，或海报右键移入分类。安卓打开后自动使用 VR180 左右 3D；其他分类使用普通播放。标准／鱼眼投影、陀螺仪、单屏／双眼与立体声说明见 [android-vr.md](../docs/android-vr.md)。安卓 VR 仍需真机观看确认。
+
+0.4.0 同时包含剧照画廊（插件 `stills`、本地 NFO 与单集剧照）、下载资源列表（磁力交给系统下载器，桌面直链支持进度和取消）、新版 Lumen 图标。Windows 原生 libmpv GPU 播放与可选锐化见 [mpv-runtime.md](../docs/mpv-runtime.md)，插件字段见 [plugin-development.md](../docs/plugin-development.md)。

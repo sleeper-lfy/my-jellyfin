@@ -19,3 +19,7 @@ LibVLC Android 3.7.7（VideoLAN / VLC authors）采用 LGPL 2.1 或后续版本�
 - AndroidX 依赖：Apache License 2.0；Kotlin 标准库：Apache License 2.0。
 
 Android Gradle Plugin 和 Gradle 为构建工具，不打包进 APK。Android SDK 和 JDK 的使用受各自发行条款约束；源码包不包含 SDK/JDK。
+
+## Windows libmpv
+
+python-mpv 1.0.8 和固定的 libmpv 构建包含 GPL 组件。版本、许可证和对应源码入口见 [docs/mpv-runtime.md](docs/mpv-runtime.md)。应用自带的 `gentle-sharpen.glsl` 是本项目源码。

@@ -11,14 +11,14 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
  QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu)
-from .core import Library, thumbnail, tool
+from .core import Library, thumbnail, tool, ImportCancelled
 from .plugins import Plugins
 from .files import plan_move, execute_move
 from .player import Player
 from .presentation import rating_text
 from .theme import STYLE
 
-KINDS = {'movie': '电影', 'series': '电视剧', 'other': '其他'}
+KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'other': '其他'}
 
 
 def button(text, callback, primary=False):
@@ -49,7 +49,7 @@ def clear(layout):
 class Job(QThread):
     done = Signal(object)
     failed = Signal(str)
-    progress = Signal(int, int, str)
+    progress = Signal(object, object, str)
 
     def __init__(self, directory, function, parent=None):
         super().__init__(parent)
@@ -62,6 +62,8 @@ class Job(QThread):
                 self.progress.emit(done, total, message)
             report.cancelled = self.isInterruptionRequested
             self.done.emit(self.function(library, report))
+        except ImportCancelled:
+            self.done.emit({"cancelled":True})
         except Exception as exc:
             self.failed.emit(str(exc))
             with (self.directory / 'diagnostics.log').open('a', encoding='utf-8') as stream:
@@ -326,6 +328,10 @@ class Details(QWidget):
         self.files.itemDoubleClicked.connect(lambda item: window.play_file(item.data(Qt.ItemDataRole.UserRole)))
         outer.addWidget(label('视频文件 / 季与集 · 双击播放', 'subtitle'))
         outer.addWidget(self.files, 1)
+        self.episode_overview=label('')
+        self.episode_overview.setWordWrap(True)
+        outer.addWidget(self.episode_overview)
+        self.files.itemClicked.connect(self.select_episode)
         sources = QVBoxLayout()
         for source in w['sources']:
             if source['plugin'] == 'local-nfo':
@@ -338,11 +344,74 @@ class Details(QWidget):
         if w['discovered']:
             sources.addWidget(label('首次发现：' + w['discovered'], 'subtitle'))
         outer.addLayout(sources)
+        from .artwork import still_paths
+        self.still_gallery = QListWidget()
+        self.still_gallery.setViewMode(QListWidget.ViewMode.IconMode)
+        self.still_gallery.setFlow(QListWidget.Flow.LeftToRight)
+        self.still_gallery.setWrapping(False)
+        self.still_gallery.setIconSize(QSize(288,162))
+        self.still_gallery.setFixedHeight(210)
+        for index,path in enumerate(still_paths(w)):
+            image=QPixmap(path)
+            if image.isNull():continue
+            item=QListWidgetItem(QIcon(image),f'剧照 {index+1}')
+            item.setData(Qt.ItemDataRole.UserRole,path)
+            self.still_gallery.addItem(item)
+        self.still_gallery.itemClicked.connect(self.show_still)
+        if self.still_gallery.count():
+            outer.addWidget(label('剧照','sectionTitle'))
+            outer.addWidget(self.still_gallery)
+        else:
+            self.still_gallery.hide()
+        if w['metadata'].get('download_url'):
+            outer.addWidget(label('下载资源','sectionTitle'))
+            for entry in w['metadata']['download_url']:
+                method=entry.get('method',w['metadata'].get('download_method'))
+                text=entry.get('description') or ('磁力下载' if method=='magnet' else '直接下载')
+                outer.addWidget(button(text,lambda checked=False,entry=entry:self.start_download(entry)))
         bottom = QHBoxLayout()
         bottom.addWidget(button('重新截取封面…', self.recapture))
         bottom.addStretch()
         bottom.addWidget(button('返回媒体库', self.accept))
         outer.addLayout(bottom)
+
+    def select_episode(self, item):
+        file=item.data(Qt.ItemDataRole.UserRole)
+        self.episode_overview.setText(file.get('overview',''))
+        if file.get('stills'):
+            self.still_gallery.clear()
+            for index,path in enumerate(file['stills']):
+                image=QPixmap(path)
+                if image.isNull():continue
+                entry=QListWidgetItem(QIcon(image),f'单集剧照 {index+1}')
+                entry.setData(Qt.ItemDataRole.UserRole,path)
+                self.still_gallery.addItem(entry)
+
+    def show_still(self, item):
+        # Expand inside the details page instead of opening a modal dialog.
+        if not hasattr(self,'expanded_still'):
+            self.expanded_still=QLabel()
+            self.expanded_still.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.layout().insertWidget(self.layout().indexOf(self.still_gallery)+1,self.expanded_still)
+        image=QPixmap(item.data(Qt.ItemDataRole.UserRole))
+        self.expanded_still.setPixmap(image.scaled(max(320,self.width()-68),720,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+
+    def start_download(self, entry):
+        from .downloads import download_direct
+        work=self.window.library.work(self.work_id)
+        method=entry.get('method',work['metadata'].get('download_method'))
+        if method=='magnet':
+            if not QDesktopServices.openUrl(QUrl(entry['url'])):
+                QMessageBox.information(self,'未找到磁力下载器','请先安装迅雷或其他磁力下载器，并关联 magnet 链接。')
+            return
+        from urllib.parse import urlparse,unquote
+        from .files import safe_name
+        name=safe_name(Path(unquote(urlparse(entry['url']).path)).name or work['title']+'.mp4')
+        target,_=QFileDialog.getSaveFileName(self,'保存下载文件',name)
+        if not target:return
+        plugin=work['metadata'].get('download_plugin')
+        self.window.run_job('直接下载',lambda lib,p:download_direct(lib,plugin,entry['url'],target,p,p.cancelled,overwrite=True),
+                            lambda result:self.window.status.setText('下载完成：'+result['path']))
 
     def accept(self):
         if self.window.detail_page is self:
@@ -563,7 +632,7 @@ class MainWindow(QMainWindow):
         nav = QVBoxLayout(self.drawer)
         nav.setContentsMargins(6, 20, 6, 18)
         self.nav_buttons = {}
-        for key, title in [('home','首页'),('movie','电影'),('series','电视剧'),('other','其他'),('discover','影片发现'),('stats','观影统计')]:
+        for key, title in [('home','首页'),('movie','电影'),('series','电视剧'),('vr','VR电影'),('other','其他'),('discover','影片发现'),('stats','观影统计')]:
             control = button(title, lambda checked=False, key=key: self.navigate(key))
             control.setObjectName('nav')
             control.setCheckable(True)
@@ -669,6 +738,9 @@ class MainWindow(QMainWindow):
         self.job_progress.setMaximumHeight(18)
         self.job_progress.hide()
         root.addWidget(self.job_progress)
+        self.cancel_job = button('停止当前任务',self.stop_jobs)
+        self.cancel_job.hide()
+        root.addWidget(self.cancel_job)
         self.status = label('就绪', 'subtitle')
         self.status.setWordWrap(True)
         self.status.setContentsMargins(42, 4, 42, 8)
@@ -714,11 +786,11 @@ class MainWindow(QMainWindow):
         while self.tabs.count():
             self.tabs.removeTab(0)
         titles = {'home':['为你推荐','继续观看','最近入库','想看'], 'movie':['影片海报墙','女演员墙'], 'series':['剧集海报墙'],
-                  'other':['文件夹浏览'], 'discover':['为你发现','网站最新收录','想看清单'], 'stats':['数据概览','日趋势','周趋势','月趋势','年度报告','影片偏好','评分分布','观看历史']}
+                  'vr':['VR影片海报墙'], 'other':['文件夹浏览'], 'discover':['为你发现','网站最新收录','想看清单'], 'stats':['数据概览','日趋势','周趋势','月趋势','年度报告','影片偏好','评分分布','观看历史']}
         for text in titles[section]:
             self.tabs.addTab(text)
         self.tabs.blockSignals(False)
-        self.heading.setText({'home':'首页','movie':'电影','series':'电视剧','other':'其他视频','discover':'影片发现','stats':'观影统计'}[section])
+        self.heading.setText({'home':'首页','movie':'电影','series':'电视剧','vr':'VR电影','other':'其他视频','discover':'影片发现','stats':'观影统计'}[section])
         for key, b in self.nav_buttons.items():
             b.setChecked(key == section)
         if section == 'other':
@@ -891,7 +963,17 @@ class MainWindow(QMainWindow):
             menu.addAction('取消喜欢' if data.get('favorite') else '喜欢', lambda: self.toggle_favorite(data['id']))
         if data.get('files'):
             menu.addAction('播放 / 继续观看', lambda: self.play_work(data['id']))
+        if data.get('kind') in {'movie', 'vr'}:
+            target = 'movie' if data['kind'] == 'vr' else 'vr'
+            menu.addAction('移至' + KINDS[target], lambda: self.change_movie_kind(data['id'], target))
         menu.exec(self.cards.mapToGlobal(position))
+
+    def change_movie_kind(self, work_id, kind):
+        try:
+            self.library.set_movie_kind(work_id, kind)
+            self.refresh()
+        except Exception as exc:
+            QMessageBox.warning(self, '分类未更改', str(exc))
 
     def toggle_favorite(self, work_id):
         work = self.library.work(work_id)
@@ -1020,6 +1102,12 @@ class MainWindow(QMainWindow):
         self.filters['folder'] = item.data(0, Qt.ItemDataRole.UserRole)
         self.refresh()
 
+    def stop_jobs(self):
+        for job in self.jobs:
+            job.requestInterruption()
+        self.cancel_job.setEnabled(False)
+        self.status.setText('正在安全停止任务…')
+
     def run_job(self, title, function, callback=None):
         if self._closing:
             return
@@ -1029,13 +1117,20 @@ class MainWindow(QMainWindow):
         self.status.setText(title + '…')
         self.job_progress.setRange(0, 0)
         self.job_progress.show()
+        self.cancel_job.setEnabled(True)
+        self.cancel_job.setVisible(title.startswith(('直接下载','快速导入','后台补充')))
         job = Job(self.library.directory, function, self)
         self.jobs.append(job)
         last_refresh = [time.monotonic()]
         def show_progress(done, total, message):
-            self.job_progress.setRange(0, total)
-            self.job_progress.setValue(done)
-            self.job_progress.setFormat('%v / %m · %p%')
+            if total>2147483647:
+                self.job_progress.setRange(0,10000)
+                self.job_progress.setValue(min(10000,int(done*10000//total)))
+                self.job_progress.setFormat('%p%')
+            else:
+                self.job_progress.setRange(0,total)
+                self.job_progress.setValue(done if total else 0)
+                self.job_progress.setFormat('%v / %m · %p%')
             self.status.setText(title + ' · ' + message)
             if title.startswith('快速导入') and self.detail_page is None and time.monotonic() - last_refresh[0] > 2:
                 self.refresh()
@@ -1047,6 +1142,7 @@ class MainWindow(QMainWindow):
         job.failed.connect(lambda error: outcome.update(error=error))
         def finished():
             self.job_progress.hide()
+            self.cancel_job.hide()
             self.jobs.remove(job)
             job.deleteLater()
             if self._closing:
@@ -1058,7 +1154,7 @@ class MainWindow(QMainWindow):
                 self.status.setText(title + '失败：' + outcome['error'])
                 QMessageBox.warning(self, title, outcome['error'])
             elif isinstance(outcome.get('value'), dict) and outcome['value'].get('cancelled'):
-                self.status.setText('任务已停止，已入库记录保留')
+                self.status.setText('任务已停止，已完成内容保留')
             else:
                 self.status.setText(title + '完成')
                 if callback:

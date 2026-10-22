@@ -72,12 +72,18 @@ return {
   "directors": ["导演"],
   "actors": [{"id":"provider:actor-id","name":"演员","aliases":[],"gender":"female","photo":"https://images.example.org/a.jpg"}],
   "poster": "https://images.example.org/poster.jpg",
+  "stills": ["https://images.example.org/still-1.jpg"],
+  "download_method": "magnet",
+  "download_url": [
+    {"url":"magnet:?xt=urn:btih:0123456789012345678901234567890123456789","method":"magnet","description":"4.5GB · 3 个文件 · 高清/中字"},
+    {"url":"https://downloads.example.org/video.mp4","method":"direct","description":"HTTP 直链"}
+  ],
   "rating": 8.1,
   "external_ids": {"imdb":"tt1234567"}
 }
 ```
 
-`id/title/url` 必填；kind 默认 movie，只允许 movie/series。year 为整数或 null，rating 为归一后的 0–10 来源评分或 null，绝不能写入用户个人评分。演员性别只能 female/male/unknown，缺失不推断。图片应落在 manifest 的域名列表内。本站不提供的日期/评分使用 null，不编造。
+`id/title/url` 必填；kind 默认 movie，允许 movie/series/vr。year 为整数或 null，rating 为归一后的 0–10 来源评分或 null，绝不能写入用户个人评分。演员性别只能 female/male/unknown，缺失不推断。图片应落在 manifest 的域名列表内。本站不提供的日期/评分使用 null，不编造。
 
 来源唯一键为 `(plugin,id)`；外部标识优先，标准化名称+年份+类型作为后备用于跨来源匹配。明确选择的本地作品可吸收对应未入库发现实体；若该来源已绑定另一部本地作品则停止，由用户核对。外部 IDs（如 IMDb）优先关联跨语言同一作品，历史名称与别名另有索引。不同作品恰好同名同年仍可能产生歧义；外部标识冲突时事务回滚，并可在详情中明确合并重复作品。没有共同外部标识时，不声称能自动解决所有同名歧义。
 
@@ -98,3 +104,11 @@ return {
 测试使用真实本地 HTTP 服务和明确标注的协议测试记录，验证隔离、域名控制、解析、来源去重、锁定及失败日志。产品空库没有演示数据。云环境真实站点访问受网络策略限制时，记录 403，不能用协议测试代替在线成功。
 
 要新增站点：复制示例 → 改 ID/域名/请求与解析函数 → 加响应 fixture 测试 → 安装查看权限 → 配置/启用 → 用实际网址验证。无需修改主程序。
+
+## 剧照与下载
+
+`stills` 为可选的 HTTP/HTTPS 图片 URL 数组，最多 40 张；不提供时省略或返回空数组。图片域名必须声明在 manifest 中，复用插件代理和网络权限。主程序校验图片并缓存，详情页保持比例展示；失败项记录任务，元数据仍可入库。相同 URL 的已缓存剧照不会重复下载。插件不应返回 `stills_cache` 等内部缓存路径。TVmaze 详情请求同时嵌入 images，取站点提供的 background 图片；站点没有图片就保持空列表。
+
+`download_method` 为 `magnet` 或 `direct`；`download_url` 为最多 40 项的对象数组，每项包含 `url`、可选 `method` 和 `description`。单项 method 优先，省略则继承顶层方式。支持混合磁力与直链资源，方式与 URL 协议必须匹配。只返回网站提供的真实链接，不编造大小、清晰度或字幕说明。
+
+Windows 磁力按钮交给系统关联的下载器（例如已关联 magnet 的迅雷）；不会强制安装或默认绑定下载器。HTTP/HTTPS 直链由桌面端流式下载，用户选择保存位置后启动，使用插件域名白名单和代理，不将整部视频载入内存。下载期间显示字节进度，取消或失败删除临时文件，成功后才发布最终文件；原文件不会因下载失败损坏。重定向不自动跟随，插件应返回声明域名内的最终直链。安卓磁力与直链按钮交由系统支持的应用处理。下载信息和剧照均可通过已认证的局域网接口读取；本地缓存路径不暴露给客户端。

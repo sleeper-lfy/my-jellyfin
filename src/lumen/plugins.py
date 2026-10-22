@@ -16,8 +16,24 @@ CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
 def validate_metadata(item):
     if not isinstance(item, dict) or not isinstance(item.get('title'), str) or not item['title'].strip() or not item.get('id'):
         raise ValueError('元数据缺少 title / id')
-    if item.get('kind', 'movie') not in {'movie', 'series'} or urlparse(item.get('url','')).scheme not in {'http','https'}:
+    if item.get('kind', 'movie') not in {'movie', 'series', 'vr'} or urlparse(item.get('url','')).scheme not in {'http','https'}:
         raise ValueError('无效媒体类型或来源 URL')
+    stills=item.get('stills',[])
+    if not isinstance(stills,list) or len(stills)>40 or any(not isinstance(url,str) or urlparse(url).scheme not in {'http','https'} for url in stills):
+        raise ValueError('stills 须为至多 40 个 HTTP/HTTPS 图片 URL')
+    method=item.get('download_method')
+    if method is not None and method not in {'magnet','direct'}:
+        raise ValueError('download_method 须为 magnet 或 direct')
+    downloads=item.get('download_url',[])
+    if not isinstance(downloads,list) or len(downloads)>40:
+        raise ValueError('download_url 须为至多 40 项的数组')
+    for entry in downloads:
+        if not isinstance(entry,dict) or not isinstance(entry.get('url'),str) or not isinstance(entry.get('description',''),str):
+            raise ValueError('下载项须包含 url，description 须为字符串')
+        selected=entry.get('method',method)
+        scheme=urlparse(entry['url']).scheme
+        if selected not in {'magnet','direct'} or (selected=='magnet' and scheme!='magnet') or (selected=='direct' and scheme not in {'http','https'}):
+            raise ValueError('下载方式与 URL 协议不匹配')
     for field in ['tags','aliases','directors']:
         if not isinstance(item.get(field,[]),list) or any(not isinstance(v,str) for v in item.get(field,[])):
             raise ValueError(field + ' 须为字符串数组')
@@ -157,7 +173,7 @@ class Plugins:
             for item in result:
                 if not isinstance(item, dict) or not isinstance(item.get('title'), str) or not item['title'].strip() or not item.get('id'):
                     raise ValueError('元数据缺少 title / id')
-                if item.get('kind', 'movie') not in {'movie', 'series'}:
+                if item.get('kind', 'movie') not in {'movie', 'series', 'vr'}:
                     raise ValueError('刮削只用于电影和电视剧')
                 if urlparse(item.get('url', '')).scheme not in {'http', 'https'}:
                     raise ValueError('来源必须包含完整 HTTP(S) URL')
@@ -173,6 +189,7 @@ class Plugins:
             return self._merge(plugin_id,metadata,work_id)
 
     def _merge(self, plugin_id, metadata, work_id=None):
+        metadata = {key:value for key,value in metadata.items() if key not in {'stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','download_plugin'}}
         validate_metadata(metadata)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         existing = self.library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?', (plugin_id, str(metadata['id']))).fetchone()
@@ -182,6 +199,8 @@ class Plugins:
                 raise ValueError('该来源已经关联另一部本地媒体，请人工核对，未自动合并')
             self.library.merge_works(existing[0], work_id, commit=False)
         kind = metadata.get('kind', 'movie')
+        if work_id and self.library.work(work_id)['kind']=='vr' and kind=='movie':
+            kind='vr';metadata={**metadata,'kind':'vr'}
         key = identity(metadata['title'], metadata.get('year'), kind)
         matching = self.library.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
         if not matching:
@@ -227,6 +246,8 @@ class Plugins:
                 merged['aliases'] = list(dict.fromkeys(item['metadata'].get('aliases',[]) + metadata.get('aliases',[]) + ([item['title']] if item['title'] != metadata['title'] else [])))
             else:
                 merged.setdefault('aliases', [])
+            if metadata.get('download_url'):
+                merged['download_plugin'] = plugin_id
             merged['discovery_categories'] = list(dict.fromkeys(item['metadata'].get('discovery_categories', []) + metadata.get('discovery_categories', [])))
             self.library.db.execute('UPDATE works SET identity=?,metadata=?,title=?,year=? WHERE id=?',
                                     (key, json.dumps(merged, ensure_ascii=False), item['title'] if 'title' in protected else metadata['title'],
@@ -261,6 +282,35 @@ class Plugins:
             except Exception as exc:
                 import uuid
                 self.library.task(uuid.uuid4().hex, 'image', 'failed', {'url': image_url, 'plugin': plugin_id}, error=str(exc))
+        if 'stills' not in item['locked']:
+            cached={entry['url']:entry for entry in item['metadata'].get('stills_cache',[]) if isinstance(entry,dict) and entry.get('url') and entry.get('path')}
+            for image_url in dict.fromkeys(metadata.get('stills',[])):
+                if image_url in cached and Path(cached[image_url]['path']).is_file():
+                    continue
+                try:
+                    data, content_type = self.fetch(plugin,image_url,image=True)
+                    if not content_type.startswith('image/'):
+                        raise ValueError('剧照响应类型错误')
+                    from PySide6.QtCore import QByteArray, QBuffer, QIODevice
+                    from PySide6.QtGui import QImageReader
+                    buffer=QBuffer();buffer.setData(QByteArray(data));buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+                    reader=QImageReader(buffer);size=reader.size()
+                    if size.width()<=0 or size.height()<=0 or size.width()*size.height()>40_000_000:
+                        raise ValueError('剧照无效或像素过大')
+                    if size.width()>1920:
+                        from PySide6.QtCore import QSize
+                        reader.setScaledSize(QSize(1920,max(1,size.height()*1920//size.width())))
+                    picture=reader.read()
+                    path=self.library.directory/'cache'/('still-'+hashlib.sha256(image_url.encode()).hexdigest()+'.jpg')
+                    if picture.isNull() or not picture.save(str(path),'JPG'):
+                        raise ValueError('剧照解码或保存失败')
+                    cached[image_url]={'url':image_url,'path':str(path)}
+                except Exception as exc:
+                    import uuid
+                    self.library.task(uuid.uuid4().hex,'image','failed',{'url':image_url,'plugin':plugin_id,'role':'still'},error=str(exc))
+            merged['stills_cache']=[cached[url] for url in dict.fromkeys(merged.get('stills',[])) if url in cached]
+        with self.library.db:
+            self.library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(merged,ensure_ascii=False),work_id))
         return work_id
 
     def refresh(self, plugin_id, category=None):

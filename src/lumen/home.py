@@ -72,7 +72,7 @@ class HomePage(QScrollArea):
         self.layout.addWidget(label('我的媒体','sectionTitle'))
         tiles=QHBoxLayout()
         tiles.setSpacing(16)
-        for kind,title in [('movie','电影'),('series','电视剧'),('other','其他视频')]:
+        for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('other','其他视频')]:
             items=[w for w in works if w['kind']==kind]
             covers = [self.window.card_data(w, True) for w in items]
             cover=next((w.get('_cover') or w.get('thumbnail') for w in covers if w.get('_cover') or w.get('thumbnail')),None)
@@ -88,7 +88,7 @@ class HomePage(QScrollArea):
         continuing=[w for w in works if any(f['position']>0 and not f['completed'] for f in w['files'])]
         recommendations=self.window.library.recommendations()
         sections=[('继续观看',continuing,True),('最新电影',[w for w in works if w['kind']=='movie'],False),
-                  ('最新电视剧',[w for w in works if w['kind']=='series'],False),('为你推荐',recommendations,False)]
+                  ('最新电视剧',[w for w in works if w['kind']=='series'],False),('最新VR电影',[w for w in works if w['kind']=='vr'],False),('为你推荐',recommendations,False)]
         for title,items,landscape in sections:
             if not items:
                 continue

@@ -4,7 +4,7 @@ function buildRequest(input) {
     if (input.operation === 'detail') {
         var match = /\/shows\/(\d+)/.exec(input.url || '');
         if (!match) throw new Error('需要 TVmaze /shows/数字 的详情网址');
-        return {url: base + '/shows/' + match[1] + '?embed=cast'};
+        return {url: base + '/shows/' + match[1] + '?embed[]=cast&embed[]=images'};
     }
     // Default: newest assigned show IDs from the public update index, not a fabricated added date.
     var page = input.category || input.config.category || '';
@@ -17,10 +17,10 @@ function parseResponse(input) {
     var base=input.config.base_url.replace(/\/$/, '');
     if (/\/updates\/shows$/.test(input.url)) {
         var newest=Object.keys(data).sort(function(a,b){return Number(b)-Number(a);}).slice(0,12);
-        return {followups:newest.map(function(id){return {url:base+'/shows/'+id+'?embed=cast'};}), records:[]};
+        return {followups:newest.map(function(id){return {url:base+'/shows/'+id+'?embed[]=cast&embed[]=images'};}), records:[]};
     }
     if (input.operation==='search' && Array.isArray(data) && data.length && data[0].show) {
-        return {followups:data.slice(0,10).map(function(row){return {url:base+'/shows/'+row.show.id+'?embed=cast'};}),records:[]};
+        return {followups:data.slice(0,10).map(function(row){return {url:base+'/shows/'+row.show.id+'?embed[]=cast&embed[]=images'};}),records:[]};
     }
     var rows = Array.isArray(data) ? data : [data];
     return rows.map(function (row) {
@@ -30,6 +30,7 @@ function parseResponse(input) {
             overview: (s.summary || '').replace(/<[^>]*>/g,''), tags: s.genres || [], aliases: [],
             external_ids: {tvmaze: String(s.id), imdb: s.externals ? s.externals.imdb : null},
             poster: s.image ? (s.image.original || s.image.medium) : null,
+            stills: ((s._embedded || {}).images || []).filter(function(image){return image.type==='background';}).slice(0,40).map(function(image){return image.resolutions.original.url;}),
             actors: ((s._embedded || {}).cast || []).map(function (entry) {
                 var p=entry.person;
                 return {id:'tvmaze:'+p.id, name:p.name, gender:p.gender==='Female'?'female':p.gender==='Male'?'male':'unknown',

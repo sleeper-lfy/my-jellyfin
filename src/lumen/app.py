@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--serve', action='store_true', help='Run the authenticated LAN server without the desktop UI')
     parser.add_argument('--host', default='0.0.0.0')
     parser.add_argument('--port', type=int, default=8097)
+    parser.add_argument('--verify-mpv', action='store_true', help='Verify the bundled libmpv and shader resources')
     parser.add_argument('--smoke', action='store_true', help='Render all main pages and exit (for CI)')
     args = parser.parse_args()
     if args.data_dir:
@@ -23,6 +24,22 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(filename=directory / 'diagnostics.log', level=logging.INFO,
                         format='%(asctime)s %(levelname)s %(message)s', encoding='utf-8')
+    if args.verify_mpv:
+        import json
+        from pathlib import Path
+        from PySide6.QtCore import QCoreApplication
+        from .mpv_backend import MpvMedia
+        app = QCoreApplication(sys.argv[:1])
+        media = MpvMedia(headless=True)
+        try:
+            media.set_enhancement(True)
+            shaders = media.engine.glsl_shaders
+            if len(shaders) != 1 or not Path(shaders[0]).is_file():
+                raise RuntimeError('Bundled shader missing')
+            (directory / 'mpv-check.json').write_text(json.dumps({'version': media.engine.mpv_version, 'shader': True}), encoding='utf-8')
+        finally:
+            media.shutdown()
+        return 0
     if args.serve:
         from .server import LanServer
         import signal
@@ -49,6 +66,10 @@ def main():
     from PySide6.QtCore import QTimer, QLockFile
     from .ui import MainWindow
     app = QApplication(sys.argv[:1])
+    from PySide6.QtGui import QIcon
+    from pathlib import Path
+    icon_root=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parents[2]))
+    app.setWindowIcon(QIcon(str(icon_root/'assets'/'lumen.ico')))
     app.setApplicationName('Lumen')
     app.setOrganizationName('Lumen')
     lock = QLockFile(str(directory / 'app.lock'))
@@ -61,7 +82,7 @@ def main():
     window.show()
     if args.smoke:
         def check():
-            for section in ['home','movie','series','other','discover','stats']:
+            for section in ['home','movie','series','vr','other','discover','stats']:
                 window.navigate(section)
                 for index in range(window.tabs.count()):
                     window.tabs.setCurrentIndex(index)

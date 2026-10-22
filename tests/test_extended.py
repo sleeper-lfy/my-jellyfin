@@ -41,7 +41,7 @@ def test_tvmaze_followup_plan_and_gender_parser(library):
     request=manager.javascript('tvmaze','buildRequest',{'operation':'discover','config':config})
     assert request['url']=='https://api.tvmaze.com/updates/shows'
     plan=manager.javascript('tvmaze','parseResponse',{'operation':'discover','config':config,'url':request['url'],'body':json.dumps({'1':100,'5':200,'3':300})})
-    assert plan['followups'][0]['url'].endswith('/5?embed=cast')
+    assert plan['followups'][0]['url'].endswith('/5?embed[]=cast&embed[]=images')
     show={'id':5,'name':'Protocol test fixture','url':'https://www.tvmaze.com/shows/5/test','premiered':'2024-01-02','genres':['Drama'],
           '_embedded':{'cast':[{'person':{'id':1,'name':'Female','gender':'Female'}},{'person':{'id':2,'name':'Unknown','gender':None}}]}}
     rows=manager.javascript('tvmaze','parseResponse',{'operation':'detail','config':config,'url':'https://api.tvmaze.com/shows/5','body':json.dumps(show)})
@@ -49,6 +49,7 @@ def test_tvmaze_followup_plan_and_gender_parser(library):
     assert rows[0]['actors'][1]['gender']=='unknown'
     assert rows[0]['site_added'] is None
     assert rows[0]['released']=='2024-01-02'
+    assert rows[0]['stills']==[]
 
 
 def test_10000_work_query_and_full_queue(library):

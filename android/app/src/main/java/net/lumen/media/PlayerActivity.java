@@ -32,6 +32,9 @@ public final class PlayerActivity extends Activity {
     private LibVLC vlc;
     private PlaybackBridge bridge;
     private VLCVideoLayout video;
+    private VrVideoView vrVideo;
+    private boolean vrEnabled=false, vrFish=false, vrHeadset=false, vrSwap=false, vrTracking=true, vrImmersive=false;
+    private final ArrayList<View> chrome=new ArrayList<>();
     private SeekBar seek;
     private TextView time;
     private Button pause;
@@ -55,7 +58,24 @@ public final class PlayerActivity extends Activity {
         if(connection==null){finish();return;}api=new Api(connection);
         LinearLayout layout=new LinearLayout(this);layout.setFitsSystemWindows(true);layout.setOrientation(LinearLayout.VERTICAL);layout.setBackgroundColor(Color.BLACK);
         title=new TextView(this);title.setText("正在载入…");title.setTextColor(Color.WHITE);title.setTextSize(18);title.setPadding(16,16,16,12);layout.addView(title);
-        video=new VLCVideoLayout(this);layout.addView(video,new LinearLayout.LayoutParams(-1,0,1));
+        android.content.SharedPreferences prefs=getSharedPreferences("playback",0);
+        vrFish=prefs.getBoolean("vr_fish",false);vrHeadset=prefs.getBoolean("vr_headset",false);
+        vrSwap=prefs.getBoolean("vr_swap",false);vrTracking=prefs.getBoolean("vr_tracking",true);
+        FrameLayout viewport=new FrameLayout(this);
+        video=new VLCVideoLayout(this);viewport.addView(video,new FrameLayout.LayoutParams(-1,-1));
+        vrVideo=new VrVideoView(this,new VrVideoView.Listener(){
+            public void ready(){if(started&&vrEnabled)startPlayback();}
+            public void lost(){if(vrEnabled)stopPlayback(false);}
+            public void failed(String reason){status.setText("VR 渲染失败："+reason);setVrEnabled(false);}
+        });
+        vrVideo.setFov(prefs.getInt("vr_fov",90));
+        vrVideo.setVisibility(View.GONE);viewport.addView(vrVideo,new FrameLayout.LayoutParams(-1,-1));
+        Button vrControls=new Button(this);vrControls.setText("控制");
+        vrControls.setOnClickListener(v->setVrImmersive(!vrImmersive));
+        FrameLayout.LayoutParams controlPosition=new FrameLayout.LayoutParams(-2,-2,android.view.Gravity.TOP|android.view.Gravity.END);
+        viewport.addView(vrControls,controlPosition);vrControls.setVisibility(View.GONE);
+        vrVideo.setTag(vrControls);
+        layout.addView(viewport,new LinearLayout.LayoutParams(-1,0,1));
         seek=new SeekBar(this);seek.setMax(10000);layout.addView(seek);
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onStartTrackingTouch(SeekBar bar){dragging=true;}
@@ -66,7 +86,7 @@ public final class PlayerActivity extends Activity {
         LinearLayout playback=new LinearLayout(this);
         pause=addButton(playback,"暂停",()->{if(player!=null){if(player.isPlaying())player.pause();else if(focus())player.play();tick(false,false);}});
         addButton(playback,"音轨",()->tracks(false));addButton(playback,"字幕",()->tracks(true));
-        addButton(playback,"解码",this::decoder);layout.addView(playback);
+        addButton(playback,"解码",this::decoder);addButton(playback,"VR",this::vrSettings);layout.addView(playback);
         audio=(android.media.AudioManager)getSystemService(AUDIO_SERVICE);
         audioFocus=new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build())
@@ -77,7 +97,8 @@ public final class PlayerActivity extends Activity {
         addButton(controls,"下一集",()->nextEpisode(false));
         addButton(controls,"下一作品",()->nextWork(false));
         layout.addView(controls);
-        status=new TextView(this);status.setTextColor(Color.LTGRAY);status.setPadding(16,6,16,14);layout.addView(status);setContentView(layout);
+        chrome.add(title);chrome.add(seek);chrome.add(time);chrome.add(playback);chrome.add(controls);
+        status=new TextView(this);status.setTextColor(Color.LTGRAY);status.setPadding(16,6,16,14);layout.addView(status);chrome.add(status);setContentView(layout);
         queueMode=getIntent().getBooleanExtra("queue",false);
         desiredWork=getIntent().getLongExtra("work_id",0);desiredFile=getIntent().getLongExtra("file_id",0);
     }
@@ -99,7 +120,7 @@ public final class PlayerActivity extends Activity {
                 JSONObject selectedFile=chosen;JSONArray captions=api.get("/api/files/"+selected+"/subtitles").getJSONArray("items");
                 runOnUiThread(()->{
                     if(isDestroyed()||ticket!=generation)return;
-                    work=data;file=selectedFile;subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
+                    work=data;setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
                     title.setText(work.optString("title")+(work.optString("kind").equals("series")?" · S"+file.optInt("season")+" E"+file.optInt("episode"):""));
                     if(started)startPlayback();
                 });
@@ -107,13 +128,19 @@ public final class PlayerActivity extends Activity {
         });
     }
     private void startPlayback() {
-        if(player!=null||file==null||!started)return;
+        if(player!=null||file==null||!started||(vrEnabled&&vrVideo.videoTexture()==null))return;
         ending=false;sequence=0;seekGuard=2;session=null;
         ready=false;buffering=true;lastPosition=resumeMs;
         try {
             bridge=new PlaybackBridge(api.connection.base,api.connection.token,file.optLong("id"));
             ArrayList<String> options=new ArrayList<>();options.add("--network-caching=1500");
-            vlc=new LibVLC(this,options);player=new MediaPlayer(vlc);player.attachViews(video,null,true,false);
+            vlc=new LibVLC(this,options);player=new MediaPlayer(vlc);
+            player.setAudioOutputDevice("stereo");
+            if(vrEnabled){
+                player.getVLCVout().setVideoSurface(vrVideo.videoTexture());
+                player.getVLCVout().setWindowSize(1920,1080);
+                player.getVLCVout().attachViews();
+            }else player.attachViews(video,null,true,false);
             Media media=new Media(vlc,Uri.parse(bridge.url(file.optString("stream"))));
             media.setHWDecoderEnabled(!software,false);
             media.addOption(":start-time="+(resumeMs/1000.0));
@@ -127,6 +154,10 @@ public final class PlayerActivity extends Activity {
                     if(!ready){
                         ready=true;
                         for(int i=0;i<subtitles.length();i++)current.addSlave(Media.Slave.Type.Subtitle,Uri.parse(bridge.url(subtitles.optJSONObject(i).optString("url"))),i==0);
+                    }
+                    if(vrEnabled){
+                        org.videolan.libvlc.interfaces.IMedia.VideoTrack track=current.getCurrentVideoTrack();
+                        if(track!=null){int[] size=vrVideo.setVideoSize(track.width,track.height);current.getVLCVout().setWindowSize(size[0],size[1]);}
                     }
                     status.setText(software?"软件解码 · 原画直传":"自动解码 · 硬件优先，软件兜底");
                 }
@@ -174,7 +205,9 @@ public final class PlayerActivity extends Activity {
         handler.removeCallbacks(heartbeat);
         if(player!=null) {
             resumeMs=completed?0:positionMs();
-            tick(true,completed);player.setEventListener(null);player.stop();player.detachViews();player.release();player=null;
+            tick(true,completed);player.setEventListener(null);player.stop();
+            if(vrEnabled)player.getVLCVout().detachViews();else player.detachViews();
+            player.release();player=null;
         }
         if(bridge!=null){bridge.close();bridge=null;}
         if(vlc!=null){vlc.release();vlc=null;}
@@ -193,6 +226,48 @@ public final class PlayerActivity extends Activity {
     }
     private void restartDecoder(boolean useSoftware){
         generation++;stopPlayback(false);software=useSoftware;startPlayback();
+    }
+    private void setVrImmersive(boolean enabled){
+        setRequestedOrientation(vrEnabled&&vrHeadset
+            ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        vrImmersive=enabled && vrEnabled;
+        for(View item:chrome)item.setVisibility(vrImmersive?View.GONE:View.VISIBLE);
+        getWindow().getDecorView().setSystemUiVisibility(vrImmersive
+            ? View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            : View.SYSTEM_UI_FLAG_VISIBLE);
+    }
+    private void setVrEnabled(boolean enabled){
+        if(vrEnabled==enabled)return;
+        generation++;stopPlayback(false);
+        if(vrEnabled)vrVideo.onPause();
+        vrEnabled=enabled;
+        video.setVisibility(enabled?View.GONE:View.VISIBLE);vrVideo.setVisibility(enabled?View.VISIBLE:View.GONE);
+        ((View)vrVideo.getTag()).setVisibility(enabled?View.VISIBLE:View.GONE);
+        vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);
+        vrVideo.recenter();
+        if(enabled&&started)vrVideo.onResume();
+        setVrImmersive(enabled&&vrHeadset);
+        startPlayback();
+    }
+    private void vrSettings(){
+        LinearLayout choices=new LinearLayout(this);choices.setOrientation(LinearLayout.VERTICAL);choices.setPadding(24,12,24,12);
+        TextView info=new TextView(this);info.setText("VR180 · 180° 全景 · 左右 3D · 立体声音频\n拖动转向；无陀螺仪时使用触摸。普通视频请关闭 VR。");choices.addView(info);
+        CheckBox enabled=new CheckBox(this);enabled.setText("启用 VR180 播放");enabled.setChecked(vrEnabled);choices.addView(enabled);
+        CheckBox fish=new CheckBox(this);fish.setText("鱼眼模式（关闭为标准等距柱状投影）");fish.setChecked(vrFish);choices.addView(fish);
+        CheckBox headset=new CheckBox(this);headset.setText("双眼观看（关闭为单屏左眼预览）");headset.setChecked(vrHeadset);choices.addView(headset);
+        CheckBox swap=new CheckBox(this);swap.setText("交换左右眼");swap.setChecked(vrSwap);choices.addView(swap);
+        CheckBox tracking=new CheckBox(this);tracking.setText(vrVideo.hasTracking()?"陀螺仪转向":"此设备无旋转传感器，使用触摸转向");tracking.setChecked(vrTracking&&vrVideo.hasTracking());tracking.setEnabled(vrVideo.hasTracking());choices.addView(tracking);
+        Button center=new Button(this);center.setText("重置朝向");center.setOnClickListener(v->vrVideo.recenter());choices.addView(center);
+        TextView fovLabel=new TextView(this);fovLabel.setText("视场角（50°–110°，默认 90°）");choices.addView(fovLabel);
+        SeekBar fov=new SeekBar(this);fov.setMax(60);fov.setProgress(getSharedPreferences("playback",0).getInt("vr_fov",90)-50);choices.addView(fov);
+        new AlertDialog.Builder(this).setTitle("VR 播放设置").setView(choices).setPositiveButton("应用",(d,w)->{
+            vrFish=fish.isChecked();vrHeadset=headset.isChecked();vrSwap=swap.isChecked();vrTracking=tracking.isChecked();
+            getSharedPreferences("playback",0).edit().putBoolean("vr_fish",vrFish).putBoolean("vr_headset",vrHeadset)
+                .putBoolean("vr_swap",vrSwap).putBoolean("vr_tracking",vrTracking).putInt("vr_fov",fov.getProgress()+50).apply();
+            vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);vrVideo.setFov(fov.getProgress()+50);
+            setVrEnabled(enabled.isChecked());setVrImmersive(vrEnabled&&vrHeadset);
+        }).setNegativeButton("取消",null).show();
     }
     private void decoder(){
         new AlertDialog.Builder(this).setTitle("解码模式（保留播放位置）")
@@ -230,8 +305,8 @@ public final class PlayerActivity extends Activity {
             prefs.edit().putInt("index",next).apply();stopPlayback(false);load(ids.getLong(next),0);
         }catch(Exception exception){error(exception);}
     }
-    @Override protected void onStart(){super.onStart();started=true;if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
+    @Override protected void onStart(){super.onStart();started=true;if(vrEnabled&&vrVideo!=null)vrVideo.onResume();if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
     @Override protected void onPause(){if(player!=null){player.pause();tick(false,false);}super.onPause();}
-    @Override protected void onStop(){started=false;generation++;stopPlayback(false);super.onStop();}
-    @Override protected void onDestroy(){handler.removeCallbacksAndMessages(null);network.shutdown();super.onDestroy();}
+    @Override protected void onStop(){started=false;generation++;stopPlayback(false);if(vrEnabled&&vrVideo!=null)vrVideo.onPause();super.onStop();}
+    @Override protected void onDestroy(){handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
 }

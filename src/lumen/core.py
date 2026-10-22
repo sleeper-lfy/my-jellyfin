@@ -99,6 +99,8 @@ def parse_name(path, kind):
         season_match = re.search(r'(?i)(?:season|s|第)\s*(\d{1,2})', Path(path).parent.name)
         number_match = re.match(r'(?i)(?:e|ep|第)?\s*(\d{1,3})(?:\D|$)', stem)
         if not number_match:
+            number_match = re.search(r'(?:\s|第)(\d{1,3})(?:[话話集回])?$', stem)
+        if not number_match:
             raise ValueError('未识别季集编号，请使用 剧名.S01E01 格式或 Season 1/01 标题 格式')
         season, number = int(season_match.group(1)) if season_match else 1, int(number_match.group(1))
         title = Path(path).parent.parent.name if season_match else Path(path).parent.name
@@ -212,6 +214,7 @@ class Library:
         for file in item['files']:
             details = item['metadata'].get('episode_details', {}).get(str(file['id']), {})
             file.update({key: details[key] for key in ['title','overview'] if key in details})
+            file['stills']=item['metadata'].get('episode_stills',{}).get(str(file['id']),[])
         item['sources'] = [dict(r) for r in self.db.execute('SELECT * FROM sources WHERE work_id=?', (work_id,))]
         return item
 
@@ -260,8 +263,31 @@ class Library:
             self.db.execute('UPDATE works SET title=?,year=?,metadata=?,locked=? WHERE id=?',
                             (metadata.get('title', item['title']), metadata.get('year', item['year']), json.dumps(item['metadata'], ensure_ascii=False), json.dumps(locked), work_id))
 
+    def set_movie_kind(self, work_id, kind):
+        """Reclassify without moving media, changing IDs or losing watch records."""
+        item = self.work(work_id)
+        if kind not in {'movie', 'vr'} or item['kind'] not in {'movie', 'vr'}:
+            raise ValueError('仅支持普通电影与 VR电影之间切换')
+        if item['kind'] == kind:
+            return
+        titles = [item['title'], *item['metadata'].get('aliases', [])]
+        keys = {identity(title, item['year'], kind) for title in titles}
+        with self.db:
+            for key in keys:
+                existing = self.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
+                if existing and existing[0] != work_id:
+                    raise ValueError('目标分类已有同名作品，请先核对重复项')
+            for external in self.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)).fetchall():
+                existing = self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?', (kind,*external)).fetchone()
+                if existing and existing[0] != work_id:
+                    raise ValueError('目标分类已有相同外部标识，请先核对重复项')
+            self.db.execute('UPDATE works SET kind=?,identity=? WHERE id=?',(kind,identity(item['title'],item['year'],kind),work_id))
+            self.db.execute('DELETE FROM name_keys WHERE work_id=?',(work_id,))
+            self.db.executemany('INSERT INTO name_keys VALUES (?,?)',[(key,work_id) for key in keys])
+            self.db.execute('UPDATE external_ids SET kind=? WHERE work_id=?',(kind,work_id))
+
     def import_folder(self, root, kind, progress=None, fast=False, cancelled=None):
-        if kind not in {'movie', 'series', 'other'}:
+        if kind not in {'movie', 'series', 'other', 'vr'}:
             raise ValueError('无效媒体类型')
         root = Path(root).resolve(strict=True)
         if not root.is_dir():
@@ -340,10 +366,10 @@ class Library:
                         report(index, len(paths), '分析媒体', path)
                         duration = probe(path, cancelled=cancelled) if cancelled else probe(path)
                     entry = local['entry']
-                    numbered = kind == 'series' and entry and entry['season'] is not None and entry['episode'] is not None
+                    numbered = kind == 'series' and entry and entry['episode'] is not None
                     parsed = parse_name(path, 'movie' if numbered else kind)
                     if numbered:
-                        parsed.update(season=entry['season'],episode=entry['episode'])
+                        parsed.update(season=entry['season'] if entry['season'] is not None else 1,episode=entry['episode'])
                     if local['work']:
                         parsed.update({k:v for k,v in local['work']['metadata'].items() if k in {'title','year'}})
                     key = identity(parsed['title'], parsed['year'], kind) if kind != 'other' else 'file:' + digest
@@ -531,6 +557,10 @@ class Library:
             item['metadata'] = json.loads(item['metadata'])
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
+            for file in item['files']:
+                details=item['metadata'].get('episode_details',{}).get(str(file['id']),{})
+                file.update({key:details[key] for key in ['title','overview'] if key in details})
+                file['stills']=item['metadata'].get('episode_stills',{}).get(str(file['id']),[])
             item['sources'] = sources.get(item['id'], [])
             m = item['metadata']
             q = f.get('query', '').casefold().strip()

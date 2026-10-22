@@ -1,6 +1,6 @@
 ; Build from the verified Windows onedir bundle; never package Linux binaries.
 #ifndef AppVersion
-  #define AppVersion "0.3.1"
+  #define AppVersion "0.4.0"
 #endif
 #ifndef BundleDir
   #define BundleDir "..\dist\Lumen"
@@ -28,6 +28,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
+SetupIconFile=..\assets\lumen.ico
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\Lumen.exe

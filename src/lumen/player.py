@@ -2,8 +2,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from .presentation import rating_text
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize, QRect
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox
-from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication
+from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from .core import WatchSession
@@ -20,6 +20,7 @@ class Player(QDialog):
         self.setWindowTitle('Lumen · 播放器')
         self.resize(1100, 720)
         self.session = None
+        self._open_generation = 0
         self.file = None
         self.resume = None
         self.seek_guard = 0
@@ -37,24 +38,43 @@ class Player(QDialog):
             QSlider::sub-page:horizontal { background: #00a4dc; }
             QSlider::handle:horizontal { background: #00a4dc; width: 14px; margin: -6px 0; border-radius: 7px; }
         """)
-        self.scene = QGraphicsScene(self)
-        self.video = QGraphicsVideoItem()
-        self.video.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        self.scene.addItem(self.video)
-        self.canvas = QGraphicsView(self.scene)
-        self.canvas.setFrameShape(QFrame.Shape.NoFrame)
-        self.canvas.setStyleSheet('background: black; border: none;')
-        self.canvas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.canvas.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.media = QMediaPlayer(self)
-        self.audio = QAudioOutput(self)
+        self.mpv_backend = False
+        self.backend_message = ''
+        if QApplication.platformName() != 'offscreen' and not self.library.setting('player_compat', False):
+            try:
+                from .mpv_backend import MpvMedia, MpvAudio, MpvCanvas
+                self.canvas = MpvCanvas(self)
+                self.media = MpvMedia(self, window_id=int(self.canvas.winId()))
+                self.audio = MpvAudio(self.media)
+                self.mpv_backend = True
+                self.media.keyPressed.connect(self.native_key,Qt.ConnectionType.QueuedConnection)
+                QApplication.instance().aboutToQuit.connect(self.shutdown_mpv)
+            except (ImportError, OSError, RuntimeError) as exc:
+                self.backend_message = 'libmpv 不可用，已使用兼容播放：' + str(exc)
+        if not self.mpv_backend:
+            self.scene = QGraphicsScene(self)
+            self.video = QGraphicsVideoItem()
+            self.video.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+            self.scene.addItem(self.video)
+            self.canvas = QGraphicsView(self.scene)
+            self.canvas.setFrameShape(QFrame.Shape.NoFrame)
+            self.canvas.setStyleSheet('background: black; border: none;')
+            self.canvas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.canvas.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.media = QMediaPlayer(self)
+            self.audio = QAudioOutput(self)
+            self.audio.setVolume(.7)
+            self.media.setAudioOutput(self.audio)
+            self.media.setVideoOutput(self.video)
         self.audio.setVolume(.7)
-        self.media.setAudioOutput(self.audio)
-        self.media.setVideoOutput(self.video)
         layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas, 0, 0)
         self.overlay = QWidget(self)
+        if self.mpv_backend:
+            self.overlay.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.overlay.setAutoFillBackground(False)
         overlay_layout = QVBoxLayout(self.overlay)
         overlay_layout.setContentsMargins(0, 0, 0, 0)
         self.header = QWidget()
@@ -160,6 +180,20 @@ class Player(QDialog):
         tracks.addWidget(self.audio_tracks)
         tracks.addWidget(QPushButton('外挂字幕…', clicked=self.choose_subtitle))
         tracks.addWidget(QPushButton('开关外挂字幕', clicked=self.toggle_external_subtitle))
+        self.enhance = QCheckBox('GPU 画质增强（高质量缩放 + 轻度锐化）')
+        self.enhance.setEnabled(self.mpv_backend)
+        self.enhance.setToolTip('改善放大画面；不是 AI 超分辨率。卡顿时可关闭。')
+        self.enhance.setChecked(self.mpv_backend and self.library.setting('player_enhance', False))
+        if self.mpv_backend:
+            self.media.set_enhancement(self.enhance.isChecked())
+        self.enhance.toggled.connect(self.set_enhancement)
+        tracks.addWidget(QLabel('播放内核：libmpv' if self.mpv_backend else '播放内核：Qt 兼容模式'))
+        tracks.addWidget(self.enhance)
+        compatibility = QCheckBox('兼容播放模式（重启应用后生效）')
+        compatibility.setChecked(self.library.setting('player_compat', False))
+        compatibility.setToolTip('显卡或 OpenGL 不兼容时启用，使用原有播放方式。')
+        compatibility.toggled.connect(lambda enabled: self.library.set_setting('player_compat', enabled))
+        tracks.addWidget(compatibility)
         self.auto_hide = QCheckBox('播放时自动隐藏控制栏')
         self.auto_hide.setChecked(self.library.setting('player_auto_hide', True))
         self.auto_hide.toggled.connect(self.set_auto_hide)
@@ -180,7 +214,7 @@ class Player(QDialog):
         self.media.positionChanged.connect(self.position_changed)
         self.media.mediaStatusChanged.connect(self.status_changed)
         self.media.playbackStateChanged.connect(self.state_changed)
-        self.media.errorOccurred.connect(lambda _code, message: self.error.setText('播放错误：' + message))
+        self.media.errorOccurred.connect(lambda _code, message: self.set_error('播放错误：' + message))
         self.seek_shortcuts = []
         for key, delta in [(Qt.Key.Key_Left, -10000), (Qt.Key.Key_Right, 10000)]:
             shortcut = QShortcut(QKeySequence(key), self)
@@ -192,6 +226,33 @@ class Player(QDialog):
         self.timer.timeout.connect(self.sample)
         self.timer.start()
 
+    def native_key(self, key):
+        self.show_controls()
+        if key=='LEFT':self.jump(-10000)
+        elif key=='RIGHT':self.jump(10000)
+        elif key=='SPACE':self.toggle()
+        elif key=='f':self.toggle_fullscreen()
+        elif key=='ESC':
+            if self.isFullScreen():self.toggle_fullscreen()
+            else:self.close()
+
+    def set_error(self, message):
+        self.error.setText(message)
+        self.sync_overlay()
+
+    def set_enhancement(self, enabled):
+        if self.mpv_backend:
+            try:
+                self.media.set_enhancement(enabled)
+                self.library.set_setting('player_enhance', enabled)
+            except (ValueError, RuntimeError) as exc:
+                self.set_error('画质增强未启用：' + str(exc))
+
+    def shutdown_mpv(self):
+        if self.mpv_backend:
+            self.media.shutdown()
+            self.mpv_backend = False
+
     def control_icon(self, standard):
         pixmap = self.style().standardIcon(standard).pixmap(24, 24)
         painter = QPainter(pixmap)
@@ -201,7 +262,7 @@ class Player(QDialog):
         return QIcon(pixmap)
 
     def eventFilter(self, watched, event):
-        if watched is self.canvas.viewport() and event.type() == QEvent.Type.Resize:
+        if not self.mpv_backend and watched is self.canvas.viewport() and event.type() == QEvent.Type.Resize:
             size = QSizeF(self.canvas.viewport().size())
             self.video.setSize(size)
             self.scene.setSceneRect(0, 0, size.width(), size.height())
@@ -233,6 +294,20 @@ class Player(QDialog):
         self.overlay.layout().invalidate()
         self.overlay.layout().activate()
         self.overlay.raise_()
+        self.update_overlay_mask()
+
+    def update_overlay_mask(self):
+        if not self.mpv_backend:
+            return
+        region = QRegion()
+        for widget in (self.header, self.footer, self.caption, self.error):
+            if not widget.isHidden() and (widget in (self.header, self.footer) or widget.text()):
+                region = region.united(QRegion(widget.geometry()))
+        if region.isEmpty():
+            self.overlay.hide()
+        else:
+            self.overlay.setMask(region)
+            self.overlay.show()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -266,6 +341,7 @@ class Player(QDialog):
         self.sync_overlay()
         self.header.show()
         self.footer.show()
+        self.update_overlay_mask()
         self.overlay.unsetCursor()
         if self.auto_hide.isChecked():
             self.idle.start()
@@ -277,6 +353,7 @@ class Player(QDialog):
             self.header.hide()
             self.footer.hide()
             self.overlay.setCursor(Qt.CursorShape.BlankCursor)
+            self.update_overlay_mask()
 
     def show_settings(self):
         self.track_dialog.show()
@@ -309,7 +386,7 @@ class Player(QDialog):
     def open_file(self, file):
         self.finish()
         if not Path(file['path']).is_file():
-            self.error.setText('文件不存在，请检查磁盘或重新导入：' + file['path'])
+            self.set_error('文件不存在，请检查磁盘或重新导入：' + file['path'])
             self.show()
             return
         self.file = file
@@ -319,7 +396,7 @@ class Player(QDialog):
         self.rating.setText(rating_text(work))
         self.update_like(work)
         self.show_controls()
-        self.error.setText('')
+        self.set_error(self.backend_message)
         self.cues = []
         self.caption.clear()
         source = Path(file['path'])
@@ -328,8 +405,22 @@ class Player(QDialog):
             self.load_subtitle(sorted(candidates)[0])
         self.resume = file['position'] if not file['completed'] else 0
         self.session = WatchSession(self.library, file['id'])
-        self.media.setSource(QUrl.fromLocalFile(file['path']))
-        self.media.play()
+        # libmpv's render context must exist before opening its first video.
+        self.show()
+        if self.mpv_backend:
+            self.media.attach_window(int(self.canvas.winId()))
+            self.audio.setVolume(self.audio.volume)
+            self.audio.setMuted(self.audio.muted)
+        generation = self._open_generation
+        def start_source():
+            if generation != self._open_generation or not self.isVisible():
+                return
+            self.media.setSource(QUrl.fromLocalFile(file['path']))
+            self.media.play()
+        if self.mpv_backend:
+            self.canvas.when_ready(start_source)
+        else:
+            start_source()
         self.show()
         self.raise_()
 
@@ -353,6 +444,9 @@ class Player(QDialog):
         text = '\n'.join(cue[2] for cue in self.cues if cue[0] <= position/1000 < cue[1]) if self.external_subtitle_enabled else ''
         self.caption.setText(text)
         self.caption.setVisible(bool(text))
+        if self.mpv_backend:
+            self.overlay.layout().activate()
+            self.update_overlay_mask()
 
     def sample(self):
         if self.session:
@@ -420,7 +514,7 @@ class Player(QDialog):
             self.cues = read_subtitles(path)
             self.external_subtitle_enabled = True
         except Exception as exc:
-            self.error.setText('外挂字幕未载入：' + str(exc))
+            self.set_error('外挂字幕未载入：' + str(exc))
 
     def choose_subtitle(self):
         path, _ = QFileDialog.getOpenFileName(self, '选择外挂字幕', '', '字幕 (*.srt *.ass *.ssa *.vtt)')
@@ -432,14 +526,18 @@ class Player(QDialog):
         self.position_changed(self.media.position())
 
     def toggle_fullscreen(self):
+        if self.mpv_backend:
+            self.media.detach_window()
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
         self.raise_()
         self.activateWindow()
+        if self.mpv_backend:
+            self.media.attach_window(int(self.canvas.winId()))
         self.show_controls()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
-            self.showNormal()
+            self.toggle_fullscreen()
         elif event.key() == Qt.Key.Key_F:
             self.toggle_fullscreen()
         elif event.key() in {Qt.Key.Key_Left, Qt.Key.Key_Right}:
@@ -450,6 +548,7 @@ class Player(QDialog):
             super().keyPressEvent(event)
 
     def finish(self):
+        self._open_generation += 1
         if self.session:
             self.sample()
             self.session.finish()
@@ -459,6 +558,8 @@ class Player(QDialog):
 
     def closeEvent(self, event):
         self.finish()
+        if self.mpv_backend:
+            self.media.detach_window(False)
         self.track_dialog.close()
         self.idle.stop()
         self.pointer_timer.stop()

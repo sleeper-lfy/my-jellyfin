@@ -24,15 +24,20 @@ New-Item -ItemType Directory -Force '.local\ffmpeg-bundle' | Out-Null
 Copy-Item $LumenFfmpeg '.local\ffmpeg-bundle\ffmpeg.exe' -Force
 Copy-Item $LumenFfprobe '.local\ffmpeg-bundle\ffprobe.exe' -Force
 Get-ChildItem (Split-Path $LumenFfmpeg) -Filter '*.dll' | Copy-Item -Destination '.local\ffmpeg-bundle' -Force
+./scripts/fetch-mpv-windows.ps1
+$env:LUMEN_REQUIRE_MPV = '1'
 & $LumenPython -m pytest -q --junitxml=.local/test-results.xml
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
-& $LumenPython -m PyInstaller --noconfirm --clean --windowed --onedir --name Lumen --paths src `
+& $LumenPython -m PyInstaller --noconfirm --clean --windowed --onedir --name Lumen --paths src --icon assets/lumen.ico `
   --hidden-import lumen.js_worker --hidden-import lumen.sandbox --collect-submodules PySide6.QtQml `
   --add-binary '.local/ffmpeg-bundle/*;lumen/bin' `
-  --add-data 'plugins;plugins' --add-data 'docs;docs' scripts/launcher.py
+  --add-binary '.local/mpv-bundle/libmpv-2.dll;lumen/bin' `
+  --add-data '.local/mpv-bundle/build.json;lumen/bin' --collect-data lumen `
+  --add-data 'assets;assets' --add-data 'plugins;plugins' --add-data 'docs;docs' scripts/launcher.py
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
 Copy-Item README.md dist\Lumen\README.md
 Copy-Item THIRD_PARTY_NOTICES.md dist\Lumen\THIRD_PARTY_NOTICES.md
+Copy-Item docs/mpv-runtime.md dist\Lumen\mpv-runtime.md
 & $LumenPython scripts/collect-licenses.py dist/Lumen/licenses
 if ($LASTEXITCODE -ne 0) { throw 'License collection failed' }
 & $LumenPython scripts/verify-package.py dist/Lumen/Lumen.exe

@@ -65,10 +65,15 @@ def public_work(work, detail=False):
                   file_count=len(work['files']), tags=work['metadata'].get('tags', []),
                   position=max((f['position'] for f in work['files']),default=0))
     if detail:
+        from .artwork import still_paths
+        result['stills']=[f"/api/works/{work['id']}/stills/{i}" for i,_ in enumerate(still_paths(work))]
+        result['download_method']=work['metadata'].get('download_method')
+        result['download_url']=work['metadata'].get('download_url',[])
         result.update(overview=work['metadata'].get('overview',''),
                       actors=[{k:a[k] for k in ['name','gender','aliases'] if k in a} for a in work['metadata'].get('actors',[])],
                       sources=[{k:s[k] for k in ['site','url','rating']} for s in work['sources']],
                       files=[{**{k:f[k] for k in ['id','season','episode','duration','position','completed']},
+                              'overview':f.get('overview',''),'stills':[f"/api/files/{f['id']}/stills/{index}" for index,_ in enumerate(f.get('stills',[])[:40])],
                               'name':f.get('title') or Path(f['path']).name,'stream':f"/api/files/{f['id']}/stream"} for f in work['files']])
     return result
 
@@ -144,6 +149,14 @@ class LanServer:
                             return self.send_json(200,{'total':len(items),'items':[public_work(w) for w in items[offset:offset+limit]],'offset':offset,'limit':limit})
                         if path == '/api/stats':
                             return self.send_json(200,library.stats())
+                        match = re.fullmatch(r'/api/works/(\d+)/stills/(\d+)',path)
+                        if match:
+                            from .artwork import still_paths
+                            work=library.work(int(match[1]));images=still_paths(work);index=int(match[2])
+                            if index>=len(images):raise ApiError(404,'剧照不存在')
+                            target=Path(images[index]).resolve()
+                            if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'剧照路径不在缓存内')
+                            return self.send_file(target,'image/jpeg')
                         match = re.fullmatch(r'/api/works/(\d+)(/cover)?',path)
                         if match:
                             work = library.work(int(match[1]))
@@ -155,6 +168,14 @@ class LanServer:
                             result=public_work(work,True)
                             result['resume_file_id']=library.resume_file(work['id'])['id'] if work['files'] else None
                             return self.send_json(200,result)
+                        match = re.fullmatch(r'/api/files/(\d+)/stills/(\d+)',path)
+                        if match:
+                            file=self.file(library,int(match[1]));work=library.work(file['work_id'])
+                            images=work['metadata'].get('episode_stills',{}).get(str(file['id']),[])[:40];index=int(match[2])
+                            if index>=len(images):raise ApiError(404,'单集剧照不存在')
+                            target=Path(images[index]).resolve()
+                            if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'剧照路径不在缓存内')
+                            return self.send_file(target,'image/jpeg')
                         match = re.fullmatch(r'/api/files/(\d+)/(stream|subtitles)(?:/(\d+))?',path)
                         if match:
                             file=self.file(library,int(match[1])); target=Path(file['path']).resolve()
@@ -217,7 +238,7 @@ class LanServer:
                 filters={'query':query.get('q',[''])[0]}
                 kind=query.get('kind',[''])[0]
                 if kind:
-                    if kind not in {'movie','series','other'}:raise ApiError(400,'无效媒体类型')
+                    if kind not in {'movie','series','other','vr'}:raise ApiError(400,'无效媒体类型')
                     filters['kinds']=[kind]
                 if query.get('favorite',[''])[0].lower() in {'true','1'}:filters['favorite']=True
                 return filters

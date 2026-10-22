@@ -26,9 +26,14 @@ def sidecar_signature(video, root, kind, cache, signatures):
             sibling(folder, '', cache)
             records = []
             for path in cache[folder].values():
-                if path.suffix.lower() in {'.nfo','.jpg','.png'}:
+                if path.suffix.lower() in {'.nfo','.jpg','.jpeg','.png'}:
                     stat = path.stat()
                     records.append((path.name,stat.st_size,stat.st_mtime_ns))
+            extra=folder/'extrafanart'
+            if extra.is_dir() and not extra.is_symlink():
+                for image in extra.iterdir():
+                    if image.is_file() and not image.is_symlink() and image.suffix.lower() in {'.jpg','.jpeg','.png'}:
+                        stat=image.stat();records.append(('extrafanart/'+image.name,stat.st_size,stat.st_mtime_ns))
             signatures[folder] = hashlib.sha256(repr(sorted(records)).encode()).hexdigest()
     return hashlib.sha256(''.join(signatures[p] for p in folders).encode()).hexdigest()
 
@@ -87,8 +92,8 @@ def read(path):
             'episode': integer('episode',0,99999) if tree.tag == 'episodedetails' and text('episode') != '-1' else None,
             'showtitle': text('showtitle'), 'rating': rating, 'userrating': integer('userrating',0,10),
             'completed': text('watched').lower() == 'true' or (integer('playcount',0,1000000) or 0) > 0,
-            'position': position, 'thumbs': [(e.text or '').strip() for e in tree.findall('thumb') if e.get('aspect','poster') == 'poster'],
-            'path': path}
+            'position': position, 'thumbs': values('art/poster') + values('poster') + [(e.text or '').strip() for e in tree.findall('thumb') if e.get('aspect','poster') == 'poster'],
+            'still_refs': values('art/fanart') + values('fanart') + (values('thumb') + values('art/thumb') if tree.tag=='episodedetails' else []), 'path': path}
 
 
 def load(video, root, kind, warnings, cache=None):
@@ -133,7 +138,33 @@ def load(video, root, kind, warnings, cache=None):
     if kind == 'series' and not work and entry and entry['showtitle']:
         work = {**entry, 'metadata': {'title': entry['showtitle']}, 'rating': None, 'userrating': None, 'thumbs': []}
     return {'work': work, 'entry': entry, 'poster': poster(video, root, work, kind, warnings, cache),
-            'backdrop': backdrop(video, root, work, cache)}
+            'backdrop': backdrop(video, root, work, cache), 'stills': stills(video,root,work,cache),
+            'episode_stills': stills(video,root,entry,cache,scan_extra=not work or entry and entry['path'].parent!=work['path'].parent) if kind=='series' and entry else []}
+
+
+def stills(video, root, work, cache=None, scan_extra=True):
+    folder=work['path'].parent if work else video.parent
+    candidates=[]
+    for value in (work or {}).get('still_refs',[]):
+        if re.match(r'^https?://',value,re.I):
+            continue
+        # Old Jellyfin absolute paths may point at another drive. Relocate the
+        # sidecar by its name, including the conventional extrafanart folder.
+        normalized=value.replace('\\','/')
+        local=Path(normalized)
+        candidates.extend([folder/local.name, folder/'extrafanart'/local.name])
+        if not re.match(r'^[a-z]:',normalized,re.I) and not local.is_absolute():
+            candidates.append(folder/local)
+    extra=folder/'extrafanart'
+    if scan_extra and extra.is_dir() and not extra.is_symlink():
+        candidates.extend(sorted(extra.iterdir()))
+    result=[]
+    for path in candidates:
+        if path.suffix.lower() in {'.jpg','.jpeg','.png'} and path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root):
+            resolved=path.resolve()
+            if resolved not in result:result.append(resolved)
+            if len(result)>=40:break
+    return result
 
 
 def backdrop(video, root, work, cache=None):
@@ -149,7 +180,11 @@ def poster(video, root, work, kind, warnings, cache=None):
     folder = work['path'].parent if work else video.parent
     candidates = []
     for value in (work or {}).get('thumbs', []):
-        if value and not re.match(r'^[a-z]+:', value, re.I): candidates.append(folder / value)
+        if value and not re.match(r'^https?://', value, re.I):
+            relative=Path(value.replace('\\','/'))
+            candidate=sibling(folder,relative.name,cache)
+            if candidate:candidates.append(candidate)
+            if not relative.is_absolute() and not re.match(r'^[a-z]:',value,re.I):candidates.append(folder/relative)
     for name in [video.stem+'-poster.jpg', video.stem+'-poster.png', 'poster.jpg','poster.png','folder.jpg','folder.png']:
         candidate = sibling(folder, name, cache)
         if candidate: candidates.append(candidate)
@@ -224,4 +259,16 @@ def apply(library, work_id, file_id, data, fresh_work, fresh_file, root, warning
             metadata['nfo_backdrop'] = cache_poster(data['backdrop'], library.directory)
         except (ValueError, OSError) as exc:
             warnings.append({'path': str(data['backdrop']), 'reason': '本地背景图: ' + str(exc)})
+    if data.get('episode_stills') and 'stills' not in item['locked']:
+        cached=[]
+        for image in data['episode_stills']:
+            try:cached.append(cache_poster(image,library.directory))
+            except (ValueError,OSError) as exc:warnings.append({'path':str(image),'reason':'单集剧照: '+str(exc)})
+        metadata.setdefault('episode_stills',{})[str(file_id)]=list(dict.fromkeys(cached))
+    if data.get('stills') and 'stills' not in item['locked']:
+        cached=[]
+        for image in data['stills']:
+            try:cached.append(cache_poster(image,library.directory))
+            except (ValueError,OSError) as exc:warnings.append({'path':str(image),'reason':'本地剧照: '+str(exc)})
+        metadata['nfo_stills']=list(dict.fromkeys(cached))
     library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata,ensure_ascii=False),work_id))

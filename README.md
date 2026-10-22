@@ -80,3 +80,9 @@ Linux 运行可验证核心逻辑、真实解码和 UI，但不代表 Windows �
 ## 文档
 
 [需求](docs/requirements.md) · [技术选型](docs/architecture-decision.md) · [架构](docs/architecture.md) · [插件开发](docs/plugin-development.md) · [UI 规范](docs/ui-design.md) · [阶段验收](docs/implementation-plan.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
+
+## 0.4.0 播放与媒体资料
+
+Windows 使用 libmpv 原生 GPU 播放，保留 Qt 控制栏，可开启高质量缩放与轻度锐化。新增 VR电影分类，安卓打开该分类自动进入 VR180 左右 3D；支持标准／鱼眼、单屏／双眼、陀螺仪与立体声。其他分类默认普通播放。
+
+剧照支持插件 `stills`、本地 NFO／extrafanart，以及 tvshow.nfo + 视频同名 NFO 的整剧与单集资料。下载资源列表支持磁力与 HTTP/HTTPS 直链；下载必须由用户点击启动。详见 [插件字段文档](docs/plugin-development.md)、[安卓 VR](docs/android-vr.md) 与 [播放内核说明](docs/mpv-runtime.md)。

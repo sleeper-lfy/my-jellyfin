@@ -113,17 +113,17 @@ public final class MainActivity extends Activity {
         search.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
         searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(52),1));searchRow.addView(button("搜索",applySearch));root.addView(searchRow);
         HorizontalScrollView nav=new HorizontalScrollView(this);nav.setHorizontalScrollBarEnabled(false);LinearLayout links=new LinearLayout(this);
-        String[] names={"首页","电影","电视剧","其他","收藏","为你推荐"};String[] types={"","movie","series","other","",""};
+        String[] names={"首页","电影","电视剧","VR电影","其他","收藏","为你推荐"};String[] types={"","movie","series","vr","other","",""};
         for(int i=0;i<names.length;i++) {
-            final int choice=i;Button tab=button(names[i],()->{kind=types[choice];favorites=choice==4;recommended=choice==5;query="";showLibrary();});
-            boolean selected=(choice==4&&favorites)||(choice==5&&recommended)||(choice<4&&!favorites&&!recommended&&kind.equals(types[i]));
+            final int choice=i;Button tab=button(names[i],()->{kind=types[choice];favorites=choice==5;recommended=choice==6;query="";showLibrary();});
+            boolean selected=(choice==5&&favorites)||(choice==6&&recommended)||(choice<5&&!favorites&&!recommended&&kind.equals(types[i]));
             if(selected)tab.setTextColor(BLUE);links.addView(tab);
         }
         nav.addView(links);root.addView(nav);
         ScrollView scroll=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(kind.isEmpty()&&!favorites&&!recommended&&query.isEmpty()) {
             content.addView(text("我的媒体",22,Color.WHITE));LinearLayout tiles=new LinearLayout(this);
-            for(int i=1;i<=3;i++){final int choice=i;Button tile=button(names[i],()->{kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
+            for(int i=1;i<=4;i++){final int choice=i;Button tile=button(names[i],()->{kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
             content.addView(tiles);
         }
         content.addView(text(recommended?"为你推荐":favorites?"收藏":query.isEmpty()?"媒体库":"搜索结果",22,Color.WHITE));
@@ -181,6 +181,37 @@ public final class MainActivity extends Activity {
             JSONObject file=files.getJSONObject(i);long id=file.getLong("id");String name=file.optString("name");
             if(work.optString("kind").equals("series"))name=String.format(java.util.Locale.ROOT,"S%02d E%02d  ·  ",file.optInt("season"),file.optInt("episode"))+name;
             page.addView(button(name+"  ·  "+(int)(file.optDouble("duration")/60)+" 分钟",()->startPlayer(id,false)));
+            if(!file.optString("overview").isEmpty())page.addView(text(file.optString("overview"),14,MUTED));
+            JSONArray episodeStills=file.optJSONArray("stills");
+            if(episodeStills!=null&&episodeStills.length()>0){
+                HorizontalScrollView shots=new HorizontalScrollView(this);LinearLayout images=new LinearLayout(this);
+                for(int j=0;j<episodeStills.length();j++){
+                    ImageView shot=new ImageView(this);shot.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    images.addView(shot,new LinearLayout.LayoutParams(dp(240),dp(150)));loadImage(shot,episodeStills.optString(j));
+                }
+                shots.addView(images);page.addView(shots);
+            }
+        }
+        JSONArray stills=work.optJSONArray("stills");
+        if(stills!=null&&stills.length()>0){
+            page.addView(text("剧照",21,Color.WHITE));
+            HorizontalScrollView gallery=new HorizontalScrollView(this);LinearLayout images=new LinearLayout(this);
+            ImageView expanded=new ImageView(this);expanded.setScaleType(ImageView.ScaleType.FIT_CENTER);expanded.setVisibility(View.GONE);
+            for(int i=0;i<stills.length();i++){
+                String path=stills.optString(i);ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(280),dp(180));size.setMargins(0,0,dp(12),0);images.addView(image,size);loadImage(image,path);
+                image.setOnClickListener(v->{loadImage(expanded,path);expanded.setVisibility(View.VISIBLE);});
+            }
+            gallery.addView(images);page.addView(gallery);page.addView(expanded,new LinearLayout.LayoutParams(-1,dp(300)));
+        }
+        JSONArray downloads=work.optJSONArray("download_url");
+        if(downloads!=null&&downloads.length()>0)page.addView(text("下载资源",21,Color.WHITE));
+        if(downloads!=null)for(int i=0;i<downloads.length();i++){
+            JSONObject entry=downloads.optJSONObject(i);if(entry==null)continue;String url=entry.optString("url");
+            page.addView(button(entry.optString("description","下载"),()->{
+                try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}
+                catch(android.content.ActivityNotFoundException error){Toast.makeText(this,"请安装支持该链接的下载器",Toast.LENGTH_LONG).show();}
+            }));
         }
         JSONArray sources=work.optJSONArray("sources");
         if(sources!=null&&sources.length()>0)page.addView(text("信息来源",21,Color.WHITE));
