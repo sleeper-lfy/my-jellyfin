@@ -42,7 +42,7 @@ def test_rescan_updates_metadata_preserves_personal_and_locks(library,tmp_path,v
     work=library.query()[0];library.update_personal(work['id'],rating=7,favorite=True)
     library.edit_metadata(work['id'],{'overview':'手工锁定'},['overview'])
     library.db.execute('UPDATE files SET position=1');library.db.commit()
-    video.with_suffix('.nfo').write_text('<movie><title>NFO 新标题</title><plot>不应覆盖</plot><userrating>2</userrating><watched>true</watched></movie>')
+    video.with_suffix('.nfo').write_text('<movie><title>NFO 新标题</title><plot>不应覆盖</plot><userrating>2</userrating><watched>true</watched></movie>', encoding='utf-8')
     result=library.import_folder(video.parent,'movie')
     assert result['nfo_updated']==1 and result['duplicates']==1
     work=library.work(work['id']);assert work['title']=='NFO 新标题'
@@ -55,8 +55,8 @@ def test_rescan_updates_metadata_preserves_personal_and_locks(library,tmp_path,v
 def test_show_and_opaque_episode_nfo(library,tmp_path,video_factory):
     video=media(tmp_path,video_factory,'Show/Season 1/random.mp4')
     show=video.parent.parent
-    (show/'tvshow.nfo').write_text('<tvshow><title>剧集总名</title><year>2020</year><plot>剧集简介</plot><uniqueid type="tvdb">123</uniqueid></tvshow>')
-    video.with_suffix('.nfo').write_text('<episodedetails><title>第一集标题</title><season>0</season><episode>3</episode><plot>单集简介</plot><uniqueid type="tvdb">999</uniqueid><watched>true</watched></episodedetails>')
+    (show/'tvshow.nfo').write_text('<tvshow><title>剧集总名</title><year>2020</year><plot>剧集简介</plot><uniqueid type="tvdb">123</uniqueid></tvshow>', encoding='utf-8')
+    video.with_suffix('.nfo').write_text('<episodedetails><title>第一集标题</title><season>0</season><episode>3</episode><plot>单集简介</plot><uniqueid type="tvdb">999</uniqueid><watched>true</watched></episodedetails>', encoding='utf-8')
     result=library.import_folder(show,'series');assert result['imported']==1,result
     work=library.work(library.query()[0]['id']);file=work['files'][0]
     assert work['title']=='剧集总名' and work['metadata']['overview']=='剧集简介'
@@ -71,7 +71,7 @@ def test_show_and_opaque_episode_nfo(library,tmp_path,video_factory):
 @pytest.mark.parametrize('content', ['<movie><title>broken', '<!DOCTYPE movie [<!ENTITY x "expanded">]><movie><title>&x;</title></movie>', '<movie><year>bad</year></movie>'])
 def test_bad_nfo_warns_and_keeps_video(library,tmp_path,video_factory,content):
     video=media(tmp_path,video_factory)
-    video.with_suffix('.nfo').write_text(content)
+    video.with_suffix('.nfo').write_text(content, encoding='utf-8')
     result=library.import_folder(video.parent,'movie')
     assert result['imported']==1 and result['warnings'] and not result['errors']
     assert library.query()[0]['title']=='Opaque'
@@ -87,7 +87,7 @@ def test_utf16_entities_blocked_and_normal_utf16_read(tmp_path):
 
 def test_movie_nfo_fallback_and_poster_escape(library,tmp_path,video_factory):
     video=media(tmp_path,video_factory)
-    (video.parent/'movie.nfo').write_text('<movie><title>Fallback</title><thumb>../../outside.jpg</thumb></movie>')
+    (video.parent/'movie.nfo').write_text('<movie><title>Fallback</title><thumb>../../outside.jpg</thumb></movie>', encoding='utf-8')
     (tmp_path/'outside.jpg').write_bytes(b'not read')
     data=nfo.load(video,video.parent,'movie',[])
     assert data['poster'] is None
@@ -97,10 +97,10 @@ def test_movie_nfo_fallback_and_poster_escape(library,tmp_path,video_factory):
 
 def test_external_id_conflict_rolls_back(library,tmp_path,video_factory):
     first=media(tmp_path,video_factory,'First.mp4')
-    first.with_suffix('.nfo').write_text('<movie><title>同名</title><uniqueid type="imdb">tt1</uniqueid></movie>')
+    first.with_suffix('.nfo').write_text('<movie><title>同名</title><uniqueid type="imdb">tt1</uniqueid></movie>', encoding='utf-8')
     library.import_folder(first.parent,'movie')
     second=media(tmp_path,video_factory,'Second.mp4','green')
-    second.with_suffix('.nfo').write_text('<movie><title>同名</title><uniqueid type="imdb">tt2</uniqueid></movie>')
+    second.with_suffix('.nfo').write_text('<movie><title>同名</title><uniqueid type="imdb">tt2</uniqueid></movie>', encoding='utf-8')
     result=library.import_folder(first.parent,'movie')
     assert result['errors'] and len(library.query())==1
     assert len(library.query()[0]['files'])==1 and second.exists()
@@ -108,7 +108,7 @@ def test_external_id_conflict_rolls_back(library,tmp_path,video_factory):
 
 def test_online_metadata_only_fills_missing_fields(library,tmp_path,video_factory):
     video=media(tmp_path,video_factory)
-    video.with_suffix('.nfo').write_text('<movie><title>本地标题</title><plot>本地简介</plot></movie>')
+    video.with_suffix('.nfo').write_text('<movie><title>本地标题</title><plot>本地简介</plot></movie>', encoding='utf-8')
     library.import_folder(video.parent,'movie');work=library.query()[0]
     plugins=Plugins(library);manifest=plugins.install(Path('plugins/example'))
     plugins.merge(manifest['id'],{'id':'1','title':'网站标题','kind':'movie','url':'https://example.org/1','overview':'网站简介','directors':['新增导演']},work['id'])
@@ -120,9 +120,9 @@ def test_online_metadata_only_fills_missing_fields(library,tmp_path,video_factor
 def test_episodes_share_show_and_keep_individual_titles(library,tmp_path,video_factory):
     first=media(tmp_path,video_factory,'Show/Season 1/one.mp4')
     second=media(tmp_path,video_factory,'Show/Season 1/two.mp4','yellow')
-    (first.parent.parent/'tvshow.nfo').write_text('<tvshow><title>A Show</title><uniqueid type="tvdb">555</uniqueid></tvshow>')
+    (first.parent.parent/'tvshow.nfo').write_text('<tvshow><title>A Show</title><uniqueid type="tvdb">555</uniqueid></tvshow>', encoding='utf-8')
     for number,video in enumerate([first,second],1):
-        video.with_suffix('.nfo').write_text(f'<episodedetails><title>Episode {number}</title><season>1</season><episode>{number}</episode></episodedetails>')
+        video.with_suffix('.nfo').write_text(f'<episodedetails><title>Episode {number}</title><season>1</season><episode>{number}</episode></episodedetails>', encoding='utf-8')
     result=library.import_folder(first.parent.parent,'series')
     assert result['imported']==2,result
     assert len(library.query())==1
@@ -134,7 +134,7 @@ def test_episodes_share_show_and_keep_individual_titles(library,tmp_path,video_f
 def test_nfo_size_bound_and_no_network_poster(tmp_path,video_factory):
     video=media(tmp_path,video_factory)
     path=video.with_suffix('.nfo')
-    path.write_text('<movie><title>A</title><thumb>https://example.org/poster.jpg</thumb></movie>')
+    path.write_text('<movie><title>A</title><thumb>https://example.org/poster.jpg</thumb></movie>', encoding='utf-8')
     assert nfo.load(video,video.parent,'movie',[])['poster'] is None
     path.write_bytes(b' '*(nfo.MAX_NFO+1))
     with pytest.raises(ValueError,match='2 MB'):nfo.read(path)
@@ -143,7 +143,7 @@ def test_nfo_size_bound_and_no_network_poster(tmp_path,video_factory):
 def test_local_poster_is_not_replaced_by_online_plugin(library,tmp_path,video_factory,monkeypatch,qapp):
     from PySide6.QtGui import QImage,QColor
     video=media(tmp_path,video_factory)
-    video.with_suffix('.nfo').write_text('<movie><title>Local</title></movie>')
+    video.with_suffix('.nfo').write_text('<movie><title>Local</title></movie>', encoding='utf-8')
     picture=QImage(10,10,QImage.Format.Format_RGB32);picture.fill(QColor('blue'));picture.save(str(video.parent/'poster.jpg'))
     library.import_folder(video.parent,'movie');work=library.query()[0]
     plugins=Plugins(library);manifest=plugins.install(Path('plugins/example'))
@@ -155,7 +155,7 @@ def test_local_poster_is_not_replaced_by_online_plugin(library,tmp_path,video_fa
 
 def test_nfo_original_title_matches_online_source(library,tmp_path,video_factory):
     video=media(tmp_path,video_factory)
-    video.with_suffix('.nfo').write_text('<movie><title>本地标题</title><originaltitle>Original Title</originaltitle><year>2024</year></movie>')
+    video.with_suffix('.nfo').write_text('<movie><title>本地标题</title><originaltitle>Original Title</originaltitle><year>2024</year></movie>', encoding='utf-8')
     library.import_folder(video.parent,'movie');work=library.query()[0]
     plugins=Plugins(library);manifest=plugins.install(Path('plugins/example'))
     matched=plugins.merge(manifest['id'],{'id':'alias-test','title':'Original Title','year':2024,'url':'https://example.org/alias'})

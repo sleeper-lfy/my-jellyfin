@@ -97,3 +97,7 @@ Android `assembleDebug`、`lintDebug` 和 `testDebugUnitTest` 全部成功；5 �
 加入 Inno Setup 6 定义与 Windows 构建/验证脚本，目标为 `Lumen-Setup-x64.exe`。安装器提供按用户安装、开始菜单/桌面快捷方式和卸载，保留用户资料库。Windows CI 在发布前执行静默安装、安装后 UI/worker 验证及卸载检查。成功后向 Releases 发布完整 EXE，同时向 target 写入 EXE 或校验分片。
 
 当前 Linux 环境只完成 2 项交付文件测试（完整 EXE 与分片往返、校验、陈旧分片清理及拒绝 Linux 输入）和工作流 YAML 解析，未运行 Windows 安装器。GitHub API 仍不可访问，不能确认远端安装器构建或 Release 已成功。详见 windows-installer.md。
+
+## Windows 未产出安装包的后续排查
+
+截至本次检查，远端 main 尚无 Windows 安装包发布提交，GitHub Actions API 仍返回 Forbidden，无法确认工作流是否运行或读取失败日志。修复了独立发现的跨平台编码问题：测试 NFO/插件文本统一显式 UTF-8，Windows 构建也启用 PYTHONUTF8，避免使用系统本地编码写入中文 XML。锁定依赖的 Windows x64 wheel 下载检查成功；Linux 完整回归 74 项通过。这些检查不等于 Windows EXE 已生成，也尚未证明编码问题就是远端失败原因；仍需 Actions 首个失败步骤日志或未运行提示。

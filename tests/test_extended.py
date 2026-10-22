@@ -118,8 +118,8 @@ def test_cross_language_sources_share_external_identity(library,tmp_path):
     original=Path(__file__).parents[1]/'plugins/example'
     manager.install(original)
     folder=tmp_path/'localized';folder.mkdir()
-    manifest=json.loads((original/'manifest.json').read_text());manifest['id']='localized'
-    (folder/'manifest.json').write_text(json.dumps(manifest));(folder/'plugin.js').write_text((original/'plugin.js').read_text())
+    manifest=json.loads((original/'manifest.json').read_text(encoding='utf-8'));manifest['id']='localized'
+    (folder/'manifest.json').write_text(json.dumps(manifest), encoding='utf-8');(folder/'plugin.js').write_text((original/'plugin.js').read_text(encoding='utf-8'), encoding='utf-8')
     manager.install(folder)
     first={'id':'one','title':'English title','kind':'movie','year':2024,'url':'https://example.org/one','external_ids':{'imdb':'tt0001'}}
     second={**first,'id':'二','title':'中文片名','url':'https://example.org/two'}

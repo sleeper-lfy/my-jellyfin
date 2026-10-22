@@ -162,9 +162,9 @@ def test_safe_move_real_video_sidecar_collision_and_retry(library, video_factory
     assert len(plan)==2
     target=Path(plan[0]['target'])
     target.parent.mkdir(parents=True)
-    target.write_text('existing')
+    target.write_text('existing', encoding='utf-8')
     with pytest.raises(FileExistsError): execute_move(library,plan,task_id='move')
-    assert source.exists() and target.read_text()=='existing'
+    assert source.exists() and target.read_text(encoding='utf-8')=='existing'
     target.unlink() # test owns this simulated colliding file
     execute_move(library,task_id='move')
     assert not source.exists() and not subtitle.exists()

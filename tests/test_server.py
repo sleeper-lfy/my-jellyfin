@@ -7,7 +7,7 @@ from lumen.server import LanServer, parse_range, ApiError
 @pytest.fixture
 def lan(library, video_factory):
     source = video_factory('LAN.2024.mp4')
-    source.with_suffix('.srt').write_text('1\n00:00:00,000 --> 00:00:02,000\nLAN subtitle\n')
+    source.with_suffix('.srt').write_text('1\n00:00:00,000 --> 00:00:02,000\nLAN subtitle\n', encoding='utf-8')
     library.import_folder(source.parent, 'movie')
     clock = [100.0]
     server = LanServer(library.directory, host='127.0.0.1', port=0, clock=lambda: clock[0])

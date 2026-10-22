@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
 Set-Location (Join-Path $PSScriptRoot '..')
 if (-not (Test-Path '.venv\Scripts\python.exe')) {
     py -3.12 -m venv .venv

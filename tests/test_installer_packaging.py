@@ -24,7 +24,7 @@ def test_direct_and_split_delivery_roundtrip(tmp_path):
         assert len(data)==part['bytes'] and hashlib.sha256(data).hexdigest()==part['sha256']
     module.package(source,target,'c'*40,direct_limit=10000)
     assert not list(target.glob('*.part*'))
-    assert (target/'Lumen-Setup-x64.exe.sha256').read_text().split()[0]==hashlib.sha256(payload).hexdigest()
+    assert (target/'Lumen-Setup-x64.exe.sha256').read_text(encoding='utf-8').split()[0]==hashlib.sha256(payload).hexdigest()
 
 
 def test_refuses_non_windows_input(tmp_path):

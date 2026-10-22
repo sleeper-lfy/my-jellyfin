@@ -51,10 +51,10 @@ def test_discovery_dedupe_across_sources(library,manager,tmp_path):
     assert manager.refresh('catalog-json')==[first]
     folder=tmp_path/'second'; folder.mkdir()
     original=Path(__file__).parents[1]/'plugins/example'
-    manifest=json.loads((original/'manifest.json').read_text())
+    manifest=json.loads((original/'manifest.json').read_text(encoding='utf-8'))
     manifest['id']='second-source';manifest['name']='Second'
-    (folder/'manifest.json').write_text(json.dumps(manifest))
-    (folder/'plugin.js').write_text((original/'plugin.js').read_text())
+    (folder/'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    (folder/'plugin.js').write_text((original/'plugin.js').read_text(encoding='utf-8'), encoding='utf-8')
     manager.install(folder)
     manager.configure('second-source',{'enabled':True,'base_url':manager.installed()[0]['config']['base_url']})
     assert manager.refresh('second-source')==[first]
@@ -77,20 +77,20 @@ def test_disabled_permission_capability_and_other(library,manager):
 
 def test_javascript_has_no_file_or_process_apis(manager):
     script=manager.root/'catalog-json/plugin.js'
-    script.write_text('function inspect(x){return {require:typeof require,process:typeof process,fetch:typeof fetch,fs:typeof fs,qt:typeof Qt};}')
+    script.write_text('function inspect(x){return {require:typeof require,process:typeof process,fetch:typeof fetch,fs:typeof fs,qt:typeof Qt};}', encoding='utf-8')
     result=manager.javascript('catalog-json','inspect',{})
     assert set(result.values())=={'undefined'}
 
 
 def test_plugin_timeout_kills_worker(manager):
     script=manager.root/'catalog-json/plugin.js'
-    script.write_text('function endless(x){while(true) {}}')
+    script.write_text('function endless(x){while(true) {}}', encoding='utf-8')
     with pytest.raises((subprocess.TimeoutExpired, RuntimeError)): manager.javascript('catalog-json','endless',{})
 
 
 def test_plugin_output_validation_and_failure_log(manager,library):
     script=manager.root/'catalog-json/plugin.js'
-    script.write_text('function buildRequest(x){return {url:x.config.base_url};} function parseResponse(x){return [{id:"x"}];}')
+    script.write_text('function buildRequest(x){return {url:x.config.base_url};} function parseResponse(x){return [{id:"x"}];}', encoding='utf-8')
     with pytest.raises(ValueError): manager.run('catalog-json','search',query='x')
     assert library.db.execute('SELECT status FROM tasks ORDER BY updated DESC LIMIT 1').fetchone()[0]=='failed'
 
@@ -117,10 +117,10 @@ def test_proxy_is_shared_by_metadata_and_images(library,tmp_path,qapp):
     try:
         folder=tmp_path/'proxy-plugin';folder.mkdir()
         origin=Path(__file__).parents[1]/'plugins/example'
-        manifest=json.loads((origin/'manifest.json').read_text())
+        manifest=json.loads((origin/'manifest.json').read_text(encoding='utf-8'))
         manifest['id']='proxy-site';manifest['domains']=['metadata.invalid','images.invalid']
-        (folder/'manifest.json').write_text(json.dumps(manifest))
-        (folder/'plugin.js').write_text((origin/'plugin.js').read_text())
+        (folder/'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        (folder/'plugin.js').write_text((origin/'plugin.js').read_text(encoding='utf-8'), encoding='utf-8')
         manager=Plugins(library);manager.install(folder)
         library.set_setting('proxy',f'http://127.0.0.1:{server.server_port}')
         manager.configure('proxy-site',{'enabled':True,'base_url':'http://metadata.invalid','proxy':'inherit'})
@@ -135,6 +135,6 @@ def test_proxy_is_shared_by_metadata_and_images(library,tmp_path,qapp):
 
 def test_followup_request_uses_same_permission_boundary(manager,library):
     script=manager.root/'catalog-json/plugin.js'
-    script.write_text('function buildRequest(x){return {url:x.config.base_url};} function parseResponse(x){return {records:[],followups:[{url:"https://not-allowed.example/private"}]};}')
+    script.write_text('function buildRequest(x){return {url:x.config.base_url};} function parseResponse(x){return {records:[],followups:[{url:"https://not-allowed.example/private"}]};}', encoding='utf-8')
     with pytest.raises(ValueError,match='权限'):manager.run('catalog-json','search',query='x')
     assert library.db.execute('SELECT status FROM tasks ORDER BY updated DESC LIMIT 1').fetchone()[0]=='failed'
