@@ -1,0 +1,171 @@
+[
+  {
+    "run": 39834220730,
+    "jobs": [
+      {
+        "name": "windows",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install FFmpeg using verified package-manager download",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build and test",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build and verify EXE installer",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "publish-target",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Package into target",
+            "conclusion": "success"
+          },
+          {
+            "name": "Publish single-file installer download",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Commit Windows package",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "logs": {
+      "0_publish-target.txt": "2026-10-22T18:54:40.7554981Z Verified target APK, checksum, ZIP contents and matching Android source\n2026-10-22T18:54:42.2985904Z HTTP 403: Resource not accessible by integration (https://api.github.com/repos/sleeper-lfy/my-jellyfin/releases)\n2026-10-22T18:54:42.3017231Z ##[error]Process completed with exit code 1.\n2026-10-22T18:54:42.3122923Z Post job cleanup.\n2026-10-22T18:54:42.3787214Z [command]/usr/bin/git version\n2026-10-22T18:54:42.3821701Z git version 2.55.0\n2026-10-22T18:54:42.3852524Z Temporarily overriding HOME='/home/runner/work/_temp/0047617d-6531-4fd3-8ad4-3da95a00b2e4' before making global git config changes\n2026-10-22T18:54:42.3853617Z Adding repository directory to the temporary git global config as a safe directory\n2026-10-22T18:54:42.3859618Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/my-jellyfin/my-jellyfin\n2026-10-22T18:54:42.3890702Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-10-22T18:54:42.3920395Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"",
+      "publish-target/6_Publish single-file installer download.txt": "2026-10-22T18:54:40.7554942Z Verified target APK, checksum, ZIP contents and matching Android source\n2026-10-22T18:54:42.2985822Z HTTP 403: Resource not accessible by integration (https://api.github.com/repos/sleeper-lfy/my-jellyfin/releases)\n2026-10-22T18:54:42.3017218Z ##[error]Process completed with exit code 1."
+    }
+  },
+  {
+    "run": 39834220523,
+    "jobs": [
+      {
+        "name": "build",
+        "conclusion": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-java@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run android-actions/setup-android@v3",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Run sdkmanager 'platforms;android-36' 'build-tools;35.0.0'",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Run gradle/actions/setup-gradle@v4",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Run chmod +x gradlew && ./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/setup-java@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "publish-apk",
+        "conclusion": "skipped",
+        "steps": []
+      }
+    ],
+    "logs": {
+      "1_build.txt": "2026-10-22T18:46:22.8466959Z 10.1 YOU EXPRESSLY UNDERSTAND AND AGREE THAT YOUR USE OF THE PREVIEW IS AT YOUR SOLE RISK AND THAT THE PREVIEW IS PROVIDED \"AS IS\" AND \"AS AVAILABLE\" WITHOUT WARRANTY OF ANY KIND FROM GOOGLE.\n2026-10-22T18:46:22.8467588Z \n2026-10-22T18:46:22.8469348Z 10.2 YOUR USE OF THE PREVIEW AND ANY MATERIAL DOWNLOADED OR OTHERWISE OBTAINED THROUGH THE USE OF THE PREVIEW IS AT YOUR OWN DISCRETION AND RISK AND YOU ARE SOLELY RESPONSIBLE FOR ANY DAMAGE TO YOUR COMPUTER SYSTEM OR OTHER DEVICE OR LOSS OF DATA THAT RESULTS FROM SUCH USE. WITHOUT LIMITING THE FOREGOING, YOU UNDERSTAND THAT THE PREVIEW IS NOT A STABLE RELEASE AND MAY CONTAIN ERRORS, DEFECTS AND SECURITY VULNERABILITIES THAT CAN RESULT IN SIGNIFICANT DAMAGE, INCLUDING THE COMPLETE, IRRECOVERABLE LOSS OF USE OF YOUR COMPUTER SYSTEM OR OTHER DEVICE.\n2026-10-22T18:46:22.8471178Z \n2026-10-22T18:46:22.8472110Z 10.3 GOOGLE FURTHER EXPRESSLY DISCLAIMS ALL WARRANTIES AND CONDITIONS OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO THE IMPLIED WARRANTIES AND CONDITIONS OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.\n2026-10-22T18:46:22.8473409Z \n2026-10-22T18:46:22.8473580Z 11. LIMITATION OF LIABILITY\n2026-10-22T18:46:22.8473846Z \n2026-10-22T18:46:22.8476613Z 11.1 YOU EXPRESSLY UNDERSTAND AND AGREE THAT GOOGLE, ITS SUBSIDIARIES AND AFFILIATES, AND ITS LICENSORS SHALL NOT BE LIABLE TO YOU UNDER ANY THEORY OF LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR EXEMPLARY DAMAGES THAT MAY BE INCURRED BY YOU, INCLUDING ANY LOSS OF DATA, WHETHER OR NOT GOOGLE OR ITS REPRESENTATIVES HAVE BEEN ADVISED OF OR SHOULD HAVE BEEN AWARE OF THE POSSIBILITY OF ANY SUCH LOSSES ARISING.\n2026-10-22T18:46:22.8478254Z \n2026-10-22T18:46:22.8478344Z 12. Indemnification",
+      "build/4_Run android-actions_setup-android@v3.txt": "2026-10-22T18:46:22.8466956Z 10.1 YOU EXPRESSLY UNDERSTAND AND AGREE THAT YOUR USE OF THE PREVIEW IS AT YOUR SOLE RISK AND THAT THE PREVIEW IS PROVIDED \"AS IS\" AND \"AS AVAILABLE\" WITHOUT WARRANTY OF ANY KIND FROM GOOGLE.\n2026-10-22T18:46:22.8467586Z \n2026-10-22T18:46:22.8469345Z 10.2 YOUR USE OF THE PREVIEW AND ANY MATERIAL DOWNLOADED OR OTHERWISE OBTAINED THROUGH THE USE OF THE PREVIEW IS AT YOUR OWN DISCRETION AND RISK AND YOU ARE SOLELY RESPONSIBLE FOR ANY DAMAGE TO YOUR COMPUTER SYSTEM OR OTHER DEVICE OR LOSS OF DATA THAT RESULTS FROM SUCH USE. WITHOUT LIMITING THE FOREGOING, YOU UNDERSTAND THAT THE PREVIEW IS NOT A STABLE RELEASE AND MAY CONTAIN ERRORS, DEFECTS AND SECURITY VULNERABILITIES THAT CAN RESULT IN SIGNIFICANT DAMAGE, INCLUDING THE COMPLETE, IRRECOVERABLE LOSS OF USE OF YOUR COMPUTER SYSTEM OR OTHER DEVICE.\n2026-10-22T18:46:22.8471176Z \n2026-10-22T18:46:22.8472103Z 10.3 GOOGLE FURTHER EXPRESSLY DISCLAIMS ALL WARRANTIES AND CONDITIONS OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO THE IMPLIED WARRANTIES AND CONDITIONS OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.\n2026-10-22T18:46:22.8473402Z \n2026-10-22T18:46:22.8473576Z 11. LIMITATION OF LIABILITY\n2026-10-22T18:46:22.8473843Z \n2026-10-22T18:46:22.8476600Z 11.1 YOU EXPRESSLY UNDERSTAND AND AGREE THAT GOOGLE, ITS SUBSIDIARIES AND AFFILIATES, AND ITS LICENSORS SHALL NOT BE LIABLE TO YOU UNDER ANY THEORY OF LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR EXEMPLARY DAMAGES THAT MAY BE INCURRED BY YOU, INCLUDING ANY LOSS OF DATA, WHETHER OR NOT GOOGLE OR ITS REPRESENTATIVES HAVE BEEN ADVISED OF OR SHOULD HAVE BEEN AWARE OF THE POSSIBILITY OF ANY SUCH LOSSES ARISING.\n2026-10-22T18:46:22.8478251Z \n2026-10-22T18:46:22.8478341Z 12. Indemnification"
+    }
+  }
+]
