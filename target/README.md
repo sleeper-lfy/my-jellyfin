@@ -22,3 +22,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Prepare-Installer.ps1
 Releases 中的 EXE 始终是完整单文件，不需要合并。开发版本尚未进行商业代码签名。
 
 构建状态：https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/windows.yml
+
+## 本次界面修复版本（360138a）
+
+- [源码包](Lumen-source-360138a.zip)：对应本次导入进度、NFO、播放器和媒体库界面修复，解压后按 README 运行或构建。
+- [界面截图包](Lumen-UI-review-360138a.zip)：8 张实际运行截图，使用测试媒体。
+- 两个 ZIP 均附带 `.sha256` 校验文件。源码包不是 Windows 安装程序。
+
+下载 Windows 安装包时，请检查 `windows-installer.json` 的 `source_commit` 是否为 `360138a50755dd6023a287836204c74ef804c519` 或包含它的后续版本；旧版本不包含这次修复。
