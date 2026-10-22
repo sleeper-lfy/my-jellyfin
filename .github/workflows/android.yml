@@ -18,3 +18,30 @@ jobs:
         with:
           name: Lumen-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  publish-apk:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify the tested APK and its source
+        run: python scripts/verify-android-target.py
+      - name: Publish APK without waiting for the Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          tag="windows-${SOURCE_COMMIT:0:12}"
+          apk="target/Lumen-android-debug.apk"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" "$apk.sha256" --clobber
+          else
+            gh release create "$tag" "$apk" "$apk.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Android 0.4.0 debug APK with SHA-256 checksum. The Windows installer is added automatically after Windows build and installer verification succeed. Android 8.0+ / Windows 10+."
+          fi
