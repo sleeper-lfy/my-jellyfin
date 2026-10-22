@@ -1,0 +1,15 @@
+{
+  "version": "0.4.0",
+  "version_code": 3,
+  "min_sdk": 26,
+  "source_commit": "8be0df2ab100b4e6ea3978754f3bb996dd1d88a5",
+  "source_sha256": "f2b455b5d1b5a5506e67e78a3a3fb853e713297acc6e4f6b2d6df7e943cc5ceb",
+  "bytes": 100837827,
+  "sha256": "ddd62d31b78da9f9c74ac20a98d1bdf089a6612474bc5890871042736b0398a0",
+  "checks": [
+    "assembleDebug",
+    "testDebugUnitTest",
+    "lintDebug",
+    "apksigner verify"
+  ]
+}
