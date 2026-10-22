@@ -289,7 +289,7 @@ def test_player_controls_fit_small_fullscreen_and_long_metadata(qapp,library,vid
     library.edit_metadata(work['id'],{'title':'很长的影片标题用于检查全屏布局 ' * 12},[])
     player=Player(library);player.open_file(work['files'][0]);spin(qapp,300)
     player.media.pause()
-    for size in [(1280,720),(960,540),(640,360),(480,320)]:
+    for size in [(3440,1440),(2560,1080),(1280,720),(960,540),(640,360),(480,320)]:
         player.resize(*size);qapp.processEvents()
         player.show_controls();qapp.processEvents()
         assert player.overlay.geometry()==player.rect()
@@ -300,4 +300,38 @@ def test_player_controls_fit_small_fullscreen_and_long_metadata(qapp,library,vid
         assert player.pause.isVisible() and player.fullscreen_control.isVisible()
     player.toggle_fullscreen();qapp.processEvents()
     assert player.rect().contains(player.fullscreen_control.mapTo(player,player.fullscreen_control.rect().bottomRight()))
+    player.close()
+
+
+def test_fullscreen_controls_avoid_taskbar_on_ultrawide(qapp, library, monkeypatch):
+    from PySide6.QtCore import QPoint, QRect
+    from PySide6.QtWidgets import QPushButton
+    player = Player(library)
+    player.show()
+    player.auto_hide.setChecked(False)
+    # Simulate fullscreen client/work areas independently of the CI monitor.
+    # Actual fullscreen transitions are covered by the tests above.
+    monkeypatch.setattr(player, 'isFullScreen', lambda: True)
+    class Screen:
+        def availableGeometry(self):
+            return QRect(player.mapToGlobal(safe.topLeft()), safe.size())
+    monkeypatch.setattr(player, 'screen', lambda: Screen())
+    for width, height in [(3440, 1440), (2560, 1080)]:
+        safe = QRect(0, 0, width, height)
+        player.resize(width, height)
+        qapp.processEvents()
+        for safe in [QRect(0, 0, width, height-64), QRect(0, 64, width, height-64),
+                     QRect(80, 0, width-80, height), QRect(0, 0, width-80, height)]:
+            player.show_controls()
+            qapp.processEvents()
+            assert player.overlay.geometry() == safe
+            assert player.canvas.geometry() == player.rect()
+            for button in player.footer.findChildren(QPushButton):
+                if button.isVisible():
+                    assert safe.contains(button.mapTo(player, QPoint(0, 0)))
+                    assert safe.contains(button.mapTo(player, button.rect().bottomRight()))
+        monkeypatch.setattr(player, 'isFullScreen', lambda: False)
+        player.show_controls()
+        assert player.overlay.geometry() == player.rect()
+        monkeypatch.setattr(player, 'isFullScreen', lambda: True)
     player.close()

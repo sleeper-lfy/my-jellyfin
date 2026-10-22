@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta
 from .presentation import rating_text
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize, QRect
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -212,8 +212,19 @@ class Player(QDialog):
     def sync_overlay(self):
         if not hasattr(self, 'fullscreen_control'):
             return
-        self.overlay.setGeometry(self.rect())
-        width = self.width()
+        area = self.rect()
+        screen = self.screen()
+        if self.isFullScreen() and screen is not None:
+            # Windows can keep the taskbar above a fullscreen dialog. Keep
+            # controls inside the work area even then; video still fills the
+            # entire screen. Map from global coordinates for secondary monitors.
+            available = screen.availableGeometry()
+            safe = QRect(self.mapFromGlobal(available.topLeft()), available.size())
+            intersection = area.intersected(safe)
+            if not intersection.isEmpty():
+                area = intersection
+        self.overlay.setGeometry(area)
+        width = area.width()
         self.ends_at.setVisible(width >= 1000)
         self.rating.setVisible(width >= 760)
         self.volume.setVisible(width >= 640)
@@ -422,6 +433,8 @@ class Player(QDialog):
 
     def toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        self.raise_()
+        self.activateWindow()
         self.show_controls()
 
     def keyPressEvent(self, event):
