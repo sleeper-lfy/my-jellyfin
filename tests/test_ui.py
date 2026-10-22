@@ -246,3 +246,58 @@ def test_details_are_inline_and_metadata_links_filter_all_media(qapp,tmp_path,vi
     window.open_item(window.cards.item(0));window.navigate('home');qapp.processEvents()
     assert window.detail_page is None and window.home_page.isVisible()
     window.close()
+
+
+def test_fullscreen_controls_restore_and_can_be_kept_visible(qapp,library,video_factory):
+    from PySide6.QtCore import Qt,QPoint
+    from PySide6.QtGui import QCursor
+    library.import_folder(video_factory('Fullscreen.mp4','blue',30).parent,'movie')
+    player=Player(library)
+    player.open_file(library.query()[0]['files'][0]);spin(qapp,400)
+    player.activateWindow();qapp.processEvents()
+    QCursor.setPos(player.mapToGlobal(QPoint(300,200)));spin(qapp,100)
+    player.hide_controls()
+    assert player.header.isHidden() and player.footer.isHidden()
+    player.toggle_fullscreen();qapp.processEvents()
+    assert player.isFullScreen() and player.header.isVisible() and player.footer.isVisible()
+    player.hide_controls()
+    QTest.mouseMove(player.overlay,QPoint(320,220));qapp.processEvents()
+    assert player.footer.isVisible()
+    player.hide_controls()
+    # Exercise the polling fallback without depending on mouse event delivery.
+    player.last_cursor=QCursor.pos()+QPoint(1,1)
+    player.check_pointer()
+    assert player.footer.isVisible()
+    player.auto_hide.setChecked(False)
+    player.hide_controls()
+    assert player.header.isVisible() and player.footer.isVisible() and not player.idle.isActive()
+    assert library.setting('player_auto_hide') is False
+    player.auto_hide.setChecked(True)
+    player.media.pause();player.hide_controls()
+    assert player.footer.isVisible()
+    QTest.keyClick(player,Qt.Key.Key_Escape);qapp.processEvents()
+    assert not player.isFullScreen() and player.footer.isVisible()
+    player.close()
+    assert not player.pointer_timer.isActive()
+
+
+def test_player_controls_fit_small_fullscreen_and_long_metadata(qapp,library,video_factory):
+    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtCore import QPoint
+    library.import_folder(video_factory('Layout.mp4','blue',20).parent,'movie')
+    work=library.query()[0]
+    library.edit_metadata(work['id'],{'title':'很长的影片标题用于检查全屏布局 ' * 12},[])
+    player=Player(library);player.open_file(work['files'][0]);spin(qapp,300)
+    player.media.pause()
+    for size in [(1280,720),(960,540),(640,360),(480,320)]:
+        player.resize(*size);qapp.processEvents()
+        player.show_controls();qapp.processEvents()
+        assert player.overlay.geometry()==player.rect()
+        for button in player.footer.findChildren(QPushButton):
+            if button.isVisible():
+                assert player.rect().contains(button.mapTo(player,QPoint(0,0)))
+                assert player.rect().contains(button.mapTo(player,button.rect().bottomRight()))
+        assert player.pause.isVisible() and player.fullscreen_control.isVisible()
+    player.toggle_fullscreen();qapp.processEvents()
+    assert player.rect().contains(player.fullscreen_control.mapTo(player,player.fullscreen_control.rect().bottomRight()))
+    player.close()

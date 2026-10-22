@@ -2,8 +2,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from .presentation import rating_text
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle
-from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox
+from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from .core import WatchSession
@@ -54,7 +54,7 @@ class Player(QDialog):
         layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas, 0, 0)
-        self.overlay = QWidget()
+        self.overlay = QWidget(self)
         overlay_layout = QVBoxLayout(self.overlay)
         overlay_layout.setContentsMargins(0, 0, 0, 0)
         self.header = QWidget()
@@ -69,6 +69,7 @@ class Player(QDialog):
         self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.title.setMinimumWidth(0)
         self.title.setWordWrap(True)
+        self.title.setMaximumHeight(48)
         header.addWidget(self.title, 1)
         overlay_layout.addWidget(self.header)
         overlay_layout.addStretch(1)
@@ -85,7 +86,7 @@ class Player(QDialog):
         self.footer = QWidget()
         self.footer.setObjectName('playerBar')
         bottom = QVBoxLayout(self.footer)
-        bottom.setContentsMargins(16, 12, 16, 12)
+        bottom.setContentsMargins(16, 12, 16, 24)
         timeline_row = QHBoxLayout()
         self.time_label = QLabel('00:00')
         timeline_row.addWidget(self.time_label)
@@ -107,11 +108,11 @@ class Player(QDialog):
             button.clicked.connect(callback)
             row.addWidget(button)
             return button
-        control(QStyle.StandardPixmap.SP_MediaSkipBackward, '上一作品', self.queuePrevious.emit)
+        self.previous_control = control(QStyle.StandardPixmap.SP_MediaSkipBackward, '上一作品', self.queuePrevious.emit)
         control(QStyle.StandardPixmap.SP_MediaSeekBackward, '后退 10 秒（←）', lambda: self.jump(-10000))
         self.pause = control(QStyle.StandardPixmap.SP_MediaPlay, '播放 / 暂停（空格）', self.toggle)
         control(QStyle.StandardPixmap.SP_MediaSeekForward, '前进 10 秒（→）', lambda: self.jump(10000))
-        control(QStyle.StandardPixmap.SP_MediaSkipForward, '下一集 / 下一作品', self.next_item)
+        self.next_control = control(QStyle.StandardPixmap.SP_MediaSkipForward, '下一集 / 下一作品', self.next_item)
         self.ends_at = QLabel('')
         row.addWidget(self.ends_at)
         self.rating = QLabel('')
@@ -124,7 +125,7 @@ class Player(QDialog):
         self.like.clicked.connect(self.toggle_like)
         row.addWidget(self.like)
         self.mute = control(QStyle.StandardPixmap.SP_MediaVolume, '静音 / 恢复音量', self.toggle_mute)
-        volume = QSlider(Qt.Orientation.Horizontal)
+        volume = self.volume = QSlider(Qt.Orientation.Horizontal)
         volume.setRange(0, 100)
         volume.setValue(70)
         volume.setMaximumWidth(110)
@@ -136,13 +137,16 @@ class Player(QDialog):
         settings.setAccessibleName('音轨和字幕设置')
         settings.clicked.connect(self.show_settings)
         row.addWidget(settings)
-        full = QPushButton('⛶')
+        full = self.fullscreen_control = QPushButton('⛶')
         full.setToolTip('全屏 / 退出（F）')
         full.clicked.connect(self.toggle_fullscreen)
         row.addWidget(full)
         bottom.addLayout(row)
         overlay_layout.addWidget(self.footer)
-        layout.addWidget(self.overlay, 0, 0)
+        # The controls must follow the actual client rectangle, independently
+        # of the video scene and its size hints when switching DPI/fullscreen.
+        self.overlay.setGeometry(self.rect())
+        self.overlay.raise_()
         self.track_dialog = QDialog(self)
         self.track_dialog.setWindowTitle('播放设置')
         tracks = QVBoxLayout(self.track_dialog)
@@ -156,10 +160,18 @@ class Player(QDialog):
         tracks.addWidget(self.audio_tracks)
         tracks.addWidget(QPushButton('外挂字幕…', clicked=self.choose_subtitle))
         tracks.addWidget(QPushButton('开关外挂字幕', clicked=self.toggle_external_subtitle))
+        self.auto_hide = QCheckBox('播放时自动隐藏控制栏')
+        self.auto_hide.setChecked(self.library.setting('player_auto_hide', True))
+        self.auto_hide.toggled.connect(self.set_auto_hide)
+        tracks.addWidget(self.auto_hide)
         self.idle = QTimer(self)
         self.idle.setSingleShot(True)
         self.idle.setInterval(3500)
         self.idle.timeout.connect(self.hide_controls)
+        self.last_cursor = QCursor.pos()
+        self.pointer_timer = QTimer(self)
+        self.pointer_timer.setInterval(150)
+        self.pointer_timer.timeout.connect(self.check_pointer)
         for widget in [self, self.canvas.viewport(), self.overlay, *self.overlay.findChildren(QWidget)]:
             widget.setMouseTracking(True)
             widget.installEventFilter(self)
@@ -197,14 +209,60 @@ class Player(QDialog):
             self.show_controls()
         return super().eventFilter(watched, event)
 
+    def sync_overlay(self):
+        if not hasattr(self, 'fullscreen_control'):
+            return
+        self.overlay.setGeometry(self.rect())
+        width = self.width()
+        self.ends_at.setVisible(width >= 1000)
+        self.rating.setVisible(width >= 760)
+        self.volume.setVisible(width >= 640)
+        self.previous_control.setVisible(width >= 540)
+        self.next_control.setVisible(width >= 540)
+        self.overlay.layout().invalidate()
+        self.overlay.layout().activate()
+        self.overlay.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.sync_overlay()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.last_cursor = QCursor.pos()
+        self.pointer_timer.start()
+        self.show_controls()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(self, 'idle'):
+            QTimer.singleShot(0, self.show_controls)
+
+    def check_pointer(self):
+        # Some Windows video/fullscreen paths do not deliver unpressed mouse
+        # movement to the overlay. Cursor position provides a second wake path.
+        point = QCursor.pos()
+        moved = point != self.last_cursor
+        self.last_cursor = point
+        if moved and self.isVisible() and self.isActiveWindow() and self.rect().contains(self.mapFromGlobal(point)):
+            self.show_controls()
+
+    def set_auto_hide(self, enabled):
+        self.library.set_setting('player_auto_hide', enabled)
+        self.show_controls()
+
     def show_controls(self):
+        self.sync_overlay()
         self.header.show()
         self.footer.show()
         self.overlay.unsetCursor()
-        self.idle.start()
+        if self.auto_hide.isChecked():
+            self.idle.start()
+        else:
+            self.idle.stop()
 
     def hide_controls(self):
-        if self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not self.track_dialog.isVisible() and not self.timeline.isSliderDown() and not self.footer.underMouse():
+        if self.auto_hide.isChecked() and self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not self.track_dialog.isVisible() and not self.timeline.isSliderDown() and not self.footer.underMouse():
             self.header.hide()
             self.footer.hide()
             self.overlay.setCursor(Qt.CursorShape.BlankCursor)
@@ -245,6 +303,7 @@ class Player(QDialog):
             return
         self.file = file
         work = self.library.work(file['work_id'])
+        self.title.setToolTip(work['title'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' else ''))
         self.rating.setText(rating_text(work))
         self.update_like(work)
@@ -363,6 +422,7 @@ class Player(QDialog):
 
     def toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        self.show_controls()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
@@ -386,4 +446,7 @@ class Player(QDialog):
 
     def closeEvent(self, event):
         self.finish()
+        self.track_dialog.close()
+        self.idle.stop()
+        self.pointer_timer.stop()
         super().closeEvent(event)
