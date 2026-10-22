@@ -1,14 +1,14 @@
 {
-  "version": "0.4.0",
-  "version_code": 3,
+  "version": "0.4.1",
+  "version_code": 4,
   "min_sdk": 26,
-  "source_commit": "8be0df2ab100b4e6ea3978754f3bb996dd1d88a5",
-  "source_sha256": "f2b455b5d1b5a5506e67e78a3a3fb853e713297acc6e4f6b2d6df7e943cc5ceb",
-  "bytes": 100837827,
-  "sha256": "ddd62d31b78da9f9c74ac20a98d1bdf089a6612474bc5890871042736b0398a0",
+  "source_commit": "aa429b5a450a24fc2f54eb7d116dd4da997c4a0a",
+  "source_sha256": "26583e69a0ad977f156c215279e257ebf16d9e1bf5d27c45a3e4d6115c707ad4",
+  "bytes": 100875349,
+  "sha256": "4482f7cbe8de6b871b790e33f290da7a5abd0b90370bfd8b50d01d8c2b0a7f9c",
   "checks": [
     "assembleDebug",
-    "testDebugUnitTest",
+    "testDebugUnitTest (22 tests, Android 26/33/35)",
     "lintDebug",
     "apksigner verify"
   ]
