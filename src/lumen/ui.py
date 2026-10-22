@@ -289,7 +289,7 @@ class Details(QDialog):
         outer.addLayout(personal)
         self.files = QListWidget()
         for f in w['files']:
-            title = (f"S{f['season']:02} E{f['episode']:02}  ·  " if w['kind'] == 'series' else '') + Path(f['path']).name
+            title = (f"S{f['season']:02} E{f['episode']:02}  ·  " if w['kind'] == 'series' else '') + (f.get('title') or Path(f['path']).name)
             item = QListWidgetItem(f"{title}   ·   {f['duration']/60:.1f} 分钟   ·   上次 {f['position']/60:.1f} 分钟")
             item.setToolTip(f['path'])
             item.setData(Qt.ItemDataRole.UserRole, f)
@@ -299,6 +299,9 @@ class Details(QDialog):
         outer.addWidget(self.files, 1)
         sources = QVBoxLayout()
         for source in w['sources']:
+            if source['plugin'] == 'local-nfo':
+                sources.addWidget(label(f"本地 NFO · 来源评分 {source['rating'] if source['rating'] is not None else '未知'}"))
+                continue
             title = f"{source['site']} · {source['source_id']} · 来源评分 {source['rating'] if source['rating'] is not None else '未知'}"
             control = button(title + '  ↗', lambda checked=False, url=source['url']: QDesktopServices.openUrl(QUrl(url)))
             control.setToolTip(f"{source['url']}\n元数据更新：{source['updated']}\n站点收录：{source['site_added'] or '未知'}")
@@ -858,7 +861,7 @@ class MainWindow(QMainWindow):
             return
         kind = next(k for k,v in KINDS.items() if v == title)
         def complete(result):
-            self.status.setText(f"导入 {result['imported']} · 重复 {result['duplicates']} · 失败 {len(result['errors'])} · 警告 {len(result['warnings'])}")
+            self.status.setText(f"导入 {result['imported']} · NFO 更新 {result.get('nfo_updated',0)} · 重复 {result['duplicates']} · 失败 {len(result['errors'])} · 警告 {len(result['warnings'])}")
             self.navigate(kind)
             if kind != 'other':
                 self.auto_scrape_import(path, kind)
@@ -873,6 +876,9 @@ class MainWindow(QMainWindow):
             plugin = Plugins(lib)
             works = lib.query({'kinds':[kind], 'folder':str(Path(path).resolve())})
             for i, w in enumerate(works):
+                if w['metadata'].get('nfo_fields'):
+                    progress(i+1, len(works), w['title'])
+                    continue
                 try:
                     candidates = plugin.run(plugin_id, 'search', query=w['title'])
                     matches = [m for m in candidates if m.get('kind','movie') == kind and m['title'].casefold() == w['title'].casefold() and (not w['year'] or m.get('year') == w['year'])]

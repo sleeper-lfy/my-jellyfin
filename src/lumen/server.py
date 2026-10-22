@@ -69,7 +69,7 @@ def public_work(work, detail=False):
                       actors=[{k:a[k] for k in ['name','gender','aliases'] if k in a} for a in work['metadata'].get('actors',[])],
                       sources=[{k:s[k] for k in ['site','url','rating']} for s in work['sources']],
                       files=[{**{k:f[k] for k in ['id','season','episode','duration','position','completed']},
-                              'name':Path(f['path']).name,'stream':f"/api/files/{f['id']}/stream"} for f in work['files']])
+                              'name':f.get('title') or Path(f['path']).name,'stream':f"/api/files/{f['id']}/stream"} for f in work['files']])
     return result
 
 

@@ -220,16 +220,17 @@ class Plugins:
             item = self.library.work(work_id)
             if item['kind'] != kind:
                 raise ValueError('候选媒体类型不匹配')
-            merged = {**item['metadata'], **{k: v for k, v in metadata.items() if k not in item['locked'] and v not in (None, [], '')}}
+            protected = set(item['locked']) | set(item['metadata'].get('nfo_fields', []))
+            merged = {**item['metadata'], **{k: v for k, v in metadata.items() if k not in protected and v not in (None, [], '')}}
             merged['external_ids'] = {**item['metadata'].get('external_ids',{}), **metadata.get('external_ids',{})}
-            if 'aliases' not in item['locked']:
+            if 'aliases' not in protected:
                 merged['aliases'] = list(dict.fromkeys(item['metadata'].get('aliases',[]) + metadata.get('aliases',[]) + ([item['title']] if item['title'] != metadata['title'] else [])))
             else:
                 merged.setdefault('aliases', [])
             merged['discovery_categories'] = list(dict.fromkeys(item['metadata'].get('discovery_categories', []) + metadata.get('discovery_categories', [])))
             self.library.db.execute('UPDATE works SET identity=?,metadata=?,title=?,year=? WHERE id=?',
-                                    (key, json.dumps(merged, ensure_ascii=False), item['title'] if 'title' in item['locked'] else metadata['title'],
-                                     item['year'] if 'year' in item['locked'] else metadata.get('year', item['year']), work_id))
+                                    (key, json.dumps(merged, ensure_ascii=False), item['title'] if 'title' in protected else metadata['title'],
+                                     item['year'] if 'year' in protected else metadata.get('year', item['year']), work_id))
             self.library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(key,work_id))
             for alias in merged['aliases']:
                 self.library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(identity(alias,metadata.get('year'),kind),work_id))
@@ -239,7 +240,7 @@ class Plugins:
                                     (work_id, plugin_id, plugin['name'], str(metadata['id']), metadata['url'], now(), metadata.get('site_added'), metadata.get('rating')))
         # Images use exactly the same network policy and proxy as metadata.
         for image_url, actor in [(metadata.get('poster'), None), *[(a.get('photo'), a) for a in merged.get('actors', [])]]:
-            if not image_url:
+            if not image_url or actor is None and item['metadata'].get('nfo_poster'):
                 continue
             try:
                 data, content_type = self.fetch(plugin, image_url, image=True)

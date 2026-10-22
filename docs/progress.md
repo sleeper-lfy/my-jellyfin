@@ -85,3 +85,9 @@ Android 0.3.0 将 Media3 替换为 LibVLC 3.7.7，内置软件解码库，覆盖
 构建工具更新为 Gradle 8.11.1、AGP 8.10.1、compile SDK 36；保持最低 API 26、target API 35。开发签名不变，versionCode 升至 2，可覆盖安装先前测试版。
 
 Android `assembleDebug`、`lintDebug` 和 `testDebugUnitTest` 全部成功；5 项流式转发测试通过，覆盖完整字节、Range/HEAD、服务端鉴权、字幕、路径限制、拒绝重定向和关闭。APK v2 签名与 ZIP 对齐检查通过，并确认与上一测试版使用相同签名、包含四种架构和 LGPL 许可文件。Lint 无错误，仍有 target SDK、备份声明和字符串国际化建议。通用 APK 约 96 MiB。
+
+## Jellyfin NFO 接管（2026-10-22）
+
+导入时读取同名 NFO、单视频目录 movie.nfo、剧集 tvshow.nfo 与单集 episodedetails；迁移非空资料、外部标识、来源评分、本地海报，以及首次入库时 NFO 中实际存在的个人评分/已看标记/播放位置。不创建虚假的观看会话。原始媒体及 NFO 不修改；再次扫描原路径可更新资料，保留现有个人数据及锁定字段。NFO 字段和海报优先于在线刷新，带 NFO 的作品跳过自动匹配/移动。原始标题也参与跨来源匹配。
+
+新增 14 项 NFO 测试，覆盖电影与剧集、季 0、重复扫描、评分隔离、本地图片、损坏/超限 XML、UTF-16 与实体拒绝、外部 ID 冲突回滚、在线补缺和别名匹配。完整回归 **72 项通过**，Linux 包重建并通过 UI/插件 worker 验证。Windows 原生构建交由仓库 Actions，本地未验证 Windows 实机。Jellyfin 数据库和未写入 NFO 的用户历史不在此次文件迁移范围内。操作说明见 `docs/jellyfin-migration.md`。

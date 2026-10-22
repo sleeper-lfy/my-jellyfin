@@ -153,6 +153,9 @@ class Library:
         item['metadata'] = json.loads(item['metadata'])
         item['locked'] = json.loads(item['locked'])
         item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
+        for file in item['files']:
+            details = item['metadata'].get('episode_details', {}).get(str(file['id']), {})
+            file.update({key: details[key] for key in ['title','overview'] if key in details})
         item['sources'] = [dict(r) for r in self.db.execute('SELECT * FROM sources WHERE work_id=?', (work_id,))]
         return item
 
@@ -215,7 +218,14 @@ class Library:
             paths = sorted(p for p in root.rglob('*') if p.is_file() and not p.is_symlink() and p.suffix.lower() in VIDEO_EXTENSIONS and root in p.resolve().parents)
             for index, path in enumerate(paths):
                 try:
-                    if self.db.execute('SELECT 1 FROM files WHERE path=?', (str(path),)).fetchone():
+                    from . import nfo
+                    local = nfo.load(path, root, kind, results['warnings'])
+                    existing_file = self.db.execute('SELECT id,work_id FROM files WHERE path=?',(str(path),)).fetchone()
+                    if existing_file:
+                        if local['work'] or local['entry'] or local['poster']:
+                            with self.db:
+                                nfo.apply(self,existing_file['work_id'],existing_file['id'],local,False,False,root,results['warnings'])
+                            results['nfo_updated'] = results.get('nfo_updated',0) + 1
                         results['duplicates'] += 1
                         continue
                     digest = fingerprint(path)
@@ -223,7 +233,13 @@ class Library:
                         results['duplicates'] += 1
                         continue
                     duration = probe(path)
-                    parsed = parse_name(path, kind)
+                    entry = local['entry']
+                    numbered = kind == 'series' and entry and entry['season'] is not None and entry['episode'] is not None
+                    parsed = parse_name(path, 'movie' if numbered else kind)
+                    if numbered:
+                        parsed.update(season=entry['season'],episode=entry['episode'])
+                    if local['work']:
+                        parsed.update({k:v for k,v in local['work']['metadata'].items() if k in {'title','year'}})
                     key = identity(parsed['title'], parsed['year'], kind) if kind != 'other' else 'file:' + digest
                     cover = self.directory / 'cache' / (digest + '.jpg')
                     try:
@@ -233,6 +249,14 @@ class Library:
                         results['warnings'].append({'path': str(path), 'reason': '缩略图: ' + str(exc)})
                     with self.db:
                         known = self.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
+                        linked = set()
+                        for namespace,value in (local['work'] or {}).get('metadata',{}).get('external_ids',{}).items():
+                            row = self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?',(kind,namespace,value)).fetchone()
+                            if row: linked.add(row[0])
+                        if len(linked)>1 or linked and known and known[0] not in linked:
+                            raise ValueError('NFO 外部标识与已有作品冲突，请人工核对')
+                        if linked: known = (next(iter(linked)),)
+
                         if known:
                             work_id = known[0]
                         else:
@@ -244,6 +268,10 @@ class Library:
                             self.db.execute('UPDATE works SET thumbnail=COALESCE(thumbnail,?) WHERE id=?', (str(cover),work_id))
                         self.db.execute('INSERT INTO files(work_id,path,digest,root,season,episode,duration) VALUES (?,?,?,?,?,?,?)',
                                         (work_id, str(path), digest, str(root), parsed['season'], parsed['episode'], duration))
+                        file_id = self.db.execute('SELECT id FROM files WHERE path=?',(str(path),)).fetchone()[0]
+                        if local['work'] or local['entry'] or local['poster']:
+                            nfo.apply(self,work_id,file_id,local,not bool(known),True,root,results['warnings'])
+
                     results['imported'] += 1
                 except Exception as exc:
                     results['errors'].append({'path': str(path), 'reason': str(exc)})
@@ -325,7 +353,8 @@ class Library:
             if f.get('actor') and not any(f['actor'] in [a.get('name'), *a.get('aliases', [])] for a in m.get('actors', [])):
                 continue
             watched = watches.get(item['id'], 0)
-            if f.get('watched') == 'yes' and watched <= 0 or f.get('watched') == 'no' and watched > 0:
+            seen = watched > 0 or any(file['completed'] or file['position'] > 0 for file in item['files'])
+            if f.get('watched') == 'yes' and not seen or f.get('watched') == 'no' and seen:
                 continue
             item['watched'] = watched
             items.append(item)
