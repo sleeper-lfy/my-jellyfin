@@ -8,7 +8,9 @@ class MediaTile(QPushButton):
     def __init__(self, title, subtitle, cover, action):
         super().__init__()
         self.title, self.subtitle = title, subtitle
-        self.cover = QPixmap(cover) if cover else QPixmap()
+        self.cover_path=cover
+        from .images import image_cache
+        image_cache().changed.connect(self.update)
         policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
@@ -31,9 +33,11 @@ class MediaTile(QPushButton):
         painter=QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(),QColor('#242424'))
-        if not self.cover.isNull():
-            mode = Qt.AspectRatioMode.KeepAspectRatioByExpanding if self.cover.width() > self.cover.height() else Qt.AspectRatioMode.KeepAspectRatio
-            image=self.cover.scaled(self.size(),mode,Qt.TransformationMode.SmoothTransformation)
+        from .images import image_cache
+        cover=image_cache().request(self.cover_path,QSize(960,540))
+        if not cover.isNull():
+            mode = Qt.AspectRatioMode.KeepAspectRatioByExpanding if cover.width() > cover.height() else Qt.AspectRatioMode.KeepAspectRatio
+            image=cover.scaled(self.size(),mode,Qt.TransformationMode.SmoothTransformation)
             painter.drawPixmap((self.width()-image.width())//2,(self.height()-image.height())//2,image)
         shade=QLinearGradient(0,0,0,self.height())
         shade.setColorAt(0,QColor(0,0,0,15))
@@ -64,18 +68,21 @@ class HomePage(QScrollArea):
         self.setWidget(self.content)
         self.rows=[]
 
-    def refresh(self):
+    def refresh(self,works=None,recommendations=None):
         from .ui import clear,label,button,PosterList,PosterDelegate
         clear(self.layout)
         self.rows=[]
-        works=self.window.library.query()
+        if works is None:works=self.window.library.query()
         self.layout.addWidget(label('我的媒体','sectionTitle'))
         tiles=QHBoxLayout()
         tiles.setSpacing(16)
         for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('other','其他视频')]:
             items=[w for w in works if w['kind']==kind]
-            covers = [self.window.card_data(w, True) for w in items]
-            cover=next((w.get('_cover') or w.get('thumbnail') for w in covers if w.get('_cover') or w.get('thumbnail')),None)
+            cover=None
+            for work in items[:24]:
+                record=self.window.card_data(work,True)
+                cover=record.get('_cover') or record.get('thumbnail')
+                if cover:break
             tiles.addWidget(MediaTile(title,f'{len(items)} 部作品',cover,lambda checked=False,kind=kind:self.window.navigate(kind)))
         self.layout.addLayout(tiles)
         links=QHBoxLayout()
@@ -86,7 +93,7 @@ class HomePage(QScrollArea):
         links.addStretch()
         self.layout.addLayout(links)
         continuing=[w for w in works if any(f['position']>0 and not f['completed'] for f in w['files'])]
-        recommendations=self.window.library.recommendations()
+        if recommendations is None:recommendations=self.window.library.recommendations()
         sections=[('继续观看',continuing,True),('最新电影',[w for w in works if w['kind']=='movie'],False),
                   ('最新电视剧',[w for w in works if w['kind']=='series'],False),('最新VR电影',[w for w in works if w['kind']=='vr'],False),('为你推荐',recommendations,False)]
         for title,items,landscape in sections:

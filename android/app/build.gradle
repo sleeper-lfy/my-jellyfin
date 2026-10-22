@@ -7,12 +7,27 @@ android {
         applicationId 'net.lumen.media'
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName '0.4.0'
+        versionCode 4
+        versionName '0.4.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            // Keep Robolectric's SDK cache and download lock inside the writable project cache.
+            def runtimeHome = rootProject.file('.gradle/test-home')
+            doFirst { runtimeHome.mkdirs() }
+            systemProperty 'user.home', runtimeHome.absolutePath
+            systemProperty 'maven.repo.local', new File(runtimeHome, 'm2').absolutePath
+            systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+            ['http.proxyHost', 'http.proxyPort', 'https.proxyHost', 'https.proxyPort',
+             'http.nonProxyHosts', 'javax.net.ssl.trustStore'].each { name ->
+                if (System.getProperty(name)) systemProperty name, System.getProperty(name)
+            }
+        }
     }
     packaging { jniLibs { useLegacyPackaging true } }
     buildTypes { release { minifyEnabled false } }
@@ -20,5 +35,6 @@ android {
 dependencies {
     implementation 'org.videolan.android:libvlc-all:3.7.7'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 }

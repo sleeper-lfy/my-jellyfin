@@ -43,5 +43,5 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "$apk" "$apk.sha256" --clobber
           else
-            gh release create "$tag" "$apk" "$apk.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Android 0.4.0 debug APK with SHA-256 checksum. The Windows installer is added automatically after Windows build and installer verification succeed. Android 8.0+ / Windows 10+."
+            gh release create "$tag" "$apk" "$apk.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Android debug APK with SHA-256 checksum. The Windows installer is added automatically after Windows build and installer verification succeed. Android 8.0+ / Windows 10+."
           fi

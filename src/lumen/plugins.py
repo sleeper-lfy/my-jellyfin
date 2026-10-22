@@ -189,7 +189,7 @@ class Plugins:
             return self._merge(plugin_id,metadata,work_id)
 
     def _merge(self, plugin_id, metadata, work_id=None):
-        metadata = {key:value for key,value in metadata.items() if key not in {'stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','download_plugin'}}
+        metadata = {key:value for key,value in metadata.items() if key not in {'stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','nfo_thumbnails','download_plugin'}}
         validate_metadata(metadata)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         existing = self.library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?', (plugin_id, str(metadata['id']))).fetchone()

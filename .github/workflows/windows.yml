@@ -84,7 +84,7 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "$installer" "$installer.sha256" "$apk" "$apk.sha256" --clobber
           else
-            gh release create "$tag" "$installer" "$installer.sha256" "$apk" "$apk.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Windows x64 installer and Android 0.4.0 debug APK, with SHA-256 checksums. Source commit: $SOURCE_COMMIT. Windows 10+ / Android 8.0+."
+            gh release create "$tag" "$installer" "$installer.sha256" "$apk" "$apk.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Windows x64 installer and Android debug APK, with SHA-256 checksums. Source commit: $SOURCE_COMMIT. Windows 10+ / Android 8.0+."
           fi
       - name: Commit Windows package
         run: |

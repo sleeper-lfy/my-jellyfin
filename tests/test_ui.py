@@ -182,6 +182,7 @@ def test_detail_artwork_preserves_ratio_and_background_does_not_leak(qapp,tmp_pa
     window.library.import_folder(source.parent,'movie')
     work=window.library.query()[0]
     dialog=Details(window,work['id']);dialog.show();qapp.processEvents()
+    spin(qapp,400)
     pixmap=dialog.poster.pixmap()
     assert abs(pixmap.width()/pixmap.height()-.5)<.01
     assert not dialog.poster.hasScaledContents()
@@ -335,3 +336,64 @@ def test_fullscreen_controls_avoid_taskbar_on_ultrawide(qapp, library, monkeypat
         assert player.overlay.geometry() == player.rect()
         monkeypatch.setattr(player, 'isFullScreen', lambda: True)
     player.close()
+
+
+def test_vertical_wheel_over_home_row_scrolls_page_not_row(qapp,tmp_path,video_factory):
+    from PySide6.QtCore import Qt,QPoint,QPointF
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+    window=MainWindow(tmp_path/'wheel')
+    window.library.import_folder(video_factory('Wheel movie.mp4').parent,'movie',fast=True)
+    window.show();window.resize(1100,700);window.navigate('home');qapp.processEvents();qapp.processEvents()
+    row=window.home_page.rows[0];outer=window.home_page.verticalScrollBar();horizontal=row.horizontalScrollBar()
+    assert outer.maximum()>0
+    before=horizontal.value()
+    event=QWheelEvent(QPointF(100,100),QPointF(row.viewport().mapToGlobal(QPoint(100,100))),QPoint(),QPoint(0,-120),
+                      Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier,Qt.ScrollPhase.NoScrollPhase,False)
+    QApplication.sendEvent(row.viewport(),event);qapp.processEvents()
+    assert outer.value()>0 and horizontal.value()==before
+    window.close()
+
+
+def test_large_catalog_reads_do_not_block_gui_and_stale_navigation_is_discarded(qapp,tmp_path,monkeypatch):
+    import threading,time
+    from lumen import browse
+    window=MainWindow(tmp_path/'responsive')
+    with window.library.db:
+        window.library.db.executemany('INSERT INTO works(identity,kind,title,added) VALUES (?,?,?,?)',
+            [(f'large:{i}','movie' if i%2 else 'series',f'Title {i}','2026-01-01') for i in range(300)])
+    original=browse.load_view;threads=[]
+    def slow_read(library,request):
+        threads.append(threading.current_thread().ident);time.sleep(.15);return original(library,request)
+    monkeypatch.setattr(browse,'load_view',slow_read)
+    ticks=[];timer=QTimer();timer.setInterval(10);timer.timeout.connect(lambda:ticks.append(time.monotonic()));timer.start()
+    start=time.monotonic();window.navigate('movie');window.navigate('discover')
+    assert time.monotonic()-start<.1
+    deadline=time.monotonic()+3
+    while window._browse_job is not None and time.monotonic()<deadline:spin(qapp,20)
+    timer.stop()
+    assert len(ticks)>8 and all(thread!=threading.current_thread().ident for thread in threads)
+    assert window.section=='discover' and window.cards.isEnabled() and not window.current_items
+    window.close()
+
+
+def test_slow_image_decode_runs_in_background_and_bounds_cached_size(qapp,tmp_path,monkeypatch):
+    import threading,time
+    from lumen import images
+    from PySide6.QtGui import QImage,QColor
+    from PySide6.QtCore import QSize
+    release=threading.Event();threads=[]
+    def slow(path,size):
+        threads.append(threading.get_ident());release.wait(2)
+        image=QImage(80,40,QImage.Format.Format_RGB32);image.fill(QColor('green'));return image
+    monkeypatch.setattr(images,'decode',slow)
+    cache=images.ImageCache(qapp)
+    start=time.monotonic();assert cache.request(str(tmp_path/'image.jpg'),QSize(300,200)).isNull()
+    assert time.monotonic()-start<.05
+    fired=[];QTimer.singleShot(20,lambda:(fired.append(True),release.set()))
+    spin(qapp,150)
+    assert fired and threads and all(thread!=threading.get_ident() for thread in threads)
+    result=cache.request(str(tmp_path/'image.jpg'),QSize(300,200))
+    assert not result.isNull() and result.toImage().pixelColor(1,1).green()>80
+    assert cache.bytes<64*1024*1024
+    cache.deleteLater()

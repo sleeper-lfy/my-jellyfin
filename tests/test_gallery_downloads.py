@@ -119,3 +119,31 @@ def test_series_show_and_episode_metadata_and_stills(qapp,library,video_factory)
             assert client.get(detail['files'][0]['stills'][0]).content.startswith(b'\xff\xd8')
             assert str(folder) not in json.dumps(detail)
     finally:server.stop()
+
+
+def test_discovery_detail_loads_stills_downloads_and_does_not_switch_identity(qapp,library,image_site,monkeypatch):
+    from lumen.artwork import refresh_details
+    base,_=image_site;manager=manager_for(library)
+    brief={'id':'discovery','title':'Discover with resources','url':base+'/detail'}
+    identifier=manager.merge('catalog-json',brief)
+    full={**brief,'stills':[base+'/image'],'download_method':'magnet','download_url':[{'url':'magnet:?xt=urn:btih:'+'a'*40,'description':'4.5 GB sample'}]}
+    monkeypatch.setattr(Plugins,'run',lambda self,*args,**kwargs:[full])
+    assert not refresh_details(library,identifier)['errors']
+    window=MainWindow(library.directory);window.show();window.navigate('discover');window.open_details(identifier,fetch=False);qapp.processEvents()
+    page=window.detail_page
+    assert page.still_gallery.count()==1 and page.still_gallery.isVisible()
+    assert page.resource_buttons[0].text().endswith('4.5 GB sample')
+    assert page.files.isHidden()
+    monkeypatch.setattr(Plugins,'run',lambda self,*args,**kwargs:[{**full,'id':'another-title','stills':[]}])
+    assert refresh_details(library,identifier)['errors']
+    assert library.work(identifier)['metadata']['download_url']==full['download_url']
+    window.close()
+
+
+def test_example_plugin_keeps_optional_resource_fields(qapp,library):
+    manager=manager_for(library)
+    record={'id':'resources','title':'Resource schema','url':'https://example.org/detail',
+            'stills':['https://example.org/still.jpg'],'download_method':'magnet',
+            'download_url':[{'url':'magnet:?xt=urn:btih:'+'a'*40,'description':'Sample'}]}
+    parsed=manager.javascript('catalog-json','parseResponse',{'body':json.dumps(record)})[0]
+    for key in ['stills','download_method','download_url']:assert parsed[key]==record[key]

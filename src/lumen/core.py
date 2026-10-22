@@ -144,7 +144,7 @@ def thumbnail(path, target, duration, at=None, cancelled=None):
 
 
 class Library:
-    def __init__(self, directory=None):
+    def __init__(self, directory=None, *, initialize=True):
         self.directory = Path(directory or data_directory())
         self.directory.mkdir(parents=True, exist_ok=True)
         (self.directory / 'cache').mkdir(exist_ok=True)
@@ -152,6 +152,7 @@ class Library:
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA foreign_keys=ON')
+        if not initialize:return
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS works (
           id INTEGER PRIMARY KEY, identity TEXT UNIQUE NOT NULL, kind TEXT NOT NULL,
@@ -543,13 +544,13 @@ class Library:
         ids = {row['id'] for row in rows}
         files, sources, watches = {}, {}, {}
         # Batch joins avoid N+1 queries while preserving complete-result filtering and shuffle.
-        for row in self.db.execute('SELECT * FROM files ORDER BY season,episode,path'):
+        for row in self.db.execute('SELECT * FROM files WHERE work_id IN (SELECT id FROM works WHERE '+ ' AND '.join(clauses)+') ORDER BY season,episode,path',args):
             if row['work_id'] in ids:
                 files.setdefault(row['work_id'], []).append(dict(row))
-        for row in self.db.execute('SELECT * FROM sources'):
+        for row in self.db.execute('SELECT * FROM sources WHERE work_id IN (SELECT id FROM works WHERE '+' AND '.join(clauses)+')',args):
             if row['work_id'] in ids:
                 sources.setdefault(row['work_id'], []).append(dict(row))
-        for row in self.db.execute('SELECT f.work_id,SUM(s.watched) FROM sessions s JOIN files f ON f.id=s.file_id GROUP BY f.work_id'):
+        for row in self.db.execute('SELECT f.work_id,SUM(s.watched) FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id IN (SELECT id FROM works WHERE '+' AND '.join(clauses)+') GROUP BY f.work_id',args):
             watches[row[0]] = row[1]
         items = []
         for row in rows:
@@ -638,8 +639,8 @@ class Library:
             result.append(a)
         return sorted(result, key=lambda a: a['name'].casefold() if order == 'name' else -(a.get(order) if a.get(order) is not None else -1))
 
-    def recommendations(self, discovered=False):
-        all_items = self.query({'local': False})
+    def recommendations(self, discovered=False, items=None):
+        all_items = self.query({'local': False}) if items is None else items
         weights = Counter()
         for w in all_items:
             rating = (w['rating'] - 5.5) * 3 if w['rating'] is not None else 0

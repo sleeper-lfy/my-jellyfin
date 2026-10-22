@@ -209,7 +209,8 @@ public final class MainActivity extends Activity {
         if(downloads!=null)for(int i=0;i<downloads.length();i++){
             JSONObject entry=downloads.optJSONObject(i);if(entry==null)continue;String url=entry.optString("url");
             page.addView(button(entry.optString("description","下载"),()->{
-                try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}
+                try{if(url.startsWith("https://")||url.startsWith("http://"))DirectDownload.start(this,url);
+                    else startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}
                 catch(android.content.ActivityNotFoundException error){Toast.makeText(this,"请安装支持该链接的下载器",Toast.LENGTH_LONG).show();}
             }));
         }
@@ -217,7 +218,7 @@ public final class MainActivity extends Activity {
         if(sources!=null&&sources.length()>0)page.addView(text("信息来源",21,Color.WHITE));
         if(sources!=null)for(int i=0;i<sources.length();i++) {
             JSONObject source=sources.getJSONObject(i);String url=source.optString("url");
-            page.addView(button(source.optString("site")+"  ↗",()->{if(url.startsWith("https://")||url.startsWith("http://"))startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}));
+            page.addView(button(source.optString("site")+"  ↗",()->{PrivateBrowserActivity.open(this,url);}));
         }
     }
     private void personal(String field,Object value) {

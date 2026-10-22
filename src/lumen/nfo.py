@@ -92,7 +92,8 @@ def read(path):
             'episode': integer('episode',0,99999) if tree.tag == 'episodedetails' and text('episode') != '-1' else None,
             'showtitle': text('showtitle'), 'rating': rating, 'userrating': integer('userrating',0,10),
             'completed': text('watched').lower() == 'true' or (integer('playcount',0,1000000) or 0) > 0,
-            'position': position, 'thumbs': values('art/poster') + values('poster') + [(e.text or '').strip() for e in tree.findall('thumb') if e.get('aspect','poster') == 'poster'],
+            'position': position, 'thumbs': values('art/poster') + values('poster') + [(e.text or '').strip() for e in tree.findall('thumb') if e.get('aspect') == 'poster'],
+            'thumbnail_refs': values('art/thumb') + [(e.text or '').strip() for e in tree.findall('thumb') if e.get('aspect') != 'poster'],
             'still_refs': values('art/fanart') + values('fanart') + (values('thumb') + values('art/thumb') if tree.tag=='episodedetails' else []), 'path': path}
 
 
@@ -138,6 +139,7 @@ def load(video, root, kind, warnings, cache=None):
     if kind == 'series' and not work and entry and entry['showtitle']:
         work = {**entry, 'metadata': {'title': entry['showtitle']}, 'rating': None, 'userrating': None, 'thumbs': []}
     return {'work': work, 'entry': entry, 'poster': poster(video, root, work, kind, warnings, cache),
+            'thumbnail': local_thumbnail(video,root,entry,cache),
             'backdrop': backdrop(video, root, work, cache), 'stills': stills(video,root,work,cache),
             'episode_stills': stills(video,root,entry,cache,scan_extra=not work or entry and entry['path'].parent!=work['path'].parent) if kind=='series' and entry else []}
 
@@ -169,6 +171,9 @@ def stills(video, root, work, cache=None, scan_extra=True):
 
 def backdrop(video, root, work, cache=None):
     folder = work['path'].parent if work else video.parent
+    for value in (work or {}).get('still_refs',[]):
+        candidate=local_reference(folder,value,root,cache)
+        if candidate:return candidate
     for name in [video.stem + '-fanart.jpg', video.stem + '-fanart.png', 'fanart.jpg', 'fanart.png', 'backdrop.jpg', 'backdrop.png']:
         candidate = sibling(folder, name, cache)
         if candidate and candidate.resolve().is_relative_to(root):
@@ -191,6 +196,23 @@ def poster(video, root, work, kind, warnings, cache=None):
     for candidate in candidates:
         if candidate.is_file() and not candidate.is_symlink() and candidate.resolve().is_relative_to(root): return candidate
     return None
+
+
+def local_reference(folder,value,root,cache=None):
+    if not value or re.match(r'^https?://',value,re.I):return None
+    normalized=value.replace('\\','/')
+    relative=Path(normalized)
+    candidates=[sibling(folder,relative.name,cache),folder/'extrafanart'/relative.name]
+    if not relative.is_absolute() and not re.match(r'^[a-z]:',normalized,re.I):candidates.insert(0,folder/relative)
+    elif relative.is_absolute():candidates.insert(0,relative)
+    return next((path for path in candidates if path and path.is_file() and not path.is_symlink()
+                 and path.resolve().is_relative_to(root)),None)
+
+
+def local_thumbnail(video,root,entry,cache=None):
+    folder=entry['path'].parent if entry else video.parent
+    values=(entry or {}).get('thumbnail_refs',[])+[video.stem+'-thumb.jpg',video.stem+'-thumb.png','thumb.jpg','thumb.png','landscape.jpg']
+    return next((path for value in values if (path:=local_reference(folder,value,root,cache))),None)
 
 
 def cache_poster(path, directory):
@@ -254,6 +276,9 @@ def apply(library, work_id, file_id, data, fresh_work, fresh_file, root, warning
             library.db.execute('UPDATE works SET thumbnail=? WHERE id=?',(cover,work_id))
             metadata['nfo_poster'] = True
         except (ValueError, OSError) as exc: warnings.append({'path': str(data['poster']), 'reason': '本地海报: '+str(exc)})
+    if data.get('thumbnail') and 'thumbnail' not in item['locked']:
+        try:metadata.setdefault('nfo_thumbnails',{})[str(file_id)]=cache_poster(data['thumbnail'],library.directory)
+        except (ValueError,OSError) as exc:warnings.append({'path':str(data['thumbnail']),'reason':'本地缩略图: '+str(exc)})
     if data.get('backdrop'):
         try:
             metadata['nfo_backdrop'] = cache_poster(data['backdrop'], library.directory)

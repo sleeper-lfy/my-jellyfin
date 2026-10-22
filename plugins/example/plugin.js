@@ -14,7 +14,8 @@ function parseResponse(input) {
             aliases: item.aliases || [], tags: item.tags || [], actors: item.actors || [],
             directors: item.directors || [], overview: item.overview || '', poster: item.poster || null,
             rating: item.rating === undefined ? null : item.rating,
-            released: item.released || null, site_added: item.site_added || null, url: item.url
+            released: item.released || null, site_added: item.site_added || null, url: item.url,
+            stills: item.stills || [], download_method: item.download_method || null, download_url: item.download_url || []
         };
     });
 }

@@ -86,3 +86,7 @@ Linux 运行可验证核心逻辑、真实解码和 UI，但不代表 Windows �
 Windows 使用 libmpv 原生 GPU 播放，保留 Qt 控制栏，可开启高质量缩放与轻度锐化。新增 VR电影分类，安卓打开该分类自动进入 VR180 左右 3D；支持标准／鱼眼、单屏／双眼、陀螺仪与立体声。其他分类默认普通播放。
 
 剧照支持插件 `stills`、本地 NFO／extrafanart，以及 tvshow.nfo + 视频同名 NFO 的整剧与单集资料。下载资源列表支持磁力与 HTTP/HTTPS 直链；下载必须由用户点击启动。详见 [插件字段文档](docs/plugin-development.md)、[安卓 VR](docs/android-vr.md) 与 [播放内核说明](docs/mpv-runtime.md)。
+
+Android 0.4.1 改善全屏浮层控制，按视频显示比例自动横竖屏；VR 支持一键回正、双指／按钮缩放，以及蓝牙耳机、遥控器、手柄自定义映射，入口为播放设置 → 蓝牙 / 手柄映射。
+
+0.4.1 同时修复 PC 剧照与发现页资源展示，提供本地 NFO 图片“仅补充缺失／强制覆盖”，网页来源默认用无痕方式打开。大媒体库查询与图片解码放到后台，首页海报行不再拦截普通垂直滚轮。用法见 [NFO 迁移与图片更新](docs/jellyfin-migration.md)。

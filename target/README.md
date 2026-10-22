@@ -2,7 +2,7 @@
 
 ## Android
 
-下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.0 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
+下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.1 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
 
 ## Windows EXE 安装包
 
@@ -40,3 +40,7 @@ VR电影：桌面导入时选择“VR电影”，或海报右键移入分类。�
 0.4.0 同时包含剧照画廊（插件 `stills`、本地 NFO 与单集剧照）、下载资源列表（磁力交给系统下载器，桌面直链支持进度和取消）、新版 Lumen 图标。Windows 原生 libmpv GPU 播放与可选锐化见 [mpv-runtime.md](../docs/mpv-runtime.md)，插件字段见 [plugin-development.md](../docs/plugin-development.md)。
 
 本轮完整源码：[Lumen-source-de453a3.zip](Lumen-source-de453a3.zip)，校验文件：[SHA-256](Lumen-source-de453a3.zip.sha256)。源码提交 `de453a3`，不包含旧安装包和本地媒体。Windows + Android 将发布在同一个版本的 GitHub Release 中。
+
+Android 0.4.1：安全区域内的浮层控制、按视频显示比例自动横竖屏、VR 一键回正及缩放、HID / AVRCP 蓝牙控制和按设备自定义映射，见 [android-vr.md](../docs/android-vr.md)。
+
+Windows 0.4.1：剧照与发现详情资源加载、本地 NFO 图片手动补充／覆盖、无痕打开来源、大库后台读取及图片异步解码、首页垂直滚轮修复。新版安装包须以本目录 windows-installer.json 的 source_commit 和 Release 校验值为准。

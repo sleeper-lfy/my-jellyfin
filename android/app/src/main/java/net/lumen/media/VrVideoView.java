@@ -11,6 +11,8 @@ import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.ViewConfiguration;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import java.nio.ByteBuffer;
@@ -22,10 +24,16 @@ import javax.microedition.khronos.opengles.GL10;
 
 /** VLC decodes into an OES texture; this view projects each eye on a VR180 hemisphere. */
 public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Renderer, SensorEventListener {
-    public interface Listener { void ready(); void lost(); void failed(String reason); }
+    public interface Listener { void ready(); void lost(); void failed(String reason); void tap(); void zoom(float fov); boolean gesture(android.view.View view,MotionEvent event); }
     private final Listener listener;
     private final SensorManager sensors;
     private final Sensor rotation;
+    private final ScaleGestureDetector scaleGesture;
+    private final int touchSlop;
+    private boolean moved=false;
+    private boolean swipeSeeking=true;
+    public void setSwipeSeeking(boolean enabled){swipeSeeking=enabled;}
+    private float downX,downY;
     private volatile SurfaceTexture texture;
     private volatile boolean surfaceReady=false;
     private final AtomicBoolean frame = new AtomicBoolean();
@@ -43,6 +51,12 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
 
     public VrVideoView(Context context, Listener listener) {
         super(context); this.listener=listener;
+        touchSlop=ViewConfiguration.get(context).getScaledTouchSlop();
+        scaleGesture=new ScaleGestureDetector(context,new ScaleGestureDetector.SimpleOnScaleGestureListener(){
+            @Override public boolean onScale(ScaleGestureDetector detector){
+                moved=true;setFov(fov/detector.getScaleFactor());listener.zoom(fov);return true;
+            }
+        });
         sensors=(SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
         rotation=sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR);
         setEGLContextClientVersion(2);
@@ -57,7 +71,8 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
         fish=fisheye; headset=stereoDisplay; swap=swapEyes; tracking=headTracking;
         updateSensor(); requestRender();
     }
-    public void setFov(float degrees) { fov=Math.max(50,Math.min(110,degrees));requestRender(); }
+    public void setFov(float degrees) { fov=PlaybackPolicy.fov(degrees);requestRender(); }
+    public float getFov(){return fov;}
     public void recenter() { yaw=pitch=sensorYaw=sensorPitch=0;baseline=false;requestRender(); }
     public int[] setVideoSize(int w,int h) {
         if(w<=0||h<=0)return new int[]{videoWidth,videoHeight};
@@ -130,15 +145,27 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
         GLES20.glDisableVertexAttribArray(attr);
     }
     @Override public boolean onTouchEvent(MotionEvent event) {
-        if(event.getActionMasked()==MotionEvent.ACTION_DOWN){touchX=event.getX();touchY=event.getY();return true;}
-        if(event.getActionMasked()==MotionEvent.ACTION_MOVE){
-            yaw=VrProjection.wrap(yaw-(event.getX()-touchX)*.15f);
-            pitch=VrProjection.clampPitch(pitch+(event.getY()-touchY)*.15f);
-            touchX=event.getX();touchY=event.getY();requestRender();return true;
+        scaleGesture.onTouchEvent(event);
+        if(swipeSeeking)return listener.gesture(this,event);
+        if(event.getActionMasked()==MotionEvent.ACTION_DOWN){
+            downX=touchX=event.getX();downY=touchY=event.getY();moved=false;return true;
         }
-        if(event.getActionMasked()==MotionEvent.ACTION_UP){performClick();return true;}return true;
+        if(event.getPointerCount()>1||event.getActionMasked()==MotionEvent.ACTION_POINTER_UP){
+            moved=true;touchX=event.getX();touchY=event.getY();return true;
+        }
+        if(event.getActionMasked()==MotionEvent.ACTION_MOVE){
+            if(Math.hypot(event.getX()-downX,event.getY()-downY)>touchSlop)moved=true;
+            if(moved&&!scaleGesture.isInProgress()){
+                yaw=VrProjection.wrap(yaw-(event.getX()-touchX)*.15f);
+                pitch=VrProjection.clampPitch(pitch+(event.getY()-touchY)*.15f);
+                requestRender();
+            }
+            touchX=event.getX();touchY=event.getY();return true;
+        }
+        if(event.getActionMasked()==MotionEvent.ACTION_UP){if(!moved)performClick();return true;}
+        return true;
     }
-    @Override public boolean performClick(){super.performClick();return true;}
+    @Override public boolean performClick(){super.performClick();listener.tap();return true;}
     @Override public void onSensorChanged(SensorEvent event) {
         SensorManager.getRotationMatrixFromVector(rotationMatrix,event.values);
         int displayRotation=getDisplay()==null?Surface.ROTATION_0:getDisplay().getRotation();
