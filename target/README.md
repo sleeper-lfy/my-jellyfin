@@ -38,3 +38,5 @@ Releases 中的 EXE 始终是完整单文件，不需要合并。开发版本尚
 VR电影：桌面导入时选择“VR电影”，或海报右键移入分类。安卓打开后自动使用 VR180 左右 3D；其他分类使用普通播放。标准／鱼眼投影、陀螺仪、单屏／双眼与立体声说明见 [android-vr.md](../docs/android-vr.md)。安卓 VR 仍需真机观看确认。
 
 0.4.0 同时包含剧照画廊（插件 `stills`、本地 NFO 与单集剧照）、下载资源列表（磁力交给系统下载器，桌面直链支持进度和取消）、新版 Lumen 图标。Windows 原生 libmpv GPU 播放与可选锐化见 [mpv-runtime.md](../docs/mpv-runtime.md)，插件字段见 [plugin-development.md](../docs/plugin-development.md)。
+
+本轮完整源码：[Lumen-source-de453a3.zip](Lumen-source-de453a3.zip)，校验文件：[SHA-256](Lumen-source-de453a3.zip.sha256)。源码提交 `de453a3`，不包含旧安装包和本地媒体。Windows + Android 将发布在同一个版本的 GitHub Release 中。
