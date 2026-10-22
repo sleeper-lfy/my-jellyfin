@@ -14,3 +14,8 @@ android/local.properties
 *.jks
 
 *.keystore
+
+!target/Lumen-android-debug.apk
+target/*.partial
+target/Lumen-windows-x64.zip
+target/windows-*/

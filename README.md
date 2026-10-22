@@ -6,6 +6,8 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 ## 下载
 
+优先查看 [target 安装包目录](target/README.md)：Android APK 已放入该目录；Windows 包由 Windows 工作流构建验证成功后自动提交。
+
 - 源码：仓库页面点击 **Code → Download ZIP**。
 - Android APK：[Android 构建记录](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/android.yml)，打开成功的运行，在 **Artifacts** 下载 `Lumen-android-debug`，解压后安装 APK。
 - Windows 程序：[Windows 构建记录](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/windows.yml)，打开成功的运行，在 **Artifacts** 下载 `Lumen-windows-x64`。
