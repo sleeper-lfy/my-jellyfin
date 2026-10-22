@@ -161,3 +161,24 @@ def test_nfo_original_title_matches_online_source(library,tmp_path,video_factory
     matched=plugins.merge(manifest['id'],{'id':'alias-test','title':'Original Title','year':2024,'url':'https://example.org/alias'})
     assert matched==work['id'] and len(library.query())==1
     assert library.work(matched)['title']=='本地标题'
+
+
+@pytest.mark.parametrize('season,episode', [('-1','-1'),('999999','999999'),('unknown','N/A')])
+def test_movie_ignores_episode_fields_and_keeps_metadata(library,tmp_path,video_factory,season,episode):
+    video=media(tmp_path,video_factory)
+    video.with_suffix('.nfo').write_text(f'<movie><title>Recovered title</title><season>{season}</season><episode>{episode}</episode><rating>8.2</rating><plot>Keep this plot</plot></movie>',encoding='utf-8')
+    result=library.import_folder(video.parent,'movie')
+    assert result['warnings']==[] and result['imported']==1
+    work=library.query()[0]
+    assert work['title']=='Recovered title' and work['metadata']['overview']=='Keep this plot'
+    assert work['sources'][0]['rating']==8.2
+
+
+def test_unknown_episode_numbers_fall_back_to_filename(library,tmp_path,video_factory):
+    video=media(tmp_path,video_factory,'Example.S02E03.mp4')
+    video.with_suffix('.nfo').write_text('<episodedetails><title>Episode title</title><showtitle>Example</showtitle><season>-1</season><episode>-1</episode></episodedetails>',encoding='utf-8')
+    result=library.import_folder(video.parent,'series')
+    assert result['warnings']==[]
+    work=library.work(library.query()[0]['id'])
+    assert (work['files'][0]['season'],work['files'][0]['episode'])==(2,3)
+    assert work['files'][0]['title']=='Episode title'

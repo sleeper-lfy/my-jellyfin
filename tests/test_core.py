@@ -241,3 +241,26 @@ def test_metadata_locks_preserve_personal_rating(library):
     library.edit_metadata(work_id,{'title':'User title','actors':[{'name':'A','gender':'unknown'}]},['title','actors'])
     assert library.work(work_id)['rating']==7
     assert library.actresses()==[]
+
+
+def test_import_progress_reports_work_before_first_file_completes(library,video_factory):
+    import json
+    source=video_factory('Progress.mp4')
+    events=[]
+    def progress(done,total,message):
+        task=library.db.execute("SELECT payload,result FROM tasks WHERE kind='import' ORDER BY updated DESC LIMIT 1").fetchone()
+        events.append((done,total,message,json.loads(task['payload']),json.loads(task['result'])))
+    result=library.import_folder(source.parent,'movie',progress)
+    assert result['imported']==1
+    assert events[0][0:2]==(0,0)
+    for stage in ['读取 NFO','计算指纹','分析媒体','生成缩略图']:
+        event=next(e for e in events if stage in e[2])
+        assert event[0:2]==(0,1) and event[4]['imported']==0
+        assert event[3]['progress']['path']==str(source)
+    assert events[-1][0:2]==(1,1)
+    assert events[-1][3]['progress']['stage']=='处理完成'
+    assert library.db.execute("SELECT status FROM tasks WHERE kind='import'").fetchone()[0]=='done'
+    events.clear()
+    result=library.import_folder(source.parent,'movie',progress)
+    assert result['duplicates']==1 and events[-1][0:2]==(1,1)
+    assert not any('计算指纹' in e[2] for e in events)

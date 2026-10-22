@@ -63,7 +63,8 @@ def read(path):
     position = float(resume) if resume else None
     if position is not None and (not math.isfinite(position) or position < 0): raise ValueError('NFO 播放位置无效')
     return {'type': tree.tag, 'metadata': {k:v for k,v in metadata.items() if v not in (None, '', [], {})},
-            'season': integer('season',0,999), 'episode': integer('episode',0,99999),
+            'season': integer('season',0,999) if tree.tag == 'episodedetails' and text('season') != '-1' else None,
+            'episode': integer('episode',0,99999) if tree.tag == 'episodedetails' and text('episode') != '-1' else None,
             'showtitle': text('showtitle'), 'rating': rating, 'userrating': integer('userrating',0,10),
             'completed': text('watched').lower() == 'true' or (integer('playcount',0,1000000) or 0) > 0,
             'position': position, 'thumbs': [(e.text or '').strip() for e in tree.findall('thumb') if e.get('aspect','poster') == 'poster'],
@@ -104,7 +105,17 @@ def load(video, root, kind, warnings):
     work = show if kind == 'series' else entry
     if kind == 'series' and not work and entry and entry['showtitle']:
         work = {**entry, 'metadata': {'title': entry['showtitle']}, 'rating': None, 'userrating': None, 'thumbs': []}
-    return {'work': work, 'entry': entry, 'poster': poster(video, root, work, kind, warnings)}
+    return {'work': work, 'entry': entry, 'poster': poster(video, root, work, kind, warnings),
+            'backdrop': backdrop(video, root, work)}
+
+
+def backdrop(video, root, work):
+    folder = work['path'].parent if work else video.parent
+    for name in [video.stem + '-fanart.jpg', video.stem + '-fanart.png', 'fanart.jpg', 'fanart.png', 'backdrop.jpg', 'backdrop.png']:
+        candidate = sibling(folder, name)
+        if candidate and candidate.resolve().is_relative_to(root):
+            return candidate
+    return None
 
 
 def poster(video, root, work, kind, warnings):
@@ -181,4 +192,9 @@ def apply(library, work_id, file_id, data, fresh_work, fresh_file, root, warning
             library.db.execute('UPDATE works SET thumbnail=? WHERE id=?',(cover,work_id))
             metadata['nfo_poster'] = True
         except (ValueError, OSError) as exc: warnings.append({'path': str(data['poster']), 'reason': '本地海报: '+str(exc)})
+    if data.get('backdrop'):
+        try:
+            metadata['nfo_backdrop'] = cache_poster(data['backdrop'], library.directory)
+        except (ValueError, OSError) as exc:
+            warnings.append({'path': str(data['backdrop']), 'reason': '本地背景图: ' + str(exc)})
     library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata,ensure_ascii=False),work_id))

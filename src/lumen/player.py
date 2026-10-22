@@ -1,8 +1,11 @@
 from pathlib import Path
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog
+from datetime import datetime, timedelta
+from .presentation import rating_text
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle
+from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from .core import WatchSession
 
 
@@ -22,52 +25,127 @@ class Player(QDialog):
         self.seek_guard = 0
         self.cues = []
         self.external_subtitle_enabled = True
-        self.video = QVideoWidget()
-        self.video.setMinimumSize(480, 270)
+        self.setObjectName('cinema')
+        self.setStyleSheet("""
+            QDialog#cinema { background: black; }
+            QLabel { color: #eeeeee; background: transparent; }
+            QWidget#playerBar { background: rgba(8,8,8,225); }
+            QPushButton { background: transparent; border: none; color: white; padding: 8px; }
+            QPushButton:hover { background: #303030; border-radius: 4px; }
+            QPushButton:checked { color: #00a4dc; }
+            QSlider::groove:horizontal { height: 3px; background: #555555; }
+            QSlider::sub-page:horizontal { background: #00a4dc; }
+            QSlider::handle:horizontal { background: #00a4dc; width: 14px; margin: -6px 0; border-radius: 7px; }
+        """)
+        self.scene = QGraphicsScene(self)
+        self.video = QGraphicsVideoItem()
+        self.video.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        self.scene.addItem(self.video)
+        self.canvas = QGraphicsView(self.scene)
+        self.canvas.setFrameShape(QFrame.Shape.NoFrame)
+        self.canvas.setStyleSheet('background: black; border: none;')
+        self.canvas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.canvas.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.media = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.audio.setVolume(.7)
         self.media.setAudioOutput(self.audio)
         self.media.setVideoOutput(self.video)
-        layout = QVBoxLayout(self)
+        layout = QGridLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.canvas, 0, 0)
+        self.overlay = QWidget()
+        overlay_layout = QVBoxLayout(self.overlay)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        self.header = QWidget()
+        self.header.setObjectName('playerBar')
+        header = QHBoxLayout(self.header)
+        header.setContentsMargins(16, 8, 16, 8)
+        back = QPushButton('←')
+        back.setToolTip('返回媒体库')
+        back.clicked.connect(self.close)
+        header.addWidget(back)
         self.title = QLabel()
-        self.title.setObjectName('heading')
-        layout.addWidget(self.title)
-        layout.addWidget(self.video, 1)
+        self.title.setTextFormat(Qt.TextFormat.PlainText)
+        self.title.setMinimumWidth(0)
+        self.title.setWordWrap(True)
+        header.addWidget(self.title, 1)
+        overlay_layout.addWidget(self.header)
+        overlay_layout.addStretch(1)
         self.caption = QLabel()
         self.caption.setTextFormat(Qt.TextFormat.PlainText)
         self.caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.caption.setWordWrap(True)
-        self.caption.setStyleSheet('font-size: 19px; color: #f7f8ff; padding: 6px;')
-        layout.addWidget(self.caption)
+        self.caption.setStyleSheet('font-size: 22px; color: white; background: rgba(0,0,0,120); padding: 6px;')
+        overlay_layout.addWidget(self.caption)
+        self.error = QLabel()
+        self.error.setTextFormat(Qt.TextFormat.PlainText)
+        self.error.setWordWrap(True)
+        overlay_layout.addWidget(self.error)
+        self.footer = QWidget()
+        self.footer.setObjectName('playerBar')
+        bottom = QVBoxLayout(self.footer)
+        bottom.setContentsMargins(16, 12, 16, 12)
+        timeline_row = QHBoxLayout()
+        self.time_label = QLabel('00:00')
+        timeline_row.addWidget(self.time_label)
         self.timeline = QSlider(Qt.Orientation.Horizontal)
+        self.timeline.setToolTip('播放进度')
         self.timeline.sliderReleased.connect(self.seek)
-        layout.addWidget(self.timeline)
+        timeline_row.addWidget(self.timeline, 1)
+        self.remaining = QLabel('-00:00')
+        timeline_row.addWidget(self.remaining)
+        bottom.addLayout(timeline_row)
         row = QHBoxLayout()
-        self.pause = QPushButton('暂停')
-        self.pause.clicked.connect(self.toggle)
-        row.addWidget(self.pause)
-        previous = QPushButton('上一作品')
-        previous.clicked.connect(self.queuePrevious.emit)
-        row.addWidget(previous)
-        next_episode = QPushButton('剧内下一集')
-        next_episode.clicked.connect(self.next_episode)
-        row.addWidget(next_episode)
-        next_work = QPushButton('随机下一作品')
-        next_work.clicked.connect(self.queueNext.emit)
-        row.addWidget(next_work)
-        self.time_label = QLabel('00:00 / 00:00')
-        row.addWidget(self.time_label)
+        def control(icon, tip, callback):
+            button = QPushButton()
+            button.setIcon(self.control_icon(icon))
+            button.setIconSize(QSize(22, 22))
+            button.setMinimumWidth(40)
+            button.setToolTip(tip)
+            button.setAccessibleName(tip)
+            button.clicked.connect(callback)
+            row.addWidget(button)
+            return button
+        control(QStyle.StandardPixmap.SP_MediaSkipBackward, '上一作品', self.queuePrevious.emit)
+        control(QStyle.StandardPixmap.SP_MediaSeekBackward, '后退 10 秒（←）', lambda: self.jump(-10000))
+        self.pause = control(QStyle.StandardPixmap.SP_MediaPlay, '播放 / 暂停（空格）', self.toggle)
+        control(QStyle.StandardPixmap.SP_MediaSeekForward, '前进 10 秒（→）', lambda: self.jump(10000))
+        control(QStyle.StandardPixmap.SP_MediaSkipForward, '下一集 / 下一作品', self.next_item)
+        self.ends_at = QLabel('')
+        row.addWidget(self.ends_at)
+        self.rating = QLabel('')
+        self.rating.setStyleSheet('color: #efc84a;')
+        row.addWidget(self.rating)
         row.addStretch()
+        self.like = QPushButton('♡')
+        self.like.setCheckable(True)
+        self.like.setAccessibleName('喜欢')
+        self.like.clicked.connect(self.toggle_like)
+        row.addWidget(self.like)
+        self.mute = control(QStyle.StandardPixmap.SP_MediaVolume, '静音 / 恢复音量', self.toggle_mute)
         volume = QSlider(Qt.Orientation.Horizontal)
         volume.setRange(0, 100)
         volume.setValue(70)
-        volume.setMaximumWidth(100)
+        volume.setMaximumWidth(110)
+        volume.setToolTip('音量')
         volume.valueChanged.connect(lambda v: self.audio.setVolume(v / 100))
-        row.addWidget(QLabel('音量'))
         row.addWidget(volume)
-        layout.addLayout(row)
-        tracks = QHBoxLayout()
+        settings = QPushButton('⚙')
+        settings.setToolTip('音轨和字幕设置')
+        settings.setAccessibleName('音轨和字幕设置')
+        settings.clicked.connect(self.show_settings)
+        row.addWidget(settings)
+        full = QPushButton('⛶')
+        full.setToolTip('全屏 / 退出（F）')
+        full.clicked.connect(self.toggle_fullscreen)
+        row.addWidget(full)
+        bottom.addLayout(row)
+        overlay_layout.addWidget(self.footer)
+        layout.addWidget(self.overlay, 0, 0)
+        self.track_dialog = QDialog(self)
+        self.track_dialog.setWindowTitle('播放设置')
+        tracks = QVBoxLayout(self.track_dialog)
         self.subtitles = QComboBox()
         self.subtitles.currentIndexChanged.connect(lambda i: self.media.setActiveSubtitleTrack(self.subtitles.itemData(i)) if self.subtitles.itemData(i) is not None else None)
         self.audio_tracks = QComboBox()
@@ -76,25 +154,88 @@ class Player(QDialog):
         tracks.addWidget(self.subtitles)
         tracks.addWidget(QLabel('音轨'))
         tracks.addWidget(self.audio_tracks)
-        full = QPushButton('全屏 / 退出')
-        full.clicked.connect(self.toggle_fullscreen)
         tracks.addWidget(QPushButton('外挂字幕…', clicked=self.choose_subtitle))
         tracks.addWidget(QPushButton('开关外挂字幕', clicked=self.toggle_external_subtitle))
-        tracks.addWidget(full)
-        layout.addLayout(tracks)
-        self.error = QLabel()
-        self.error.setWordWrap(True)
-        layout.addWidget(self.error)
+        self.idle = QTimer(self)
+        self.idle.setSingleShot(True)
+        self.idle.setInterval(3500)
+        self.idle.timeout.connect(self.hide_controls)
+        for widget in [self, self.canvas.viewport(), self.overlay, *self.overlay.findChildren(QWidget)]:
+            widget.setMouseTracking(True)
+            widget.installEventFilter(self)
         self.media.tracksChanged.connect(self.tracks_changed)
         self.media.durationChanged.connect(lambda value: self.timeline.setRange(0, value))
         self.media.positionChanged.connect(self.position_changed)
         self.media.mediaStatusChanged.connect(self.status_changed)
         self.media.playbackStateChanged.connect(self.state_changed)
         self.media.errorOccurred.connect(lambda _code, message: self.error.setText('播放错误：' + message))
+        self.seek_shortcuts = []
+        for key, delta in [(Qt.Key.Key_Left, -10000), (Qt.Key.Key_Right, 10000)]:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(lambda delta=delta: self.jump(delta))
+            self.seek_shortcuts.append(shortcut)
         self.timer = QTimer(self)
         self.timer.setInterval(500)
         self.timer.timeout.connect(self.sample)
         self.timer.start()
+
+    def control_icon(self, standard):
+        pixmap = self.style().standardIcon(standard).pixmap(24, 24)
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor('white'))
+        painter.end()
+        return QIcon(pixmap)
+
+    def eventFilter(self, watched, event):
+        if watched is self.canvas.viewport() and event.type() == QEvent.Type.Resize:
+            size = QSizeF(self.canvas.viewport().size())
+            self.video.setSize(size)
+            self.scene.setSceneRect(0, 0, size.width(), size.height())
+        if event.type() in {QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress}:
+            self.show_controls()
+        return super().eventFilter(watched, event)
+
+    def show_controls(self):
+        self.header.show()
+        self.footer.show()
+        self.overlay.unsetCursor()
+        self.idle.start()
+
+    def hide_controls(self):
+        if self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not self.track_dialog.isVisible() and not self.timeline.isSliderDown() and not self.footer.underMouse():
+            self.header.hide()
+            self.footer.hide()
+            self.overlay.setCursor(Qt.CursorShape.BlankCursor)
+
+    def show_settings(self):
+        self.track_dialog.show()
+        self.track_dialog.raise_()
+
+    def update_like(self, work):
+        self.like.setChecked(bool(work['favorite']))
+        self.like.setText('♥' if work['favorite'] else '♡')
+        self.like.setToolTip('取消喜欢' if work['favorite'] else '喜欢')
+
+    def toggle_like(self):
+        if self.file:
+            self.library.update_personal(self.file['work_id'], favorite=self.like.isChecked())
+            self.update_like(self.library.work(self.file['work_id']))
+            self.refreshed.emit()
+
+    def toggle_mute(self):
+        self.audio.setMuted(not self.audio.isMuted())
+        icon = QStyle.StandardPixmap.SP_MediaVolumeMuted if self.audio.isMuted() else QStyle.StandardPixmap.SP_MediaVolume
+        self.mute.setIcon(self.control_icon(icon))
+
+    def jump(self, milliseconds):
+        self.timeline.setValue(max(0, min(self.media.duration(), self.media.position() + milliseconds)))
+        self.seek()
+
+    def next_item(self):
+        if not self.next_episode():
+            self.queueNext.emit()
 
     def open_file(self, file):
         self.finish()
@@ -105,6 +246,9 @@ class Player(QDialog):
         self.file = file
         work = self.library.work(file['work_id'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' else ''))
+        self.rating.setText(rating_text(work))
+        self.update_like(work)
+        self.show_controls()
         self.error.setText('')
         self.cues = []
         self.caption.clear()
@@ -125,9 +269,14 @@ class Player(QDialog):
         def stamp(ms):
             seconds = ms // 1000
             return f'{seconds // 3600:02}:{seconds // 60 % 60:02}:{seconds % 60:02}'
-        self.time_label.setText(f'{stamp(position)} / {stamp(self.media.duration())}')
+        self.time_label.setText(stamp(position))
+        remaining = max(0, self.media.duration() - position)
+        self.remaining.setText('-' + stamp(remaining))
+        end = datetime.now() + timedelta(milliseconds=remaining / max(.01, self.media.playbackRate()))
+        self.ends_at.setText('结束于 ' + end.strftime('%H:%M') if self.media.duration() else '')
         text = '\n'.join(cue[2] for cue in self.cues if cue[0] <= position/1000 < cue[1]) if self.external_subtitle_enabled else ''
         self.caption.setText(text)
+        self.caption.setVisible(bool(text))
 
     def sample(self):
         if self.session:
@@ -142,7 +291,8 @@ class Player(QDialog):
         self.sample()
 
     def state_changed(self, state):
-        self.pause.setText('暂停' if state == QMediaPlayer.PlaybackState.PlayingState else '继续')
+        self.pause.setIcon(self.control_icon(QStyle.StandardPixmap.SP_MediaPause if state == QMediaPlayer.PlaybackState.PlayingState else QStyle.StandardPixmap.SP_MediaPlay))
+        self.show_controls()
         self.sample()
 
     def toggle(self):
@@ -184,6 +334,8 @@ class Player(QDialog):
                 box.addItem('关闭字幕', -1)
             for i, track in enumerate(tracks):
                 box.addItem(track.stringValue(QMediaMetaData.Key.Title) or track.stringValue(QMediaMetaData.Key.Language) or f'轨道 {i + 1}', i)
+            active = self.media.activeSubtitleTrack() if off else self.media.activeAudioTrack()
+            box.setCurrentIndex(box.findData(active))
             box.blockSignals(False)
 
     def load_subtitle(self, path):
@@ -209,6 +361,10 @@ class Player(QDialog):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
             self.showNormal()
+        elif event.key() == Qt.Key.Key_F:
+            self.toggle_fullscreen()
+        elif event.key() in {Qt.Key.Key_Left, Qt.Key.Key_Right}:
+            self.jump(-10000 if event.key() == Qt.Key.Key_Left else 10000)
         elif event.key() == Qt.Key.Key_Space:
             self.toggle()
         else:

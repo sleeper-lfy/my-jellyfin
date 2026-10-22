@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+from html import escape
 from pathlib import Path
 import time
 import traceback
@@ -9,11 +10,12 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QGridLayout, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
  QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
- QHeaderView, QProgressBar, QStyledItemDelegate, QStyle, QMenu)
+ QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu)
 from .core import Library, thumbnail, tool
 from .plugins import Plugins
 from .files import plan_move, execute_move
 from .player import Player
+from .presentation import rating_text
 from .theme import STYLE
 
 KINDS = {'movie': '电影', 'series': '电视剧', 'other': '其他'}
@@ -47,7 +49,7 @@ def clear(layout):
 class Job(QThread):
     done = Signal(object)
     failed = Signal(str)
-    progress = Signal(str)
+    progress = Signal(int, int, str)
 
     def __init__(self, directory, function, parent=None):
         super().__init__(parent)
@@ -56,7 +58,7 @@ class Job(QThread):
     def run(self):
         library = Library(self.directory)
         try:
-            self.done.emit(self.function(library, lambda done, total, path: self.progress.emit(f'{done} / {total} · {Path(path).name}')))
+            self.done.emit(self.function(library, self.progress.emit))
         except Exception as exc:
             self.failed.emit(str(exc))
             with (self.directory / 'diagnostics.log').open('a', encoding='utf-8') as stream:
@@ -74,7 +76,7 @@ class PosterList(QListWidget):
         item = self.itemAt(event.position().toPoint())
         if item and event.button() == Qt.MouseButton.LeftButton:
             data = item.data(Qt.ItemDataRole.UserRole) or {}
-            rect = self.visualItemRect(item).adjusted(8, 8, -8, -58)
+            rect = self.visualItemRect(item).adjusted(8, 8, -8, -82)
             center = rect.center()
             point = event.position().toPoint()
             if data.get('files') and abs(point.x()-center.x()) < 27 and abs(point.y()-center.y()) < 27:
@@ -89,14 +91,14 @@ class PosterDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = option.rect.adjusted(8, 8, -8, -8)
-        image_rect = QRect(rect.x(), rect.y(), rect.width(), rect.height()-50)
+        image_rect = QRect(rect.x(), rect.y(), rect.width(), rect.height()-74)
         hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         shape = QPainterPath()
         shape.addRoundedRect(image_rect, 3, 3)
         painter.setClipPath(shape)
         painter.fillRect(image_rect, QColor('#252525'))
-        cover = data.get('thumbnail') or data.get('photo_cache')
+        cover = data.get('_cover') or data.get('thumbnail') or data.get('photo_cache')
         pixmap = QPixmap()
         if cover:
             key = cover + ':' + str(Path(cover).stat().st_mtime_ns if Path(cover).exists() else 0)
@@ -149,14 +151,17 @@ class PosterDelegate(QStyledItemDelegate):
         painter.setPen(QColor('#999999'))
         painter.setFont(QFont('Segoe UI',10))
         subtitle = data.get('_subtitle') or str(data.get('year') or '')
-        if data.get('rating') is not None:
-            subtitle += '  ·  ★ ' + str(data['rating'])
+        if data.get('kind'):
+            subtitle += '  ·  ' + ('♥ 喜欢' if data.get('favorite') else '♡ 未喜欢')
         painter.drawText(QRect(rect.x(),image_rect.bottom()+30,rect.width(),18),Qt.AlignmentFlag.AlignCenter,painter.fontMetrics().elidedText(subtitle,Qt.TextElideMode.ElideRight,rect.width()-4))
+        if data.get('kind'):
+            painter.setPen(QColor('#e5c25b'))
+            painter.drawText(QRect(rect.x(),image_rect.bottom()+51,rect.width(),20),Qt.AlignmentFlag.AlignCenter, rating_text(data))
         painter.restore()
 
     def sizeHint(self, option, index):
         data = index.data(Qt.ItemDataRole.UserRole) or {}
-        return QSize(280, 214) if data.get('_landscape') else QSize(190, 327)
+        return QSize(280, 238) if data.get('_landscape') else QSize(190, 351)
 
 
 class FilterDialog(QDialog):
@@ -222,7 +227,7 @@ class FilterDialog(QDialog):
                 **({'favorite': True} if self.favorite.isChecked() else {})}
 
 
-class Details(QDialog):
+class Details(QWidget):
     def __init__(self, window, work_id):
         super().__init__(window)
         self.window, self.library, self.work_id = window, window.library, work_id
@@ -230,13 +235,26 @@ class Details(QDialog):
         w = self.work
         self.setWindowTitle(w['title'])
         self.resize(1050, 800)
-        self.backdrop = QPixmap(w['thumbnail']) if w['thumbnail'] else QPixmap()
+        # A portrait cover is never enlarged into the background.
+        self.backdrop = QPixmap()
+        candidates = [w['metadata'].get('nfo_backdrop')]
+        candidates.extend(str(self.library.directory / 'cache' / (f['digest'] + '.jpg')) for f in w['files'])
+        for candidate in candidates:
+            image = QPixmap(candidate) if candidate else QPixmap()
+            if not image.isNull() and image.width() > image.height():
+                self.backdrop = image
+                break
         outer = QVBoxLayout(self)
         outer.setContentsMargins(34, 30, 34, 24)
         outer.setSpacing(16)
+        outer.addWidget(button('← 返回', self.accept), alignment=Qt.AlignmentFlag.AlignLeft)
+        self.setMinimumHeight(760)
         top = QHBoxLayout()
-        poster = QLabel()
+        poster = self.poster = QLabel()
         poster.setFixedSize(210, 315)
+        poster.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        poster.setScaledContents(False)
+        poster.setStyleSheet('background: #181818; border: none;')
         if w['thumbnail']:
             pixmap = QPixmap(w['thumbnail'])
             poster.setPixmap(pixmap.scaled(poster.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
@@ -246,9 +264,16 @@ class Details(QDialog):
         heading.setWordWrap(True)
         info.addWidget(heading)
         info.addWidget(label(f"{KINDS[w['kind']]}  /  {w['year'] or '年份待补充'}  /  {len(w['files'])} 个视频文件", 'subtitle'))
-        tags = label('  ·  '.join(w['metadata'].get('tags', [])))
-        tags.setWordWrap(True)
-        info.addWidget(tags)
+        def links(values, field):
+            widget = QLabel()
+            widget.setTextFormat(Qt.TextFormat.RichText)
+            widget.setWordWrap(True)
+            widget.setText('  ·  '.join(f'<a href="{index}" style="color:#00a4dc;text-decoration:none">{escape(value)}</a>' for index,value in enumerate(values)))
+            widget.linkActivated.connect(lambda index: window.search_metadata(field, values[int(index)]))
+            info.addWidget(widget)
+            return widget
+        self.tag_links = links(w['metadata'].get('tags', []), 'tags_all')
+        self.actor_links = links([actor['name'] for actor in w['metadata'].get('actors', [])], 'actor')
         if w['metadata'].get('released'):
             info.addWidget(label('上映 / 首播：' + str(w['metadata']['released']), 'subtitle'))
         description = label(w['metadata'].get('overview', '暂无简介。可通过刮削插件补充资料。') if w['kind'] != 'other' else '保留原始目录结构，不进行联网刮削。')
@@ -276,7 +301,7 @@ class Details(QDialog):
             rating.setValue(w['rating'] or 0)
             rating.valueChanged.connect(lambda value: self.personal(rating=value or None))
             personal.addWidget(rating)
-        for key, title in [('favorite','收藏'),('watchlist','想看'),('disliked','不感兴趣')]:
+        for key, title in [('favorite','喜欢'),('watchlist','想看'),('disliked','不感兴趣')]:
             check = QCheckBox(title)
             check.setChecked(bool(w[key]))
             check.toggled.connect(lambda value, key=key: self.personal(**{key: value}))
@@ -312,21 +337,31 @@ class Details(QDialog):
         bottom = QHBoxLayout()
         bottom.addWidget(button('重新截取封面…', self.recapture))
         bottom.addStretch()
-        bottom.addWidget(button('关闭', self.accept))
+        bottom.addWidget(button('返回媒体库', self.accept))
         outer.addLayout(bottom)
+
+    def accept(self):
+        if self.window.detail_page is self:
+            self.window.back_details()
+        else:
+            self.close()
 
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor('#101010'))
         if not self.backdrop.isNull():
-            image = self.backdrop.scaled(self.width(), 500, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            painter.drawPixmap(0, (500-image.height())//2, image)
-            painter.fillRect(QRect(0, 0, self.width(), 500), QColor(0, 0, 0, 165))
-            fade = QLinearGradient(0, 100, 0, 500)
+            area = QRect(0, 0, self.width(), min(500, self.height()))
+            painter.save()
+            painter.setClipRect(area)
+            image = self.backdrop.scaled(area.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap((area.width()-image.width())//2, (area.height()-image.height())//2, image)
+            painter.fillRect(area, QColor(0, 0, 0, 165))
+            fade = QLinearGradient(0, 100, 0, area.height())
             fade.setColorAt(0, QColor(16,16,16,0))
             fade.setColorAt(1, QColor('#101010'))
-            painter.fillRect(QRect(0, 0, self.width(), 500), fade)
+            painter.fillRect(area, fade)
+            painter.restore()
 
     def personal(self, **fields):
         self.library.update_personal(self.work_id, **fields)
@@ -478,8 +513,9 @@ class MainWindow(QMainWindow):
         self.display_count = 0
         self.random_active = False
         self.player = Player(self.library, self)
-        self.player.queueNext.connect(lambda: self.queue_play(1) if self.random_active else None)
-        self.player.queuePrevious.connect(lambda: self.queue_play(-1) if self.random_active else None)
+        self.player.queueNext.connect(lambda: self.step_playback(1))
+        self.player.queuePrevious.connect(lambda: self.step_playback(-1))
+        self.player.refreshed.connect(self.refresh)
         self.root = QWidget()
         self.root.setObjectName('root')
         self.setCentralWidget(self.root)
@@ -533,10 +569,15 @@ class MainWindow(QMainWindow):
         nav.addWidget(button('设置', self.settings))
         body.addWidget(self.drawer)
         self.drawer.hide()
-        main = QVBoxLayout()
+        self.pages = QStackedWidget()
+        self.browse_page = QWidget()
+        self.pages.addWidget(self.browse_page)
+        self.detail_page = None
+        self.details_scroll = None
+        body.addWidget(self.pages, 1)
+        main = QVBoxLayout(self.browse_page)
         main.setContentsMargins(42, 18, 42, 12)
         main.setSpacing(10)
-        body.addLayout(main, 1)
         tools_row = QHBoxLayout()
         self.import_control = button('＋ 添加媒体', self.import_dialog)
         self.filter_control = button('筛选', self.filter_dialog)
@@ -555,7 +596,6 @@ class MainWindow(QMainWindow):
         main.addWidget(self.tabs)
         from .home import HomePage
         self.home_page = HomePage(self)
-        main.addWidget(self.home_page, 1)
         self.home_page.hide()
         self.toolbar = QHBoxLayout()
         self.toolbar.addWidget(button('洗牌播放全部结果', self.shuffle))
@@ -563,6 +603,12 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(button('打开智能片单', self.load_list))
         self.toolbar.addWidget(button('刷新新片', self.discover))
         self.toolbar.addStretch()
+        self.view_mode = QComboBox()
+        self.view_mode.addItem('海报', 'poster')
+        self.view_mode.addItem('缩略图', 'thumbnail')
+        self.view_mode.setCurrentIndex(max(0, self.view_mode.findData(self.library.setting('view_mode', 'poster'))))
+        self.view_mode.currentIndexChanged.connect(self.change_view_mode)
+        self.toolbar.addWidget(self.view_mode)
         self.actor_min = QComboBox()
         for n in [0,1,3,5,10]:
             self.actor_min.addItem(f'至少 {n} 部已评分', n)
@@ -581,6 +627,7 @@ class MainWindow(QMainWindow):
         self.category_filter.currentIndexChanged.connect(self.refresh)
         self.toolbar.addWidget(self.category_filter)
         main.addLayout(self.toolbar)
+        main.addWidget(self.home_page, 1)
         self.splitter = QSplitter()
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel('文件夹')
@@ -613,8 +660,14 @@ class MainWindow(QMainWindow):
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
         main.addWidget(self.empty, 1)
+        self.job_progress = QProgressBar()
+        self.job_progress.setMaximumHeight(18)
+        self.job_progress.hide()
+        root.addWidget(self.job_progress)
         self.status = label('就绪', 'subtitle')
-        main.addWidget(self.status)
+        self.status.setWordWrap(True)
+        self.status.setContentsMargins(42, 4, 42, 8)
+        root.addWidget(self.status)
         self.navigate('home')
         config = self.library.setting('lan', {})
         if config.get('enabled'):
@@ -636,6 +689,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def navigate(self, section):
+        self.back_details()
         self.drawer.hide()
         self.section, self.subtab = section, 0
         self.filters = {}
@@ -680,10 +734,26 @@ class MainWindow(QMainWindow):
             filters['query'] = self.search.text().strip()
         return filters
 
+    def change_view_mode(self):
+        self.library.set_setting('view_mode', self.view_mode.currentData())
+        self.refresh()
+
+    def card_data(self, data, landscape=False):
+        record = dict(data)
+        record['_landscape'] = bool(data.get('kind')) and (landscape or self.view_mode.currentData() == 'thumbnail')
+        if record['_landscape']:
+            for file in data.get('files', []):
+                frame = self.library.directory / 'cache' / (file['digest'] + '.jpg')
+                if frame.exists():
+                    record['_cover'] = str(frame)
+                    break
+        return record
+
     def refresh(self, *_):
         actresses = self.section == 'movie' and self.subtab == 1
         for index in range(4):
             self.toolbar.itemAt(index).widget().setVisible((self.section == 'discover') if index == 3 else self.section not in {'discover','stats'})
+        self.view_mode.setVisible(not actresses and self.section != 'stats')
         self.actor_min.setVisible(actresses)
         self.actor_sort.setVisible(actresses)
         self.source_filter.setVisible(self.section == 'discover')
@@ -749,7 +819,7 @@ class MainWindow(QMainWindow):
     def append_cards(self):
         for data in self.current_items[self.display_count:self.display_count + 60]:
             item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, data)
+            item.setData(Qt.ItemDataRole.UserRole, self.card_data(data))
             item.setToolTip((data.get('title') or data.get('name', '')) + '\n' + '\n'.join(data.get('reasons', [])))
             self.cards.addItem(item)
         self.display_count = self.cards.count()
@@ -761,9 +831,33 @@ class MainWindow(QMainWindow):
     def open_item(self, item):
         data = item.data(Qt.ItemDataRole.UserRole)
         if 'work_ids' in data:
-            self.actor_details(data)
+            self.search_metadata('actor', data['name'])
         else:
-            Details(self, data['id']).exec()
+            self.open_details(data['id'])
+
+    def open_details(self, work_id):
+        self.back_details()
+        self.detail_page = Details(self, work_id)
+        self.details_scroll = QScrollArea()
+        self.details_scroll.setWidgetResizable(True)
+        self.details_scroll.setWidget(self.detail_page)
+        self.pages.addWidget(self.details_scroll)
+        self.pages.setCurrentWidget(self.details_scroll)
+
+    def back_details(self):
+        if self.details_scroll is not None:
+            self.pages.setCurrentWidget(self.browse_page)
+            self.pages.removeWidget(self.details_scroll)
+            self.details_scroll.deleteLater()
+            self.details_scroll = None
+            self.detail_page = None
+
+    def search_metadata(self, field, value):
+        self.navigate('home')
+        self.tabs.setCurrentIndex(2)
+        self.filters = {field: [value] if field == 'tags_all' else value}
+        self.heading.setText(('标签：' if field == 'tags_all' else '演员：') + value)
+        self.refresh()
 
     def card_menu(self, position):
         item = self.cards.itemAt(position)
@@ -772,41 +866,16 @@ class MainWindow(QMainWindow):
         data = item.data(Qt.ItemDataRole.UserRole)
         menu = QMenu(self)
         menu.addAction('查看详情', lambda: self.open_item(item))
+        if data.get('kind'):
+            menu.addAction('取消喜欢' if data.get('favorite') else '喜欢', lambda: self.toggle_favorite(data['id']))
         if data.get('files'):
             menu.addAction('播放 / 继续观看', lambda: self.play_work(data['id']))
         menu.exec(self.cards.mapToGlobal(position))
 
-    def actor_details(self, actor):
-        dialog = QDialog(self)
-        dialog.resize(850, 660)
-        dialog.setWindowTitle(actor['name'])
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(label(actor['name'], 'heading'))
-        layout.addWidget(label(actor['_subtitle']))
-        layout.addWidget(label('别名：' + ' / '.join(actor.get('aliases', [])), 'subtitle'))
-        layout.addWidget(button('随机播放参演电影', lambda: self.shuffle({'kinds':['movie'], 'ids':actor['work_ids']}), True))
-        search = QLineEdit()
-        search.setPlaceholderText('筛选参演影片…')
-        layout.addWidget(search)
-        cards = PosterList(self.play_work)
-        cards.setViewMode(QListWidget.ViewMode.IconMode)
-        cards.setResizeMode(QListWidget.ResizeMode.Adjust)
-        cards.setItemDelegate(PosterDelegate(cards))
-        cards.setMovement(QListWidget.Movement.Static)
-        def fill():
-            cards.clear()
-            for work_id in actor['work_ids']:
-                w = self.library.work(work_id)
-                if search.text().casefold() not in w['title'].casefold():
-                    continue
-                item = QListWidgetItem()
-                item.setData(Qt.ItemDataRole.UserRole, w)
-                cards.addItem(item)
-        search.textChanged.connect(fill)
-        fill()
-        cards.itemClicked.connect(self.open_item)
-        layout.addWidget(cards)
-        dialog.exec()
+    def toggle_favorite(self, work_id):
+        work = self.library.work(work_id)
+        self.library.update_personal(work_id, favorite=not work['favorite'])
+        self.refresh()
 
     def search_all(self):
         query = self.search.text()
@@ -935,14 +1004,22 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, '任务进行中', '请等待当前后台任务完成后再执行此操作。播放和浏览仍可继续。')
             return
         self.status.setText(title + '…')
+        self.job_progress.setRange(0, 0)
+        self.job_progress.show()
         job = Job(self.library.directory, function, self)
         self.jobs.append(job)
-        job.progress.connect(self.status.setText)
+        def show_progress(done, total, message):
+            self.job_progress.setRange(0, total)
+            self.job_progress.setValue(done)
+            self.job_progress.setFormat('%v / %m · %p%')
+            self.status.setText(title + ' · ' + message)
+        job.progress.connect(show_progress)
         # Deliver completion after the thread exits, allowing dependent jobs to start.
         outcome = {}
         job.done.connect(lambda value: outcome.update(value=value))
         job.failed.connect(lambda error: outcome.update(error=error))
         def finished():
+            self.job_progress.hide()
             self.jobs.remove(job)
             job.deleteLater()
             self.refresh()
@@ -955,6 +1032,15 @@ class MainWindow(QMainWindow):
                     callback(outcome.get('value'))
         job.finished.connect(finished)
         job.start()
+
+    def step_playback(self, direction):
+        if self.random_active:
+            self.queue_play(direction)
+        elif self.player.file:
+            items = [w for w in self.current_items if w.get('files')]
+            index = next((i for i, w in enumerate(items) if w['id'] == self.player.file['work_id']), -1)
+            if index >= 0 and 0 <= index + direction < len(items):
+                self.play_work(items[index + direction]['id'])
 
     def play_work(self, work_id, random=False):
         try:
@@ -1105,7 +1191,7 @@ class MainWindow(QMainWindow):
                 self.run_job('重试导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p))
             elif task['kind'] == 'match':
                 dialog.accept()
-                Details(self, payload['work_id']).exec()
+                self.open_details(payload['work_id'])
             elif task['kind'] == 'scrape':
                 QMessageBox.information(dialog, '重试刮削', '请在影片详情中重新刮削，或在发现页刷新；搜索结果仍需确认匹配。')
         layout.addWidget(button('恢复 / 重试选中任务', retry, True))

@@ -1,7 +1,7 @@
 """Jellyfin-style media shortcuts and horizontal rows, backed exclusively by the library."""
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPainter, QPixmap, QColor, QLinearGradient, QFont
-from PySide6.QtWidgets import QScrollArea,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QListWidget,QListWidgetItem,QAbstractItemView,QLabel
+from PySide6.QtWidgets import QScrollArea,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QListWidget,QListWidgetItem,QAbstractItemView,QLabel,QSizePolicy
 
 
 class MediaTile(QPushButton):
@@ -9,18 +9,31 @@ class MediaTile(QPushButton):
         super().__init__()
         self.title, self.subtitle = title, subtitle
         self.cover = QPixmap(cover) if cover else QPixmap()
-        self.setMinimumHeight(142)
+        policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+        self.setMinimumWidth(120)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clicked.connect(action)
         self.setAccessibleName(title)
         self.setToolTip(title)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return max(1, round(width * 9 / 16))
+
+    def sizeHint(self):
+        return QSize(320, 180)
 
     def paintEvent(self,event):
         painter=QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(),QColor('#242424'))
         if not self.cover.isNull():
-            image=self.cover.scaled(self.size(),Qt.AspectRatioMode.KeepAspectRatioByExpanding,Qt.TransformationMode.SmoothTransformation)
+            mode = Qt.AspectRatioMode.KeepAspectRatioByExpanding if self.cover.width() > self.cover.height() else Qt.AspectRatioMode.KeepAspectRatio
+            image=self.cover.scaled(self.size(),mode,Qt.TransformationMode.SmoothTransformation)
             painter.drawPixmap((self.width()-image.width())//2,(self.height()-image.height())//2,image)
         shade=QLinearGradient(0,0,0,self.height())
         shade.setColorAt(0,QColor(0,0,0,15))
@@ -61,7 +74,8 @@ class HomePage(QScrollArea):
         tiles.setSpacing(16)
         for kind,title in [('movie','电影'),('series','电视剧'),('other','其他视频')]:
             items=[w for w in works if w['kind']==kind]
-            cover=next((w['thumbnail'] for w in items if w['thumbnail']),None)
+            covers = [self.window.card_data(w, True) for w in items]
+            cover=next((w.get('_cover') or w.get('thumbnail') for w in covers if w.get('_cover') or w.get('thumbnail')),None)
             tiles.addWidget(MediaTile(title,f'{len(items)} 部作品',cover,lambda checked=False,kind=kind:self.window.navigate(kind)))
         self.layout.addLayout(tiles)
         links=QHBoxLayout()
@@ -90,10 +104,11 @@ class HomePage(QScrollArea):
             cards.setItemDelegate(PosterDelegate(cards))
             cards.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             cards.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            cards.setFixedHeight(238 if landscape else 350)
+            landscape = landscape or self.window.view_mode.currentData() == 'thumbnail'
+            cards.setFixedHeight(262 if landscape else 374)
             cards.setSpacing(2)
             for work in items[:24]:
-                record=dict(work,_landscape=landscape)
+                record=self.window.card_data(work, landscape)
                 item=QListWidgetItem()
                 item.setData(Qt.ItemDataRole.UserRole,record)
                 item.setToolTip(work['title']+'\n'+'\n'.join(work.get('reasons',[])))

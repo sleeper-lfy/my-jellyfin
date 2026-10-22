@@ -27,11 +27,18 @@ def data_directory():
     return Path(os.environ.get('LUMEN_DATA_DIR') or Path(os.environ.get('LOCALAPPDATA', Path.home() / '.local/share')) / 'Lumen')
 
 
-def fingerprint(path):
+def fingerprint(path, progress=None):
     digest = hashlib.sha256()
+    size = Path(path).stat().st_size
+    processed = 0
+    reported = time.monotonic()
     with Path(path).open('rb') as stream:
         for block in iter(lambda: stream.read(4 * 1024 * 1024), b''):
             digest.update(block)
+            processed += len(block)
+            if progress and (time.monotonic() - reported >= .25 or processed == size):
+                progress(processed, size)
+                reported = time.monotonic()
     return digest.hexdigest()
 
 
@@ -214,24 +221,44 @@ class Library:
         payload = {'root': str(root), 'kind': kind}
         self.task(task_id, 'import', 'running', payload)
         results = {'imported': 0, 'duplicates': 0, 'errors': [], 'warnings': []}
+        def report(done, total, stage, path='', force=True):
+            payload['progress'] = {'completed': done, 'total': total, 'stage': stage, 'path': str(path)}
+            if force or time.monotonic() - report.saved >= 1:
+                self.task(task_id, 'import', 'running', payload, results)
+                report.saved = time.monotonic()
+            if progress:
+                progress(done, total, stage + (' · ' + str(path) if path else ''))
+        report.saved = 0
         try:
-            paths = sorted(p for p in root.rglob('*') if p.is_file() and not p.is_symlink() and p.suffix.lower() in VIDEO_EXTENSIONS and root in p.resolve().parents)
+            report(0, 0, '扫描文件夹', root)
+            paths = []
+            last_scan = time.monotonic()
+            for candidate in root.rglob('*'):
+                if candidate.is_file() and not candidate.is_symlink() and candidate.suffix.lower() in VIDEO_EXTENSIONS and root in candidate.resolve().parents:
+                    paths.append(candidate)
+                if time.monotonic() - last_scan >= .25:
+                    report(0, 0, f'扫描文件夹，已找到 {len(paths)} 个视频', candidate, False)
+                    last_scan = time.monotonic()
+            paths.sort()
             for index, path in enumerate(paths):
                 try:
+                    report(index, len(paths), '读取 NFO', path)
                     from . import nfo
                     local = nfo.load(path, root, kind, results['warnings'])
                     existing_file = self.db.execute('SELECT id,work_id FROM files WHERE path=?',(str(path),)).fetchone()
                     if existing_file:
-                        if local['work'] or local['entry'] or local['poster']:
+                        if local['work'] or local['entry'] or local['poster'] or local.get('backdrop'):
                             with self.db:
                                 nfo.apply(self,existing_file['work_id'],existing_file['id'],local,False,False,root,results['warnings'])
                             results['nfo_updated'] = results.get('nfo_updated',0) + 1
                         results['duplicates'] += 1
                         continue
-                    digest = fingerprint(path)
+                    report(index, len(paths), '计算指纹 0%', path)
+                    digest = fingerprint(path, lambda done, total: report(index, len(paths), f'计算指纹 {done * 100 // max(1, total)}%', path, False))
                     if self.db.execute('SELECT 1 FROM files WHERE digest=?', (digest,)).fetchone():
                         results['duplicates'] += 1
                         continue
+                    report(index, len(paths), '分析媒体', path)
                     duration = probe(path)
                     entry = local['entry']
                     numbered = kind == 'series' and entry and entry['season'] is not None and entry['episode'] is not None
@@ -244,6 +271,7 @@ class Library:
                     cover = self.directory / 'cache' / (digest + '.jpg')
                     try:
                         if not cover.exists():
+                            report(index, len(paths), '生成缩略图', path)
                             thumbnail(path, cover, duration)
                     except Exception as exc:
                         results['warnings'].append({'path': str(path), 'reason': '缩略图: ' + str(exc)})
@@ -269,16 +297,15 @@ class Library:
                         self.db.execute('INSERT INTO files(work_id,path,digest,root,season,episode,duration) VALUES (?,?,?,?,?,?,?)',
                                         (work_id, str(path), digest, str(root), parsed['season'], parsed['episode'], duration))
                         file_id = self.db.execute('SELECT id FROM files WHERE path=?',(str(path),)).fetchone()[0]
-                        if local['work'] or local['entry'] or local['poster']:
+                        if local['work'] or local['entry'] or local['poster'] or local.get('backdrop'):
                             nfo.apply(self,work_id,file_id,local,not bool(known),True,root,results['warnings'])
 
                     results['imported'] += 1
                 except Exception as exc:
                     results['errors'].append({'path': str(path), 'reason': str(exc)})
                 finally:
-                    self.task(task_id, 'import', 'running', payload, results)
-                    if progress:
-                        progress(index + 1, len(paths), str(path))
+                    report(index + 1, len(paths), f"已处理 · 导入 {results['imported']} · 重复 {results['duplicates']} · 失败 {len(results['errors'])} · 警告 {len(results['warnings'])}", path)
+            report(len(paths), len(paths), '处理完成' if paths else '没有找到视频')
             self.task(task_id, 'import', 'partial' if results['errors'] else 'done', payload, results)
         except Exception as exc:
             self.task(task_id, 'import', 'failed', payload, results, str(exc))
