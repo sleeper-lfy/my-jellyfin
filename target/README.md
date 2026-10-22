@@ -30,3 +30,7 @@ Releases 中的 EXE 始终是完整单文件，不需要合并。开发版本尚
 - 两个 ZIP 均附带 `.sha256` 校验文件。源码包不是 Windows 安装程序。
 
 下载 Windows 安装包时，请检查 `windows-installer.json` 的 `source_commit` 是否为 `360138a50755dd6023a287836204c74ef804c519` 或包含它的后续版本；旧版本不包含这次修复。
+
+## 快速导入与安全退出版本（658d19a）
+
+[下载对应源码包](Lumen-source-658d19a.zip)。本版新增快速增量导入、后台补充媒体信息，以及扫描中安全退出。Windows 安装包的 `source_commit` 应为 `658d19a734b093761d550865b32c0ce58141ac31` 或包含它的后续版本；源码 ZIP 不是安装程序。
