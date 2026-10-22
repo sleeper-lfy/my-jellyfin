@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+*.spec
+.local/
+
+android/.gradle/
+android/local.properties
+**/build/
+*.apk
+*.jks
+
+*.keystore

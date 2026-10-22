@@ -1,0 +1,7 @@
+LibVLC Android 3.7.7
+Copyright VLC authors and VideoLAN
+LGPL 2.1 or later; provided without warranty.
+Unmodified native libraries distributed by VideoLAN.
+Source and build instructions: https://code.videolan.org/videolan/libvlcjni
+Artifact: https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.7.7/
+Lumen source includes the Gradle project so this library can be replaced and the APK rebuilt.

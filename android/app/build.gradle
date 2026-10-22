@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'net.lumen.media'
+    compileSdk 36
+    buildToolsVersion '35.0.0'
+    defaultConfig {
+        applicationId 'net.lumen.media'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '0.3.0'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging { jniLibs { useLegacyPackaging true } }
+    buildTypes { release { minifyEnabled false } }
+}
+dependencies {
+    implementation 'org.videolan.android:libvlc-all:3.7.7'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+}

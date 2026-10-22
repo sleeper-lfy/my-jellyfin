@@ -1,0 +1,10 @@
+{
+  "api_version": 1,
+  "id": "catalog-json",
+  "name": "开放 JSON 影片目录（示例协议）",
+  "version": "1.0.0",
+  "description": "解析实际 HTTP JSON 目录。需用户配置符合文档协议的站点；不内置虚构片库。",
+  "capabilities": ["search", "detail", "discover"],
+  "domains": ["127.0.0.1", "localhost"],
+  "base_url": "http://127.0.0.1:8765"
+}

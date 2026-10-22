@@ -1,0 +1,10 @@
+{
+  "api_version": 1,
+  "id": "internet-archive",
+  "name": "Internet Archive · 影片目录",
+  "version": "1.0.0",
+  "description": "公开电影目录搜索和新增收录发现。只读取元数据与封面，不获取视频资源。分类默认为 feature_films。",
+  "capabilities": ["search", "detail", "discover"],
+  "domains": ["archive.org"],
+  "base_url": "https://archive.org"
+}

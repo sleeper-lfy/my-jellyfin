@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=75,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumen-media"
+version = "0.1.0"
+description = "Local-first Windows personal media library"
+requires-python = ">=3.11,<3.14"
+dependencies = ["PySide6==6.8.3", "httpx[socks]==0.28.1"]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.5", "pyinstaller==6.16.0"]
+
+[project.scripts]
+lumen = "lumen.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
