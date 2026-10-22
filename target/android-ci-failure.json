@@ -1,0 +1,8 @@
+{
+  "source_commit": "c58b91b5bce388ec56eb1ff447b2da2c314b974b",
+  "run": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39835268070",
+  "sdk_outcome": "skipped",
+  "build_outcome": "skipped",
+  "sdk": [],
+  "build": []
+}
