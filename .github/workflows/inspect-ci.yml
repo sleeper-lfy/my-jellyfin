@@ -1,0 +1,27 @@
+name: Inspect selected CI failures
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/ci-inspect.json', '.github/workflows/inspect-ci.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read selected build logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/inspect-ci.py
+      - name: Save the redacted report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add target/ci-inspection.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record selected CI failure diagnostics [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
