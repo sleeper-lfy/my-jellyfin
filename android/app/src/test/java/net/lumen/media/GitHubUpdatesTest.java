@@ -72,12 +72,15 @@ public class GitHubUpdatesTest {
     }
     private Object field(Object object,String name)throws Exception{Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(object);}
     @Test public void updateScreenChecksWithoutServerAndKeepsMainThreadResponsive()throws Exception{
+        android.content.pm.PackageInfo current=RuntimeEnvironment.getApplication().getPackageManager().getPackageInfo("net.lumen.media",0);
+        String[] version=current.versionName.split("\\.");
+        String nextVersion=version[0]+"."+version[1]+"."+(Integer.parseInt(version[2])+1);long nextCode=current.getLongVersionCode()+1;
         CountDownLatch release=new CountDownLatch(1);
         try(ActivityController<UpdateActivity> lifecycle=Robolectric.buildActivity(UpdateActivity.class)){
-            UpdateActivity activity=lifecycle.get();activity.fetcher=(url,limit)->{release.await(3,TimeUnit.SECONDS);if(url.equals(GitHubUpdates.RELEASE))throw new IOException("API unavailable");return manifest("0.4.4",7);};
+            UpdateActivity activity=lifecycle.get();activity.fetcher=(url,limit)->{release.await(3,TimeUnit.SECONDS);if(url.equals(GitHubUpdates.RELEASE))throw new IOException("API unavailable");return manifest(nextVersion,nextCode);};
             lifecycle.create().start().resume().visible();TextView status=(TextView)field(activity,"status");assertTrue(status.getText().toString().contains("正在检查"));release.countDown();
             long deadline=System.currentTimeMillis()+5000;while(!status.getText().toString().contains("发现新版")&&System.currentTimeMillis()<deadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
-            assertTrue(status.getText().toString().contains("0.4.4"));assertTrue(((android.widget.Button)field(activity,"download")).isEnabled());
+            assertTrue(status.getText().toString().contains(nextVersion));assertTrue(((android.widget.Button)field(activity,"download")).isEnabled());
         }finally{release.countDown();}
     }
 }
