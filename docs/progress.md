@@ -205,3 +205,5 @@ PC 新增 GitHub 稳定 Release 检测与 target 成功发布清单回退、后�
 完整 Python 回归 209 项通过、2 项跳过（原生 mpv、Windows PowerShell 语法需对应环境）；验证了阻塞读取时 GUI 计时器继续运行、大记录预览 / 分页 / 导出、延迟图片交付时的尺寸和滚动、更新校验 / 取消 / 缓存 / 空闲等待 / 备份 / 助手请求。另已用实际 GitHub 公共数据读到 0.4.5 安装器及正确 SHA-256。未实际执行 Windows 安装器或重启电脑。实际 Qt 页面截图和范围见 [本轮 PC 修复](pc-maintenance.md)，可用 `scripts/capture-pc-maintenance-preview.py` 复现。
 
 本次仅提交源码、测试、文档与截图，不更新 target 安装包或发布 Release；0.4.5 安装包不包含这批更改。
+
+后续远端验证：源码 `4a2b7bf` 的 Windows 运行 `40013620883` 与 Android 运行 `40013620836` 均成功，未选择打包 / 发布；PowerShell 助手解析检查在 Windows 完成。新更新器已实际核对本地保存的公开 0.4.5 EXE（201246119 字节）的大小、SHA-256 与 PE 格式，没有执行安装。
