@@ -179,3 +179,15 @@ Python 完整回归 185 项通过、1 项默认原生环境检查跳过，另行
 按后续明确要求，完成 Windows + Android 打包并发布 [v0.4.4](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.4)，包含上一节全部修复。版本更新为 0.4.4 / Android versionCode 7；修正更新页面测试对旧固定版本的依赖，46 项测试与 lint、签名、ZIP 对齐和 APK 版本检查通过，签名保持不变。
 
 [发布运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39972260074) 成功：Windows 测试、打包、安装 / 启动 / 卸载检查通过，发布前再次验证 Android 源码树与签名。标签源码为 `61196f2a2233ce0a6b9bb725e983e87211c61668`，Android 从 `58321846d0b9ea68d34d44dfb865c636e1a53161` 构建，两者 Android 源码树一致。Windows EXE 201245366 字节，Android APK 100860534 字节，均已从公开 Release 下载并核对 SHA-256；target 的 Windows 分片也与完整 EXE 一致。记录见 `target/release-status.json`、`target/release-download-verification.json`。同步 README 和 target 下载说明，未加入新功能；真实硬件验收范围保持上述说明。
+
+## 0.4.5 VR、视频切换、手机关机与统一发布（2026-10-23）
+
+修复接近 / 越过垂直方向时视线水平分量趋零引起的 VR 方位跳变，改为完整相对四元数及世界竖轴扭转 / 摆动分解，保留回正、灵敏度、平滑与上下反转。数值回归覆盖四种手机朝向、120° 抬头、越过 90° 后回落、近垂直转头和倾斜姿态回正。
+
+普通和 VR 播放页底部补齐上一 / 下个视频矢量按钮，屏幕、设置菜单、蓝牙媒体键与自定义映射共用切换逻辑。先切同作品相邻文件；电视剧首末集有界；VR 等其他分类可继续当前浏览 / 搜索 / 筛选中的相邻作品，随机队列可双向切换。保留同剧手动开启的 VR；后台分页查找保持当前视频，查找失败可重试，解码重启、退出前台与模式变更会清除过期导航状态。
+
+手机电脑遥控新增 Windows 关机。PC 有独立允许开关，沿用局域网密钥认证；手机确认后 PC 显示 15 秒倒计时，两端可取消，关闭权限或退出 PC 也取消未执行请求。实际系统调用在后台进行，使用 /s /t 0 而不添加 /f，避免 Windows 延迟命令隐含强制关闭程序。测试替代实际系统调用，覆盖认证、权限、确认、两端取消、正常执行、非 Windows 和系统失败；未实际关闭用户机器。
+
+本地 Python 完整回归 188 项通过、1 项原生环境检查跳过；Android 54 项测试、lint、APK 签名 / 版本 / ZIP 对齐检查通过，保持此前签名。源码 `0d4de1f18a1ecb6be621a2be37091b34afb0a882`，发布标签 `ad9cc04cff3ddd4ecc3bbeadd83ab85b0bd87589` 的 Android 源码树一致。
+
+[发布流程](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39978714401) 成功完成 Windows 测试、打包、安装 / 启动 / 卸载检查、Android 源码匹配与签名验证并统一上传 [v0.4.5 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5)。公开 EXE 201246119 字节、APK 100992558 字节，均已重新下载并验证 SHA-256；target 的 Windows 分片与完整 EXE 一致。记录见 `target/release-status.json`、`target/release-download-verification.json`。真实手机传感器、蓝牙与 Windows 关机体验仍需设备验收。
