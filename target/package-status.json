@@ -1,0 +1,15 @@
+{
+  "version": "0.4.3",
+  "source_commit": "91f07502e6afd58a46375082f9f487ab15e51eb9",
+  "workflow_commit": "c3aba147bdcee8ea5525282ae7b2915ff77f00f0",
+  "windows": "success",
+  "delivery": "success",
+  "release_published": false,
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39930617864",
+  "tests": {
+    "tests": 180,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}
