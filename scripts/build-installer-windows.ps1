@@ -10,7 +10,7 @@ $CompilerPath = if ($Compiler) { $Compiler.Source } else { Join-Path ${env:Progr
 if (-not (Test-Path $CompilerPath)) { throw 'Install Inno Setup 6 (choco install innosetup -y), then retry.' }
 $Output = Join-Path (Get-Location) 'dist\installer'
 New-Item -ItemType Directory -Force $Output | Out-Null
-& $CompilerPath "/DBundleDir=$Bundle" "/DOutputDir=$Output" '/DAppVersion=0.4.2' 'installer\Lumen.iss'
+& $CompilerPath "/DBundleDir=$Bundle" "/DOutputDir=$Output" '/DAppVersion=0.4.3' 'installer\Lumen.iss'
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 $Installer = Join-Path $Output 'Lumen-Setup-x64.exe'
 if (-not (Test-Path $Installer)) { throw 'Installer output missing.' }

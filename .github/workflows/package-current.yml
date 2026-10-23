@@ -1,0 +1,114 @@
+name: Package explicitly requested installers without publishing
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/package-request.json']
+permissions:
+  contents: read
+concurrency:
+  group: requested-installer-packaging
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      source_commit: ${{ steps.request.outputs.source_commit }}
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate the explicit package-only request
+        id: request
+        shell: python
+        run: |
+          import json, os, re
+          from pathlib import Path
+          request = json.loads(Path('scripts/package-request.json').read_text())
+          assert request['package'] is True and request['publish'] is False
+          assert re.fullmatch(r'[0-9a-f]{40}', request['source_commit'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('source_commit=' + request['source_commit'] + '\n')
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.request.outputs.source_commit }}
+      - name: Install Windows packaging tools
+        run: |
+          choco install ffmpeg innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging tools installation failed' }
+      - name: Test, build and verify Windows installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .local | Out-Null
+          & {
+            ./scripts/build-windows.ps1
+            ./scripts/build-installer-windows.ps1
+            ./scripts/verify-installer-windows.ps1
+          } *>&1 | Tee-Object .local/package-windows.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lumen-windows-x64
+          path: |
+            dist/Lumen-windows-x64.zip
+            dist/installer/Lumen-Setup-x64.exe
+            dist/installer/Lumen-Setup-x64.exe.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-diagnostics
+          path: |
+            .local/package-windows.log
+            .local/installer-test.log
+            .local/test-results.xml
+          if-no-files-found: ignore
+
+  deliver:
+    if: always()
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        if: needs.windows.result == 'success'
+        with:
+          name: Lumen-windows-x64
+          path: .local/package-windows
+      - uses: actions/download-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: package-diagnostics
+          path: .local/package-diagnostics
+      - name: Verify matching Android package and save Windows into target
+        id: delivery
+        if: needs.windows.result == 'success'
+        env:
+          SOURCE_COMMIT: ${{ needs.windows.outputs.source_commit }}
+        run: |
+          python scripts/verify-android-target.py
+          python scripts/package-installer-target.py .local/package-windows/installer/Lumen-Setup-x64.exe target --revision "$SOURCE_COMMIT"
+      - name: Record outcome and commit package files without a Release
+        if: always()
+        env:
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          DELIVERY_RESULT: ${{ steps.delivery.outcome }}
+        run: |
+          python scripts/report-package.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all -- target
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Deliver explicitly requested installer packages without Release [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
