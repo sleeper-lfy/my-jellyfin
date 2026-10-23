@@ -20,7 +20,7 @@ for run in configuration['runs']:
             for item in archive.infolist():
                 if item.file_size>20*1024*1024:continue
                 lines=archive.read(item).decode(errors='replace').splitlines()
-                errors=[index for index,line in enumerate(lines) if re.search(r'##\[error\]|FAILED|ERROR|FAILURES|What went wrong|Caused by:|AssertionError|Exception:',line)]
+                errors=[index for index,line in enumerate(lines) if re.search(r'##\[error\]|FAILED|ERROR|FAILURES|What went wrong|Caused by:|AssertionError|Exception:|Published both verified installers',line)]
                 selected=set()
                 for index in errors:
                     selected.update(range(max(0,index-2),min(len(lines),index+9)))
@@ -32,7 +32,13 @@ for run in configuration.get('cancel',[]):
 if configuration.get('release'):
     tag=configuration['release']
     assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+',tag)
-    metadata=json.loads(subprocess.check_output(['gh','api',f'repos/{repository}/releases/tags/{tag}']))
-    result.append({'release':{key:metadata.get(key) for key in ('id','tag_name','name','draft','prerelease','published_at','target_commitish','html_url')},
-                   'assets':[{key:asset.get(key) for key in ('name','size','state','browser_download_url','digest')} for asset in metadata.get('assets',[])]})
+    response=subprocess.run(['gh','api',f'repos/{repository}/releases/tags/{tag}'],capture_output=True,text=True)
+    if response.returncode:
+        result.append({'release_lookup_error':redact(response.stderr)})
+    else:
+        metadata=json.loads(response.stdout)
+        result.append({'release':{key:metadata.get(key) for key in ('id','tag_name','name','draft','prerelease','published_at','target_commitish','html_url')},
+                       'assets':[{key:asset.get(key) for key in ('name','size','state','browser_download_url','digest')} for asset in metadata.get('assets',[])]})
+    view=subprocess.run(['gh','release','view',tag,'--json','isDraft,isPrerelease,publishedAt,tagName,name,url,assets,targetCommitish'],capture_output=True,text=True)
+    result.append({'release_cli':json.loads(view.stdout) if not view.returncode else redact(view.stderr)})
 Path('target/ci-inspection.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
