@@ -29,4 +29,10 @@ for run in configuration['runs']:
     result.append(entry)
 for run in configuration.get('cancel',[]):
     subprocess.run(['gh','api','--method','POST',f'repos/{repository}/actions/runs/{int(run)}/cancel'],capture_output=True)
+if configuration.get('release'):
+    tag=configuration['release']
+    assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+',tag)
+    metadata=json.loads(subprocess.check_output(['gh','api',f'repos/{repository}/releases/tags/{tag}']))
+    result.append({'release':{key:metadata.get(key) for key in ('id','tag_name','name','draft','prerelease','published_at','target_commitish','html_url')},
+                   'assets':[{key:asset.get(key) for key in ('name','size','state','browser_download_url','digest')} for asset in metadata.get('assets',[])]})
 Path('target/ci-inspection.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
