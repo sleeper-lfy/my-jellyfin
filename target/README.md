@@ -1,5 +1,14 @@
 # 可下载安装包
 
+## 0.4.3 打包交付（不发布 Release）
+
+本次按明确请求打包，源码为 `91f07502e6afd58a46375082f9f487ab15e51eb9`。新增目录监控、播放诊断、字幕调节、时间书签、按视频保存 VR 设置、手机遥控、媒体库体检和后台队列管理；没有增加新的 GPU 增强算法、安卓离线观看或 2D VR。
+
+- [Android APK](Lumen-android-debug.apk)：0.4.3 / versionCode 6，已构建，33 项测试、lint、签名与 ZIP 对齐检查通过，与上一版签名相同，可覆盖安装。
+- Windows EXE：由 [专用打包工作流](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/package-current.yml) 构建、测试并安装验证；结果记录在 `package-status.json`。确认 `windows-installer.json` 的源码提交为上述提交后，再按下方说明合并分片安装。源码仍为旧提交时，Windows 文件仍是 0.4.2。
+
+本次仅提交安装包到本目录并保存 Actions Artifacts，不创建或更新 Release。下方 v0.4.2 链接继续指向历史版本。
+
 ## 0.4.2 统一发布
 
 完整 Windows EXE 和 Android APK 使用同一个 [v0.4.2 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.2) 交付，附带各自的 SHA-256。发布流程在 Windows 测试、打包、安装与卸载检查通过后统一上架，不会把旧 EXE 当作新版上传。本目录的 `windows-installer.json`、`android-build.json` 记录实际文件对应的源码和校验值；`release-status.json` 记录远端发布结果。
