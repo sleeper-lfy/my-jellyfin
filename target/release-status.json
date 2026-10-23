@@ -1,8 +1,9 @@
 {
   "tag": "v0.4.2",
   "source_commit": "1519397ca4e23eea36987c540b0293a24774a6d2",
+  "workflow_commit": "d89ea98acffeb39833da2fc180db0ee6c39250a6",
   "windows": "success",
-  "publish": "failure",
-  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39908371828",
+  "publish": "success",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39909482369",
   "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.2"
 }
