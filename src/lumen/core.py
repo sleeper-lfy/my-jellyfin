@@ -19,6 +19,15 @@ VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.m4v', '.webm', '.m
 SIDECARS = {'.srt', '.ass', '.ssa', '.vtt', '.sub', '.idx', '.nfo', '.jpg', '.png'}
 
 
+def actor_defaults(metadata, kind):
+    """Apply movie defaults at read time, preserving the imported source value on disk."""
+    if kind in {'movie', 'vr'} and 'actors' in metadata:
+        metadata = {**metadata, 'actors': [
+            {**actor, 'gender': 'female'} if actor.get('gender') in (None, '', 'unknown') else actor
+            for actor in metadata['actors']]}
+    return metadata
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -209,7 +218,7 @@ class Library:
         if not row:
             raise ValueError('媒体不存在')
         item = dict(row)
-        item['metadata'] = json.loads(item['metadata'])
+        item['metadata'] = actor_defaults(json.loads(item['metadata']), item['kind'])
         item['locked'] = json.loads(item['locked'])
         item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
         for file in item['files']:
@@ -555,7 +564,7 @@ class Library:
         items = []
         for row in rows:
             item = dict(row)
-            item['metadata'] = json.loads(item['metadata'])
+            item['metadata'] = actor_defaults(json.loads(item['metadata']), item['kind'])
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
             for file in item['files']:
@@ -591,6 +600,24 @@ class Library:
             items.append(item)
         return items[offset:offset + limit if limit is not None else None]
 
+    def filter_options(self, kinds=None, local=True):
+        """Full catalog facets without loading video files, images or watch history."""
+        tags, actors, years = set(), set(), set()
+        sql = 'SELECT kind,year,metadata FROM works'
+        if local:
+            sql += ' WHERE EXISTS(SELECT 1 FROM files WHERE work_id=works.id)'
+        for row in self.db.execute(sql):
+            if kinds is not None and row['kind'] not in kinds:
+                continue
+            metadata = json.loads(row['metadata'])
+            tags.update(metadata.get('tags', []))
+            for actor in metadata.get('actors', []):
+                actors.update([actor['name'], *actor.get('aliases', [])])
+            if row['year']:
+                years.add(row['year'])
+        return {'tags': sorted(tags, key=str.casefold), 'actors': sorted(actors, key=str.casefold),
+                'years': sorted(years, reverse=True)}
+
     def shuffle(self, filters):
         filters = {**filters, 'local': True}
         ids = [w['id'] for w in self.query(filters)]
@@ -614,7 +641,7 @@ class Library:
 
     def actresses(self, minimum=0, order='average'):
         actors = {}
-        # Stable external IDs and overlapping aliases merge identities; unknown genders never imply female.
+        # Stable external IDs and overlapping aliases merge identities; movie actors with unknown gender use the female default.
         for item in self.query({'kinds': ['movie']}):
             for actor in item['metadata'].get('actors', []):
                 if actor.get('gender') != 'female':

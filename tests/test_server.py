@@ -10,7 +10,7 @@ def lan(library, video_factory):
     source.with_suffix('.srt').write_text('1\n00:00:00,000 --> 00:00:02,000\nLAN subtitle\n', encoding='utf-8')
     library.import_folder(source.parent, 'movie')
     clock = [100.0]
-    server = LanServer(library.directory, host='127.0.0.1', port=0, clock=lambda: clock[0])
+    server = LanServer(library.directory, host='127.0.0.1', port=0, clock=lambda: clock[0], discovery_port=0)
     server.start()
     with httpx.Client(base_url=f'http://127.0.0.1:{server.port}', headers={'Authorization': 'Bearer '+server.token}, trust_env=False) as client:
         yield client, server, source, clock
@@ -121,3 +121,45 @@ def test_valid_watch_threshold_and_full_queue(lan, library):
         server.tick(library, key, {'seq': second, 'position': second, 'playing': True})
         if second == 600: assert library.stats()['valid'] == 0
     assert client.get('/api/stats').json()['valid'] == 1
+
+
+def test_discovery_has_no_secrets_and_stops_with_server(lan):
+    import socket
+    import secrets
+    client,server,_,_ = lan
+    nonce = secrets.token_hex(16)
+    discovery = server.discovery
+    assert discovery is not None
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
+        sock.settimeout(.6)
+        sock.sendto(b'LUMEN_DISCOVER_V1 '+nonce.encode(),('127.0.0.1',discovery.port))
+        data,_ = sock.recvfrom(1024)
+        result = json.loads(data)
+        assert result['nonce'] == nonce and result['port'] == server.port
+        assert result['service'] == 'lumen'
+        assert server.token.encode() not in data and b'path' not in data
+        sock.sendto(b'LUMEN_DISCOVER_V1 bad',('127.0.0.1',discovery.port))
+        with pytest.raises(socket.timeout): sock.recvfrom(1024)
+    assert client.get('/api/filters',headers={'Authorization':''}).status_code == 401
+    server.stop()
+    assert not discovery.thread.is_alive() and server.discovery is None
+
+
+def test_lan_facets_and_combined_filters_apply_before_pagination_and_queue(lan,library):
+    from test_core import add_work
+    client,_,_,_ = lan
+    for i in range(35): add_work(library,f'Filters {i}',year=2020+i%2,metadata={'tags':['Target' if i%2 else 'Other'],'actors':[{'name':'Actress','aliases':['Alias']}]})
+    add_work(library,'Nonlocal',local=False,metadata={'tags':['Hidden']})
+    options=client.get('/api/filters?kind=movie').json()
+    assert 'Target' in options['tags'] and 'Hidden' not in options['tags']
+    assert 'Alias' in options['actors']
+    path='/api/works?tag=Target&actor=Alias&year=2021&limit=1'
+    result=client.get(path).json()
+    assert result['total']==17 and len(result['items'])==1
+    assert client.get('/api/works?tag=Target&year=2020').json()['total']==0
+    assert client.get('/api/works?year=oops').status_code==400
+    assert client.get('/api/works?year=9999').status_code==400
+    ids=client.post('/api/queue',json={'tag':'Target','actor':'Alias','year':'2021'}).json()['ids']
+    assert len(ids)==17
+    recommended=client.get('/api/recommendations?tag=Target&year=2021').json()['items']
+    assert {item['id'] for item in recommended}==set(ids)

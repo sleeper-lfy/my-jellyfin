@@ -30,25 +30,3 @@ for run in configuration['runs']:
 for run in configuration.get('cancel',[]):
     subprocess.run(['gh','api','--method','POST',f'repos/{repository}/actions/runs/{int(run)}/cancel'],capture_output=True)
 Path('target/ci-inspection.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
-
-publish=configuration.get('publish')
-if publish:
-    import hashlib,sys
-    run=int(publish['run']);source=publish['source'];tag=publish['tag']
-    provenance=json.loads(subprocess.check_output(['gh','api',f'repos/{repository}/actions/runs/{run}']))
-    assert provenance['head_sha']==source,'Installer source commit mismatch'
-    jobs=json.loads(subprocess.check_output(['gh','api',f'repos/{repository}/actions/runs/{run}/jobs']))
-    assert any(job['name']=='windows' and job['conclusion']=='success' for job in jobs['jobs']),'Windows verification did not pass'
-    destination=Path('.local/release-retry');destination.mkdir(exist_ok=True,parents=True)
-    subprocess.run(['gh','run','download',str(run),'--repo',repository,'--name','Lumen-windows-x64','--dir',str(destination)],check=True)
-    installer=destination/'installer/Lumen-Setup-x64.exe'
-    expected=installer.with_suffix('.exe.sha256').read_text().split()[0]
-    assert hashlib.sha256(installer.read_bytes()).hexdigest()==expected,'Installer checksum mismatch'
-    subprocess.run([sys.executable,'scripts/verify-android-target.py'],check=True)
-    subprocess.run([sys.executable,'scripts/package-installer-target.py',str(installer),'target','--revision',source],check=True)
-    files=[str(installer),str(installer)+'.sha256','target/Lumen-android-debug.apk','target/Lumen-android-debug.apk.sha256']
-    exists=subprocess.run(['gh','release','view',tag,'--repo',repository],capture_output=True).returncode==0
-    command=['gh','release','upload',tag,*files,'--clobber'] if exists else ['gh','release','create',tag,*files,'--verify-tag','--title','Lumen 0.4.1 · Windows + Android','--notes','Verified Windows x64 installer and Android 0.4.1 APK, with SHA-256 checksums. Playback controls, VR and Bluetooth mappings, local NFO artwork and discovery resources.']
-    publication=subprocess.run(command,capture_output=True,text=True)
-    Path('target/release-upload.json').write_text(json.dumps({'tag':tag,'source_commit':source,'installer_sha256':expected,
-        'uploaded':publication.returncode==0,'output':redact(publication.stdout+publication.stderr)},ensure_ascii=False,indent=2)+'\n')

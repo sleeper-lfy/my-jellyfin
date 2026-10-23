@@ -184,11 +184,11 @@ class Plugins:
             self.library.task(task_id, 'scrape', 'failed', payload, error=str(exc))
             raise
 
-    def merge(self, plugin_id, metadata, work_id=None):
+    def merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False):
         with self.library.db:
-            return self._merge(plugin_id,metadata,work_id)
+            return self._merge(plugin_id,metadata,work_id,replace_nfo=replace_nfo)
 
-    def _merge(self, plugin_id, metadata, work_id=None):
+    def _merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False):
         metadata = {key:value for key,value in metadata.items() if key not in {'stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','nfo_thumbnails','download_plugin'}}
         validate_metadata(metadata)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
@@ -239,7 +239,7 @@ class Plugins:
             item = self.library.work(work_id)
             if item['kind'] != kind:
                 raise ValueError('候选媒体类型不匹配')
-            protected = set(item['locked']) | set(item['metadata'].get('nfo_fields', []))
+            protected = set(item['locked']) | (set() if replace_nfo else set(item['metadata'].get('nfo_fields', [])))
             merged = {**item['metadata'], **{k: v for k, v in metadata.items() if k not in protected and v not in (None, [], '')}}
             merged['external_ids'] = {**item['metadata'].get('external_ids',{}), **metadata.get('external_ids',{})}
             if 'aliases' not in protected:
@@ -261,7 +261,7 @@ class Plugins:
                                     (work_id, plugin_id, plugin['name'], str(metadata['id']), metadata['url'], now(), metadata.get('site_added'), metadata.get('rating')))
         # Images use exactly the same network policy and proxy as metadata.
         for image_url, actor in [(metadata.get('poster'), None), *[(a.get('photo'), a) for a in merged.get('actors', [])]]:
-            if not image_url or actor is None and item['metadata'].get('nfo_poster'):
+            if not image_url or actor is None and item['metadata'].get('nfo_poster') and not replace_nfo:
                 continue
             try:
                 data, content_type = self.fetch(plugin, image_url, image=True)
@@ -275,6 +275,7 @@ class Plugins:
                 picture.save(str(path), 'JPG')
                 with self.library.db:
                     if actor is None and 'poster' not in item['locked']:
+                        if replace_nfo: merged.pop('nfo_poster', None)
                         self.library.db.execute('UPDATE works SET thumbnail=? WHERE id=?', (str(path), work_id))
                     elif actor is not None:
                         actor['photo_cache'] = str(path)

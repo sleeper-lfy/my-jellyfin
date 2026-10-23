@@ -127,7 +127,8 @@ def test_actresses_average_aliases_and_versions(library):
     with library.db:
         library.db.execute('INSERT INTO files(work_id,path,digest,root,duration) VALUES (?,?,?,?,?)',(ids[0],'/media/alternate.mkv','alternate','/media',1000))
     wall = library.actresses()
-    assert len(wall) == 1
+    assert len(wall) == 2
+    assert {actor['name'] for actor in wall} == {'Alice','Unknown'}
     assert wall[0]['average'] == 9 and wall[0]['rated'] == 3 and wall[0]['count'] == 4
     assert library.actresses(minimum=5) == []
 
@@ -240,7 +241,7 @@ def test_metadata_locks_preserve_personal_rating(library):
     library.update_personal(work_id,rating=7)
     library.edit_metadata(work_id,{'title':'User title','actors':[{'name':'A','gender':'unknown'}]},['title','actors'])
     assert library.work(work_id)['rating']==7
-    assert library.actresses()==[]
+    assert [actor['name'] for actor in library.actresses()]==['A']
 
 
 def test_import_progress_reports_work_before_first_file_completes(library,video_factory):
@@ -264,3 +265,29 @@ def test_import_progress_reports_work_before_first_file_completes(library,video_
     result=library.import_folder(source.parent,'movie',progress)
     assert result['duplicates']==1 and events[-1][0:2]==(1,1)
     assert not any('计算指纹' in e[2] for e in events)
+
+
+def test_movie_actor_default_applies_to_existing_data_without_rewriting_source(library):
+    people = [{'name':'Unspecified'}, {'name':'Unknown','gender':'unknown'},
+              {'name':'Man','gender':'male'}, {'name':'Woman','gender':'female'}]
+    movie = add_work(library,'Defaults',metadata={'actors':people})
+    series = add_work(library,'Series defaults',kind='series',metadata={'actors':people})
+    vr = add_work(library,'VR defaults',kind='vr',metadata={'actors':people})
+    for work_id in (movie,vr):
+        assert [a['gender'] for a in library.work(work_id)['metadata']['actors']] == ['female','female','male','female']
+    assert library.work(series)['metadata']['actors'][1]['gender'] == 'unknown'
+    assert 'gender' not in library.work(series)['metadata']['actors'][0]
+    assert {w['id'] for w in library.query({'female_cast':True})} == {movie,series,vr}
+    assert {a['name'] for a in library.actresses()} == {'Unspecified','Unknown','Woman'}
+    raw = json.loads(library.db.execute('SELECT metadata FROM works WHERE id=?',(movie,)).fetchone()[0])
+    assert raw['actors'] == people
+
+
+def test_filter_options_cover_full_scope_and_aliases(library):
+    for i in range(45): add_work(library,f'Facet {i}',year=1980+i,metadata={'tags':[f'Tag {i}'],'actors':[{'name':f'Actor {i}','aliases':[f'Alias {i}']}]})
+    add_work(library,'Series facet',kind='series',metadata={'tags':['Series']})
+    add_work(library,'Discovery facet',local=False,metadata={'tags':['Remote']})
+    options = library.filter_options(['movie'])
+    assert len(options['tags']) == 45
+    assert 'Alias 44' in options['actors'] and options['years'] == list(range(2024,1979,-1))
+    assert 'Remote' in library.filter_options(local=False)['tags']

@@ -1,8 +1,5 @@
 name: Inspect selected CI failures
 on:
-  push:
-    branches: [main]
-    paths: ['scripts/ci-inspect.json', '.github/workflows/inspect-ci.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -20,8 +17,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all -- target
+          git add target/ci-inspection.json
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Save verified release artifacts and CI report [skip ci]"
+          git commit -m "Save selected CI diagnostics [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main

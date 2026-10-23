@@ -6,9 +6,11 @@ Lumen Android 是本项目服务端的原生客户端，最低 Android 8.0（API
 
 1. 安装 `Lumen-android-debug.apk`（开发测试签名）。Android 提示时，允许当前文件管理器安装此应用。
 2. 在电脑端导入视频，打开 **设置 → 局域网 / Android**，勾选启动服务，默认端口 `8097`，点击应用。
-3. 手机和电脑连接同一路由器。电脑防火墙允许 Lumen/Python 在专用网络接收入站连接；若需要手动规则，允许 TCP 8097（更改端口后相应调整）。
-4. 手机输入电脑的地址，例如 `http://192.168.1.10:8097`，复制电脑设置中的完整访问密钥，连接。不要用 `localhost`、`127.0.0.1` 或 `0.0.0.0` 作为手机连接地址。
-5. 可浏览电影/电视剧/其他、搜索、收藏、推荐、查看详情，继续播放或选集；支持个人评分、想看、随机队列和观影统计。观看进度与电脑共用数据库。
+3. 手机和电脑连接同一路由器。电脑防火墙允许 Lumen/Python 在专用网络接收入站连接；若需要手动规则，允许 TCP 8097（更改端口后相应调整）和用于自动发现的 UDP 8098。
+4. 打开手机连接页会自动发现约 3 秒，点击地址旁的 **⌄** 下拉选择电脑；也可点“重新发现服务端”重试或手动输入地址，例如 `http://192.168.1.10:8097`，复制电脑设置中的完整访问密钥，连接。不要用 `localhost`、`127.0.0.1` 或 `0.0.0.0` 作为手机连接地址。
+5. 可浏览电影/电视剧/VR电影/其他、搜索、收藏、推荐、查看详情，继续播放或选集；支持个人评分、想看、随机队列和观影统计。观看进度与电脑共用数据库。媒体库的 **筛选** 提供标签、演员和年份三个可输入的下拉框，候选来自该分类下的全部本地作品；多个条件同时生效，分页、推荐和随机队列遵循筛选，可一键清空。
+
+发现只返回设备名称和 HTTP 端口，不传送访问密钥或媒体资料；选择地址后仍须输入电脑端访问密钥。UDP 广播被路由器或防火墙拦截时，手动输入仍可用。
 
 电脑应用必须保持运行，电脑休眠、服务关闭或媒体盘离线时无法播放。访客 Wi-Fi 的设备隔离也会阻止连接。IP 变化后可在手机右上角菜单切换连接。连接凭据由 Android Keystore 加密保存，不包含在系统备份内。
 
@@ -35,14 +37,15 @@ cd android
 
 Windows 使用 `gradlew.bat`。输出 `android/app/build/outputs/apk/debug/app-debug.apk`。`local.properties`、SDK、Gradle 缓存、APK 和签名密钥不进入源码。Gradle Wrapper 固定 8.11.1 并校验分发包 SHA-256；依赖版本在构建文件固定。正式发布需要自行保管长期签名密钥；当前 APK 为开发测试版本。
 
-`.github/workflows/android.yml` 可自动构建、静态检查并上传 APK。本地 Linux 云环境可使用 `scripts/setup-android-cloud.py` 安装校验后的工具，再使用 `scripts/build-android-cloud.py` 构建（需要已安装 Python 项目依赖和网络访问）。
+普通 push / pull request 只编译验证、运行单元测试和静态检查，不生成 APK、不发布 Release。明确要求打包后，在 `.github/workflows/android.yml` 的 **Run workflow** 勾选 `package` 才生成 APK Artifact；同时勾选 `publish` 才上传 Release。只做源码验证可运行 `:app:lintDebug :app:testDebugUnitTest`。本地 Linux 云环境可使用 `scripts/setup-android-cloud.py` 安装校验后的工具，再使用 `scripts/build-android-cloud.py` 构建（需要已安装 Python 项目依赖和网络访问）。
 
 ## 服务接口 v1
 
 | 方法与路径 | 用途 |
 | --- | --- |
 | GET `/api/info` | 协议版本和连接验证 |
-| GET `/api/works` | 分页列表；kind、q、favorite、offset、limit |
+| GET `/api/works` | 分页列表；kind、q、favorite、tag、actor、year、offset、limit |
+| GET `/api/filters` | 完整本地媒体库的 tags / actors（含别名）/ years 候选；可按 kind 限定 |
 | GET `/api/works/{id}` | 详情、文件、恢复播放位置 |
 | GET `/api/works/{id}/cover` | 缓存封面 |
 | GET/HEAD `/api/files/{id}/stream` | 视频，单段 Range；无效范围返回 416 |

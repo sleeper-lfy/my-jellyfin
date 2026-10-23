@@ -79,7 +79,7 @@ def public_work(work, detail=False):
 
 
 class LanServer:
-    def __init__(self, directory, host='0.0.0.0', port=8097, clock=time.monotonic):
+    def __init__(self, directory, host='0.0.0.0', port=8097, clock=time.monotonic, discovery_port=8098):
         self.directory, self.host, self.port, self.clock = Path(directory), host, port, clock
         lib = Library(directory)
         self.token = ensure_token(lib)
@@ -88,6 +88,8 @@ class LanServer:
         self.sessions = {}
         self.http = None
         self.thread = None
+        self.discovery = None
+        self.discovery_port = discovery_port
 
     def start(self):
         if self.http:
@@ -131,7 +133,7 @@ class LanServer:
                     parts = urlsplit(self.path)
                     query = parse_qs(parts.query)
                     path = parts.path
-                    library = Library(service.directory)
+                    library = Library(service.directory, initialize=False)
                     body = {}
                     if self.command == 'POST':
                         length = int(self.headers.get('Content-Length','0'))
@@ -142,9 +144,15 @@ class LanServer:
                     if self.command in {'GET','HEAD'}:
                         if path == '/api/info':
                             return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now()})
+                        if path == '/api/filters':
+                            filters = self.filters(query)
+                            return self.send_json(200, library.filter_options(filters.get('kinds')))
                         if path in {'/api/works','/api/recommendations'}:
                             filters = self.filters(query)
-                            items = library.query(filters) if path == '/api/works' else library.recommendations()
+                            items = library.query(filters)
+                            if path == '/api/recommendations':
+                                selected = {item['id'] for item in items}
+                                items = [item for item in library.recommendations() if item['id'] in selected]
                             offset = max(0,int(query.get('offset',['0'])[0])); limit=max(1,min(100,int(query.get('limit',['40'])[0])))
                             return self.send_json(200,{'total':len(items),'items':[public_work(w) for w in items[offset:offset+limit]],'offset':offset,'limit':limit})
                         if path == '/api/stats':
@@ -190,7 +198,7 @@ class LanServer:
                             return self.send_json(200,{'items':[{'name':p.name,'mime':types[p.suffix.lower()],'url':f'/api/files/{file["id"]}/subtitles/{i}'} for i,p in enumerate(subtitles)]})
                     else:
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year'}})
                             ids=[w['id'] for w in library.query(filters)]
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
@@ -241,6 +249,14 @@ class LanServer:
                     if kind not in {'movie','series','other','vr'}:raise ApiError(400,'无效媒体类型')
                     filters['kinds']=[kind]
                 if query.get('favorite',[''])[0].lower() in {'true','1'}:filters['favorite']=True
+                if query.get('tag', [''])[0]:
+                    filters['tags_all'] = [query['tag'][0]]
+                if query.get('actor', [''])[0]:
+                    filters['actor'] = query['actor'][0]
+                if query.get('year', [''])[0]:
+                    year = int(query['year'][0])
+                    if not 1800 <= year <= 2200: raise ApiError(400, '无效年份')
+                    filters.update(year_min=year, year_max=year)
                 return filters
 
             def file(self,library,file_id):
@@ -284,6 +300,12 @@ class LanServer:
         self.port=self.http.server_port
         self.thread=threading.Thread(target=self.http.serve_forever,name='LumenLAN',daemon=True)
         self.thread.start()
+        if self.discovery_port is not None:
+            from .discovery import DiscoveryResponder
+            try:
+                self.discovery = DiscoveryResponder(self.host, self.port, self.discovery_port)
+            except OSError:
+                logging.getLogger(__name__).warning('局域网发现不可用，仍可手动输入服务端地址')
 
     def expire(self,library):
         expired=[key for key,s in self.sessions.items() if self.clock()-s['time']>3600]
@@ -318,6 +340,9 @@ class LanServer:
             return {'ok':True}
 
     def stop(self):
+        if self.discovery:
+            self.discovery.stop()
+            self.discovery = None
         if self.http:
             self.http.shutdown();self.http.server_close();self.thread.join(timeout=5)
             self.http=None

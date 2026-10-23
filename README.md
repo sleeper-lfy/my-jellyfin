@@ -6,13 +6,13 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 ## 下载
 
-优先查看 [target 安装包目录](target/README.md)：Android APK 已放入该目录；Windows EXE 安装包由 Windows 工作流构建、安装验证成功后自动提交，并提供 [Releases 单文件下载](https://github.com/sleeper-lfy/my-jellyfin/releases)。
+优先查看 [target 安装包目录](target/README.md)：Android APK 已放入该目录；Windows EXE 安装包仅在明确请求打包与发布后由 Windows 工作流构建、安装验证并提交，并提供 [Releases 单文件下载](https://github.com/sleeper-lfy/my-jellyfin/releases)。
 
 - 源码：仓库页面点击 **Code → Download ZIP**。
 - Android APK：[Android 构建记录](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/android.yml)，打开成功的运行，在 **Artifacts** 下载 `Lumen-android-debug`，解压后安装 APK。
 - Windows 程序：[Windows 构建记录](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/windows.yml)，打开成功的运行，在 **Artifacts** 下载 `Lumen-windows-x64`。
 
-推送会自动触发构建；首次产物需要等待工作流成功。下载 Actions 产物通常需要登录 GitHub。Android 为开发测试签名，云构建与此前本地 APK 的签名可能不同；若覆盖安装提示签名冲突，需卸载旧版后安装并重新填写连接信息。
+推送只触发源码验证，不打包、不发布 Release。明确请求打包后手动运行工作流并勾选 `package`，需要发布时再勾选 `publish`；Artifacts 只出现在已选择打包且成功的运行中。`target` 和 Releases 中的历史安装包不会随源码提交自动更新。下载 Actions 产物通常需要登录 GitHub。Android 为开发测试签名，云构建与此前本地 APK 的签名可能不同；若覆盖安装提示签名冲突，需卸载旧版后安装并重新填写连接信息。
 
 ## Windows 安装与启动
 

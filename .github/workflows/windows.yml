@@ -1,4 +1,4 @@
-name: Windows build and verification
+name: Windows verification and manual packaging
 on:
   push:
     branches: [main]
@@ -6,6 +6,15 @@ on:
   pull_request:
     paths-ignore: ['target/**']
   workflow_dispatch:
+    inputs:
+      package:
+        description: 'Explicitly build the Windows installer'
+        type: boolean
+        default: false
+      publish:
+        description: 'Explicitly publish the installer to Releases (requires package)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -21,20 +30,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate explicit packaging request
+        if: inputs.publish && !inputs.package
+        run: throw 'Publishing requires an explicit packaging request'
+      - name: Verify source without packaging
+        if: ${{ !inputs.package }}
+        shell: pwsh
+        run: |
+          choco install ffmpeg --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed' }
+          python -m pip install -r requirements.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
+          python -m pip install --no-deps -e .
+          if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { throw 'Source verification failed' }
       - name: Install FFmpeg using verified package-manager download
+        if: github.event_name == 'workflow_dispatch' && inputs.package
         shell: pwsh
         run: |
           choco install ffmpeg innosetup --no-progress -y
           if ($LASTEXITCODE -ne 0) { throw 'FFmpeg / Inno Setup installation failed' }
       - name: Build and test
+        if: github.event_name == 'workflow_dispatch' && inputs.package
         shell: pwsh
         run: ./scripts/build-windows.ps1
       - name: Build and verify EXE installer
+        if: github.event_name == 'workflow_dispatch' && inputs.package
         shell: pwsh
         run: |
           ./scripts/build-installer-windows.ps1
           ./scripts/verify-installer-windows.ps1
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.package
         with:
           name: Lumen-windows-x64
           path: |
@@ -52,14 +80,14 @@ jobs:
 
   publish-target:
     needs: windows
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && inputs.package && inputs.publish && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: Lumen-windows-x64
@@ -79,12 +107,10 @@ jobs:
         run: |
           tag="windows-${SOURCE_COMMIT:0:12}"
           installer=".local/windows-artifact/installer/Lumen-Setup-x64.exe"
-          apk="target/Lumen-android-debug.apk"
-          python scripts/verify-android-target.py
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$installer" "$installer.sha256" "$apk" "$apk.sha256" --clobber
+            gh release upload "$tag" "$installer" "$installer.sha256" --clobber
           else
-            gh release create "$tag" "$installer" "$installer.sha256" "$apk" "$apk.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Windows x64 installer and Android debug APK, with SHA-256 checksums. Source commit: $SOURCE_COMMIT. Windows 10+ / Android 8.0+."
+            gh release create "$tag" "$installer" "$installer.sha256" --target "$SOURCE_COMMIT" --title "Lumen Windows + Android ${SOURCE_COMMIT:0:12}" --notes "Windows x64 installer with SHA-256 checksum. Source commit: $SOURCE_COMMIT. Windows 10+."
           fi
       - name: Commit Windows package
         run: |

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QGridLayout, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
  QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
- QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu)
+ QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter)
 from .core import Library, thumbnail, tool, ImportCancelled
 from .plugins import Plugins
 from .files import plan_move, execute_move
@@ -179,9 +179,59 @@ class PosterDelegate(QStyledItemDelegate):
         return QSize(280, 238) if data.get('_landscape') else QSize(190, 351)
 
 
+class TagCompleter(QCompleter):
+    def __init__(self, combo):
+        super().__init__(combo.model(), combo)
+        self.combo = combo
+
+    def splitPath(self, path):
+        return [path.replace('，', ',').rsplit(',', 1)[-1].strip()]
+
+    def pathFromIndex(self, index):
+        value = super().pathFromIndex(index)
+        entered = self.combo.entered.replace('，', ',')
+        return entered.rsplit(',', 1)[0] + ', ' + value if ',' in entered else value
+
+
+class FilterCombo(QComboBox):
+    """Editable, contains-matching dropdown; tag fields also accept comma lists."""
+    def __init__(self, values, text='', multiple=False):
+        super().__init__()
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.addItem('')
+        self.addItems([str(value) for value in values])
+        self.setEditText(str(text))
+        self.multiple = multiple
+        self.entered = str(text)
+        if multiple: self.setCompleter(TagCompleter(self))
+        self.lineEdit().textEdited.connect(self.remember)
+        self.textActivated.connect(self.chosen)
+        self.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        self.completer().setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.lineEdit().setPlaceholderText('输入搜索或下拉选择' + ('；多个标签以逗号分隔' if multiple else '；留空不限'))
+
+    def remember(self, value):
+        self.entered = value
+
+    def chosen(self, value):
+        if self.multiple and ',' in self.entered.replace('，', ',') and ',' not in value:
+            prefix = self.entered.replace('，', ',').rsplit(',', 1)[0]
+            self.setEditText(prefix + ', ' + value)
+        self.entered = self.currentText()
+
+    def text(self):
+        return self.currentText().strip()
+
+    def value(self):
+        return int(self.text()) if self.text().isdigit() else 0
+
+
 class FilterDialog(QDialog):
-    def __init__(self, filters, parent=None):
+    def __init__(self, filters, parent=None, options=None):
         super().__init__(parent)
+        options = options or {}
         self.setWindowTitle('组合筛选 · 应用于完整媒体库')
         self.resize(520, 600)
         layout = QFormLayout(self)
@@ -197,16 +247,18 @@ class FilterDialog(QDialog):
         layout.addRow('媒体分区', row)
         self.fields = {}
         for key, title in [('tags_any','包含任一标签'), ('tags_all','同时包含标签'), ('tags_not','排除标签')]:
-            field = QLineEdit(', '.join(filters.get(key, [])))
-            field.setPlaceholderText('多个标签以逗号分隔')
+            field = FilterCombo(options.get('tags', []), ', '.join(filters.get(key, [])), multiple=True)
             self.fields[key] = field
             layout.addRow(title, field)
         self.numbers = {}
         for key, title, maximum in [('year_min','起始年份',2100), ('year_max','截止年份',2100), ('rating_min','最低个人评分',10), ('rating_max','最高个人评分',10)]:
-            field = QSpinBox()
-            field.setRange(0, maximum)
-            field.setSpecialValueText('不限')
-            field.setValue(filters.get(key) or 0)
+            if key.startswith('year_'):
+                field = FilterCombo(options.get('years', []), filters.get(key) or '')
+            else:
+                field = QSpinBox()
+                field.setRange(0, maximum)
+                field.setSpecialValueText('不限')
+                field.setValue(filters.get(key) or 0)
             self.numbers[key] = field
             layout.addRow(title, field)
         self.watched = QComboBox()
@@ -222,12 +274,23 @@ class FilterDialog(QDialog):
         row.addWidget(self.folder)
         row.addWidget(button('选择', self.choose_folder))
         layout.addRow('目录范围', row)
-        self.actor = QLineEdit(filters.get('actor', ''))
+        self.actor = FilterCombo(options.get('actors', []), filters.get('actor', ''))
         layout.addRow('演员姓名', self.actor)
         controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         controls.accepted.connect(self.accept)
         controls.rejected.connect(self.reject)
         layout.addRow(controls)
+
+    def accept(self):
+        for key in ('year_min', 'year_max'):
+            field = self.numbers[key]
+            if field.text() and not 1800 <= field.value() <= 2200:
+                QMessageBox.information(self, '年份', '请选择或输入 1800–2200 的年份，留空表示不限。')
+                return
+        if self.numbers['year_min'].value() and self.numbers['year_max'].value() and self.numbers['year_min'].value() > self.numbers['year_max'].value():
+            QMessageBox.information(self, '年份', '起始年份不能晚于截止年份。')
+            return
+        super().accept()
 
     def choose_folder(self):
         path = QFileDialog.getExistingDirectory(self, '随机 / 筛选目录范围')
@@ -578,29 +641,30 @@ class Details(QWidget):
         text, ok = QInputDialog.getText(self, '匹配影片', '输入关键词或完整详情页 URL', text=self.work['title'])
         if not ok or not text.strip():
             return
+        text = text.strip()
         operation = 'detail' if text.startswith(('https://', 'http://')) else 'search'
+        if operation not in plugin['capabilities']:
+            QMessageBox.information(self, '刮削来源', '此插件不支持关键词搜索，请输入完整详情页 URL。' if operation == 'search' else '此插件不支持详情链接，请输入关键词搜索。')
+            return
         def complete(results):
+            if self.window.detail_page is not self:
+                return
             if not results:
                 self.library.task(__import__('uuid').uuid4().hex, 'match', 'pending', {'work_id': self.work_id, 'plugin': plugin['id']}, error='未找到候选，请手动指定详情页')
                 QMessageBox.information(self.window, '待处理', '未找到候选，已记录到任务列表。')
                 return
-            names = [f"{i + 1}. {r['title']} ({r.get('year') or '未知'}) · {r['url']}" for i, r in enumerate(results)]
-            choice, accepted = QInputDialog.getItem(self.window, '确认匹配', '请选择正确影片，取消不会修改资料', names, 0, False)
-            if accepted:
-                index = names.index(choice)
-                work_id=self.work_id
-                candidate=results[index]
-                def save(lib,progress):
-                    manager=Plugins(lib)
-                    if operation=='search' and 'detail' in plugin['capabilities']:
-                        records=manager.run(plugin['id'],'detail',url=candidate['url'])
-                        exact=[record for record in records if str(record['id'])==str(candidate['id'])]
-                        if len(exact)!=1:raise ValueError('详情来源标识与所选候选不匹配，未更新资料')
-                        return manager.merge(plugin['id'],exact[0],work_id)
-                    return manager.merge(plugin['id'],candidate,work_id)
-                self.window.run_job('保存刮削资料与图片',save,lambda result:self.window.open_details(work_id,fetch=False))
-        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, **({'url': text} if operation == 'detail' else {'query': text})), complete)
-        self.accept()
+            from .matching import CandidatePicker, apply_match
+            picker = CandidatePicker(self.library.directory, plugin['id'], results, self.window)
+            accepted = picker.exec()
+            candidate = picker.selection()
+            picker.deleteLater()
+            if accepted and candidate is not None:
+                work_id = self.work_id
+                self.window.run_job('保存刮削资料与图片',
+                    lambda lib, progress: apply_match(lib, plugin, operation, candidate, work_id),
+                    lambda result: self.window.reload_details(work_id))
+        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, **({'url': text.strip()} if operation == 'detail' else {'query': text.strip()})), complete)
+
 
     def organize(self):
         target = QFileDialog.getExistingDirectory(self, '选择整理目标根目录')
@@ -1045,6 +1109,13 @@ class MainWindow(QMainWindow):
         if fetch:
             QTimer.singleShot(0,lambda:self.refresh_source_details(work_id,automatic=True))
 
+    def reload_details(self, work_id):
+        if self.detail_page is not None and self.detail_page.work_id == work_id:
+            position = self.details_scroll.verticalScrollBar().value()
+            self.open_details(work_id, fetch=False)
+            QTimer.singleShot(0, lambda: self.details_scroll.verticalScrollBar().setValue(position)
+                              if self.detail_page is not None and self.detail_page.work_id == work_id else None)
+
     def refresh_source_details(self, work_id, automatic=False):
         if self._closing or self.detail_page is None or self.detail_page.work_id!=work_id:
             return
@@ -1124,7 +1195,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def filter_dialog(self):
-        dialog = FilterDialog(self.effective_filters(), self)
+        dialog = FilterDialog(self.effective_filters(), self, self.library.filter_options(local=self.section != 'discover'))
         if dialog.exec():
             filters = dialog.filters()
             if not filters['kinds']:
@@ -1404,7 +1475,7 @@ class MainWindow(QMainWindow):
         row.addWidget(button('下一作品', lambda: self.queue_play(1)))
         layout.addLayout(row)
         def configure():
-            f = FilterDialog(queue.get('filters', {}), dialog)
+            f = FilterDialog(queue.get('filters', {}), dialog, self.library.filter_options())
             if f.exec():
                 if not f.filters()['kinds']:
                     return

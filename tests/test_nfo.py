@@ -28,7 +28,7 @@ def test_movie_nfo_and_local_poster(library,tmp_path,video_factory,qapp):
     work=library.work(library.query()[0]['id'])
     assert work['title']=='本地影片' and work['year']==2022 and work['rating']==9
     assert work['sources'][0]['rating']==8.1
-    assert work['metadata']['actors'][0]['gender']=='unknown'
+    assert work['metadata']['actors'][0]['gender']=='female'
     assert work['metadata']['external_ids']=={'imdb':'tt1234567'}
     assert work['files'][0]['position']==2
     assert Path(work['thumbnail']).parent==library.directory/'cache'

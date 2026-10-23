@@ -28,7 +28,7 @@ public final class MainActivity extends Activity {
     };
     private Api api;
     private LinearLayout root,content;
-    private String kind="",query="";
+    private String kind="",query="",tagFilter="",actorFilter="",yearFilter="";
     private boolean favorites=false,recommended=false;
     private int offset=0,generation=0;
     private long detailId=0;
@@ -76,11 +76,30 @@ public final class MainActivity extends Activity {
     }
     private void showConnection() {
         generation++;detailId=0;api=null;base();
-        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(26),dp(40),dp(26),dp(20));root.addView(panel);
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(26),dp(40),dp(26),dp(20));ScrollView connectionScroll=new ScrollView(this);connectionScroll.setFillViewport(true);connectionScroll.addView(panel);root.addView(connectionScroll,new LinearLayout.LayoutParams(-1,-1));
         panel.addView(text("Lumen",36,Color.WHITE));panel.addView(text("连接你的家庭媒体库",22,Color.WHITE));
         panel.addView(text("在电脑端设置 → 局域网 / Android 中启动服务。手机与电脑应连接同一 Wi-Fi。",15,MUTED));
-        EditText address=new EditText(this);address.setSingleLine(true);address.setTextColor(Color.WHITE);address.setHintTextColor(MUTED);address.setHint("http://192.168.1.10:8097");address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-        address.setText(getSharedPreferences("connection",0).getString("base",""));panel.addView(address);
+        AutoCompleteTextView address=new SearchDropdown(this);address.setSingleLine(true);address.setTextColor(Color.WHITE);address.setHintTextColor(MUTED);address.setHint("http://192.168.1.10:8097");address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        address.setText(getSharedPreferences("connection",0).getString("base",""));
+        ArrayAdapter<ServerDiscovery.Server> servers=new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line);
+        address.setAdapter(servers);
+        address.setOnItemClickListener((parent,view,position,id)->address.setText(servers.getItem(position).address,false));
+        LinearLayout addressRow=new LinearLayout(this);addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(56),1));
+        addressRow.addView(button("⌄",()->{address.requestFocus();address.showDropDown();}),new LinearLayout.LayoutParams(dp(52),dp(56)));panel.addView(addressRow);
+        TextView discoveryStatus=text("正在发现同一局域网内的服务端…",13,MUTED);panel.addView(discoveryStatus);
+        Button discover=button("重新发现服务端",()->{});panel.addView(discover);
+        Runnable scan=()->{
+            final int ticket=generation;discover.setEnabled(false);servers.clear();discoveryStatus.setText("正在发现同一局域网内的服务端…");
+            network.execute(()->{
+                String error="";
+                try{ServerDiscovery.scan(server->runOnUiThread(()->{
+                    if(!isDestroyed()&&ticket==generation){servers.add(server);servers.notifyDataSetChanged();discoveryStatus.setText("发现 "+servers.getCount()+" 个服务端，可下拉选择");}
+                }));}catch(Exception failure){error="发现失败，可手动输入地址";}
+                final String failure=error;
+                runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){discover.setEnabled(true);discoveryStatus.setText(!failure.isEmpty()?failure:servers.isEmpty()?"未发现服务端。可重试或手动输入；请检查电脑服务和防火墙 UDP 8098。":"发现 "+servers.getCount()+" 个服务端，点击地址旁的 ⌄ 选择");}});
+            });
+        };
+        discover.setOnClickListener(view->scan.run());scan.run();
         EditText token=new EditText(this);token.setSingleLine(true);token.setTextColor(Color.WHITE);token.setHintTextColor(MUTED);token.setHint("电脑端访问密钥");token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         Connection saved=Connection.load(this);if(saved!=null)token.setText(saved.token);panel.addView(token);
         TextView status=text("",14,MUTED);panel.addView(status);
@@ -90,7 +109,7 @@ public final class MainActivity extends Activity {
                 status.setText("正在连接…");
                 request(()->client.get("/api/info"),info->{
                     if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");
-                    candidate.save(this);api=client;pictures.evictAll();kind="";query="";favorites=false;recommended=false;showLibrary();
+                    candidate.save(this);api=client;pictures.evictAll();kind="";query="";tagFilter="";actorFilter="";yearFilter="";favorites=false;recommended=false;showLibrary();
                 });
             }catch(Exception e){status.setText(e.getMessage());}
         });connect.setBackgroundTintList(android.content.res.ColorStateList.valueOf(BLUE));panel.addView(connect);
@@ -111,17 +130,18 @@ public final class MainActivity extends Activity {
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint("搜索影片、别名、文件夹");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         Runnable applySearch=()->{query=search.getText().toString().trim();recommended=false;showLibrary();};
         search.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
-        searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(52),1));searchRow.addView(button("搜索",applySearch));root.addView(searchRow);
+        searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(52),1));searchRow.addView(button("搜索",applySearch));searchRow.addView(button("筛选",this::showFilters));root.addView(searchRow);
+        if(!tagFilter.isEmpty()||!actorFilter.isEmpty()||!yearFilter.isEmpty())root.addView(button("筛选中："+tagFilter+"  "+actorFilter+"  "+yearFilter,this::showFilters));
         HorizontalScrollView nav=new HorizontalScrollView(this);nav.setHorizontalScrollBarEnabled(false);LinearLayout links=new LinearLayout(this);
         String[] names={"首页","电影","电视剧","VR电影","其他","收藏","为你推荐"};String[] types={"","movie","series","vr","other","",""};
         for(int i=0;i<names.length;i++) {
-            final int choice=i;Button tab=button(names[i],()->{kind=types[choice];favorites=choice==5;recommended=choice==6;query="";showLibrary();});
+            final int choice=i;Button tab=button(names[i],()->{kind=types[choice];favorites=choice==5;recommended=choice==6;query="";tagFilter="";actorFilter="";yearFilter="";showLibrary();});
             boolean selected=(choice==5&&favorites)||(choice==6&&recommended)||(choice<5&&!favorites&&!recommended&&kind.equals(types[i]));
             if(selected)tab.setTextColor(BLUE);links.addView(tab);
         }
         nav.addView(links);root.addView(nav);
         ScrollView scroll=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        if(kind.isEmpty()&&!favorites&&!recommended&&query.isEmpty()) {
+        if(kind.isEmpty()&&!favorites&&!recommended&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearFilter.isEmpty()) {
             content.addView(text("我的媒体",22,Color.WHITE));LinearLayout tiles=new LinearLayout(this);
             for(int i=1;i<=4;i++){final int choice=i;Button tile=button(names[i],()->{kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
             content.addView(tiles);
@@ -131,7 +151,39 @@ public final class MainActivity extends Activity {
     }
     private String listPath() {
         String path=recommended?"/api/recommendations?":"/api/works?";
-        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&q="+android.net.Uri.encode(query);
+        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&q="+android.net.Uri.encode(query)+"&tag="+android.net.Uri.encode(tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year="+android.net.Uri.encode(yearFilter);
+    }
+    private AutoCompleteTextView filterInput(LinearLayout form,String label,String value){
+        form.addView(text(label,15,MUTED));
+        AutoCompleteTextView input=new SearchDropdown(this);input.setSingleLine(true);input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);
+        input.setHint("输入搜索或下拉选择；留空不限");input.setText(value);
+        LinearLayout row=new LinearLayout(this);row.addView(input,new LinearLayout.LayoutParams(0,dp(56),1));
+        row.addView(button("⌄",()->{input.requestFocus();input.showDropDown();}),new LinearLayout.LayoutParams(dp(52),dp(56)));form.addView(row);
+        return input;
+    }
+    private void showFilters(){
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(12),dp(20),dp(12));
+        AutoCompleteTextView tag=filterInput(form,"标签",tagFilter),actor=filterInput(form,"演员",actorFilter),year=filterInput(form,"年份",yearFilter);
+        year.setInputType(InputType.TYPE_CLASS_NUMBER);
+        TextView status=text("正在读取完整媒体库中的筛选选项…",13,MUTED);form.addView(status);
+        ScrollView scroll=new ScrollView(this);scroll.addView(form);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("筛选媒体库").setView(scroll)
+            .setPositiveButton("应用",null).setNegativeButton("取消",null).setNeutralButton("清空",(d,which)->{tagFilter="";actorFilter="";yearFilter="";showLibrary();}).create();
+        dialog.setOnShowListener(ignored->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
+            String value=year.getText().toString().trim();
+            if(!value.isEmpty()&&(!value.matches("[0-9]{4}")||Integer.parseInt(value)<1800||Integer.parseInt(value)>2200)){year.setError("请输入 1800–2200 的年份");return;}
+            tagFilter=tag.getText().toString().trim();actorFilter=actor.getText().toString().trim();yearFilter=value;dialog.dismiss();showLibrary();
+        }));dialog.show();
+        request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)),options->{
+            if(!dialog.isShowing())return;
+            AutoCompleteTextView[] inputs={tag,actor,year};String[] keys={"tags","actors","years"};
+            for(int i=0;i<inputs.length;i++){
+                JSONArray values=options.getJSONArray(keys[i]);java.util.ArrayList<String> choices=new java.util.ArrayList<>();
+                for(int j=0;j<values.length();j++)choices.add(values.optString(j));
+                inputs[i].setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line,choices));
+            }
+            status.setText("输入文字缩小候选范围，点击 ⌄ 查看下拉列表。多个条件同时生效。");
+        });
     }
     private void loadPage() {
         TextView loading=text("正在读取媒体库…",14,MUTED);content.addView(loading);String path=listPath();
@@ -230,7 +282,7 @@ public final class MainActivity extends Activity {
         Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);startActivity(intent);
     }
     private void shuffle() {
-        request(()->api.post("/api/queue",new JSONObject().put("kind",kind).put("q",query).put("favorite",favorites)),result->{
+        request(()->api.post("/api/queue",new JSONObject().put("kind",kind).put("q",query).put("favorite",favorites).put("tag",tagFilter).put("actor",actorFilter).put("year",yearFilter)),result->{
             JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message("当前范围没有媒体");return;}
             getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).apply();
             Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);startActivity(intent);
