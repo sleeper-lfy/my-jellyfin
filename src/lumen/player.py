@@ -2,7 +2,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from .presentation import rating_text
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -28,6 +28,7 @@ class Player(QDialog):
         self._open_generation = 0
         self.file = None
         self.resume = None
+        self.subtitle_preferences={}
         self.seek_guard = 0
         self.cues = []
         self.external_subtitle_enabled = True
@@ -98,12 +99,11 @@ class Player(QDialog):
         header.addWidget(self.title, 1)
         overlay_layout.addWidget(self.header)
         overlay_layout.addStretch(1)
-        self.caption = QLabel()
+        self.caption = QLabel(self.overlay)
         self.caption.setTextFormat(Qt.TextFormat.PlainText)
         self.caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.caption.setWordWrap(True)
         self.caption.setStyleSheet('font-size: 22px; color: white; background: rgba(0,0,0,120); padding: 6px;')
-        overlay_layout.addWidget(self.caption)
         self.error = QLabel()
         self.error.setTextFormat(Qt.TextFormat.PlainText)
         self.error.setWordWrap(True)
@@ -174,9 +174,11 @@ class Player(QDialog):
         self.overlay.raise_()
         self.track_dialog = QDialog(self)
         self.track_dialog.setWindowTitle('播放设置')
-        tracks = QVBoxLayout(self.track_dialog)
+        self.track_dialog.resize(620,650)
+        track_outer=QVBoxLayout(self.track_dialog);track_scroll=QScrollArea();track_scroll.setWidgetResizable(True);track_outer.addWidget(track_scroll)
+        track_content=QWidget();track_scroll.setWidget(track_content);tracks=QVBoxLayout(track_content)
         self.subtitles = QComboBox()
-        self.subtitles.currentIndexChanged.connect(lambda i: self.media.setActiveSubtitleTrack(self.subtitles.itemData(i)) if self.subtitles.itemData(i) is not None else None)
+        self.subtitles.currentIndexChanged.connect(lambda i:self.select_subtitle(self.subtitles.itemData(i)) if self.subtitles.itemData(i) is not None else None)
         self.audio_tracks = QComboBox()
         self.audio_tracks.currentIndexChanged.connect(lambda i: self.media.setActiveAudioTrack(self.audio_tracks.itemData(i)) if self.audio_tracks.itemData(i) is not None else None)
         tracks.addWidget(QLabel('字幕'))
@@ -185,6 +187,17 @@ class Player(QDialog):
         tracks.addWidget(self.audio_tracks)
         tracks.addWidget(QPushButton('外挂字幕…', clicked=self.choose_subtitle))
         tracks.addWidget(QPushButton('开关外挂字幕', clicked=self.toggle_external_subtitle))
+        subtitle_form=QFormLayout()
+        self.subtitle_delay=QDoubleSpinBox();self.subtitle_delay.setRange(-600,600);self.subtitle_delay.setSingleStep(.1);self.subtitle_delay.setDecimals(1);self.subtitle_delay.setSuffix(' 秒')
+        self.subtitle_size=QSpinBox();self.subtitle_size.setRange(12,64);self.subtitle_size.setValue(22)
+        self.subtitle_position=QSpinBox();self.subtitle_position.setRange(5,95);self.subtitle_position.setValue(90);self.subtitle_position.setSuffix(' %')
+        subtitle_form.addRow('字幕延后（负数提前）',self.subtitle_delay);subtitle_form.addRow('字号',self.subtitle_size);subtitle_form.addRow('垂直位置',self.subtitle_position)
+        tracks.addLayout(subtitle_form)
+        tracks.addWidget(QLabel('按当前视频保存。Qt 兼容模式的字幕调节仅作用于外挂字幕。'))
+        for control in (self.subtitle_delay,self.subtitle_size,self.subtitle_position):control.valueChanged.connect(self.save_subtitle_preferences)
+        tracks.addWidget(QPushButton('添加当前时间书签…',clicked=self.add_bookmark))
+        tracks.addWidget(QPushButton('时间点书签…',clicked=self.show_bookmarks))
+        tracks.addWidget(QPushButton('播放诊断…',clicked=self.show_diagnostics))
         self.enhance = QCheckBox('GPU 画质增强（高质量缩放 + 轻度锐化）')
         self.enhance.setEnabled(self.mpv_backend)
         self.enhance.setToolTip('改善放大画面；不是 AI 超分辨率。卡顿时可关闭。')
@@ -288,6 +301,7 @@ class Player(QDialog):
         self.next_control.setVisible(width >= 540)
         self.overlay.layout().invalidate()
         self.overlay.layout().activate()
+        self.position_caption()
         self.overlay.raise_()
         self.update_overlay_mask()
 
@@ -385,10 +399,17 @@ class Player(QDialog):
     def open_file(self, file):
         self.finish()
         if not Path(file['path']).is_file():
+            self.file=None
+            self.title.setText('视频文件离线');self.caption.clear();self.caption.hide()
             self.set_error('文件不存在，请检查磁盘或重新导入：' + file['path'])
             self.show()
             return
         self.file = file
+        from .media_tools import preferences
+        self.subtitle_preferences=preferences(self.library,file['id'])
+        for control,key,default in ((self.subtitle_delay,'subtitle_delay',0),(self.subtitle_size,'subtitle_size',22),(self.subtitle_position,'subtitle_position',90)):
+            control.blockSignals(True);control.setValue(self.subtitle_preferences.get(key,default));control.blockSignals(False)
+        self.apply_subtitle_preferences()
         work = self.library.work(file['work_id'])
         self.title.setToolTip(work['title'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' and file['season'] is not None and file['episode'] is not None else ''))
@@ -440,9 +461,11 @@ class Player(QDialog):
         self.remaining.setText('-' + stamp(remaining))
         end = datetime.now() + timedelta(milliseconds=remaining / max(.01, self.media.playbackRate()))
         self.ends_at.setText('结束于 ' + end.strftime('%H:%M') if self.media.duration() else '')
-        text = '\n'.join(cue[2] for cue in self.cues if cue[0] <= position/1000 < cue[1]) if self.external_subtitle_enabled else ''
+        subtitle_time=position/1000-self.subtitle_preferences.get('subtitle_delay',0)
+        text = '\n'.join(cue[2] for cue in self.cues if cue[0] <= subtitle_time < cue[1]) if self.external_subtitle_enabled else ''
         self.caption.setText(text)
         self.caption.setVisible(bool(text))
+        self.position_caption()
         if self.mpv_backend:
             self.overlay.layout().activate()
             self.update_overlay_mask()
@@ -501,11 +524,17 @@ class Player(QDialog):
             box.clear()
             if off:
                 box.addItem('关闭字幕', -1)
+                if self.cues:box.addItem('外挂字幕',-2)
             for i, track in enumerate(tracks):
                 box.addItem(track.stringValue(QMediaMetaData.Key.Title) or track.stringValue(QMediaMetaData.Key.Language) or f'轨道 {i + 1}', i)
-            active = self.media.activeSubtitleTrack() if off else self.media.activeAudioTrack()
+            active = (-2 if self.cues and self.external_subtitle_enabled else self.media.activeSubtitleTrack()) if off else self.media.activeAudioTrack()
             box.setCurrentIndex(box.findData(active))
             box.blockSignals(False)
+
+    def select_subtitle(self,index):
+        self.external_subtitle_enabled=index==-2
+        self.media.setActiveSubtitleTrack(-1 if index==-2 else index)
+        self.position_changed(self.media.position())
 
     def load_subtitle(self, path):
         from .subtitles import read_subtitles
@@ -523,6 +552,82 @@ class Player(QDialog):
     def toggle_external_subtitle(self):
         self.external_subtitle_enabled = not self.external_subtitle_enabled
         self.position_changed(self.media.position())
+
+    def position_caption(self):
+        width=max(1,self.overlay.width()-32)
+        height=self.caption.heightForWidth(width)
+        if height<0:height=self.caption.sizeHint().height()
+        y=int(self.overlay.height()*self.subtitle_preferences.get('subtitle_position',90)/100)-height
+        if self.footer.isVisible():y=min(y,self.footer.y()-height-8)
+        self.caption.setGeometry(16,max(0,min(self.overlay.height()-height,y)),width,height)
+        self.caption.raise_()
+
+    def apply_subtitle_preferences(self):
+        value=self.subtitle_preferences
+        self.caption.setStyleSheet(f"font-size: {value.get('subtitle_size',22)}px; color:white; background:rgba(0,0,0,120); padding:6px;")
+        if self.mpv_backend:self.media.set_subtitle_style(value.get('subtitle_delay',0),value.get('subtitle_size',22),value.get('subtitle_position',90))
+        self.position_changed(self.media.position())
+
+    def save_subtitle_preferences(self):
+        if not self.file:return
+        from .media_tools import preferences
+        self.subtitle_preferences=preferences(self.library,self.file['id'],{'subtitle_delay':self.subtitle_delay.value(),'subtitle_size':self.subtitle_size.value(),'subtitle_position':self.subtitle_position.value()})
+        self.apply_subtitle_preferences()
+
+    def add_bookmark(self):
+        if not self.file:return
+        name,ok=QInputDialog.getText(self,'添加时间点书签','书签名称（可留空）')
+        if not ok:return
+        note,ok=QInputDialog.getMultiLineText(self,'书签备注','备注（可留空）')
+        if not ok:return
+        from .media_tools import add_bookmark,capture_bookmark
+        item=add_bookmark(self.library,self.file['id'],self.media.position()/1000,name,note)
+        parent=self.parentWidget()
+        if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,item['id'],p.cancelled))
+
+    def show_bookmarks(self):
+        if not self.file:return
+        from .media_tools import bookmarks,delete_bookmark
+        dialog=QDialog(self);dialog.setWindowTitle('时间点书签');dialog.resize(600,450)
+        layout=QVBoxLayout(dialog);items=QListWidget();items.setIconSize(QSize(144,81));layout.addWidget(items)
+        def reload():
+            items.clear()
+            for entry in bookmarks(self.library,self.file['id']):
+                row=QListWidgetItem(f"{int(entry['position'])//60:02}:{int(entry['position'])%60:02} · {entry['title']}\n{entry['note']}")
+                row.setData(Qt.ItemDataRole.UserRole,entry)
+                if entry['image']:row.setIcon(QIcon(entry['image']))
+                items.addItem(row)
+        def jump():
+            if items.currentItem():self.timeline.setValue(int(items.currentItem().data(Qt.ItemDataRole.UserRole)['position']*1000));self.seek();dialog.accept()
+        def remove():
+            if items.currentItem():delete_bookmark(self.library,items.currentItem().data(Qt.ItemDataRole.UserRole)['id']);reload()
+        def capture():
+            if not items.currentItem():return
+            from .media_tools import capture_bookmark
+            identifier=items.currentItem().data(Qt.ItemDataRole.UserRole)['id'];parent=self.parentWidget()
+            if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,identifier,p.cancelled),lambda _:reload())
+        items.itemDoubleClicked.connect(lambda _:jump());layout.addWidget(QPushButton('跳转到选中书签',clicked=jump));layout.addWidget(QPushButton('生成 / 更新选中截图',clicked=capture));layout.addWidget(QPushButton('删除选中书签',clicked=remove));reload();dialog.show()
+
+    def diagnostics(self):
+        value={'backend':'libmpv' if self.mpv_backend else 'Qt Multimedia','position_seconds':self.media.position()/1000,
+               'duration_seconds':self.media.duration()/1000,'rate':self.media.playbackRate(),'state':self.media.playbackState().name,
+               'subtitle_delay':self.subtitle_preferences.get('subtitle_delay',0)}
+        if self.mpv_backend:value.update(self.media.diagnostics())
+        else:
+            from PySide6.QtMultimedia import QMediaMetaData
+            metadata=self.media.metaData();resolution=metadata.value(QMediaMetaData.Key.Resolution)
+            value.update(video_codec=metadata.stringValue(QMediaMetaData.Key.VideoCodec),audio_codec=metadata.stringValue(QMediaMetaData.Key.AudioCodec),
+                         resolution=f'{resolution.width()}×{resolution.height()}' if resolution else None,buffer_percent=round(self.media.bufferProgress()*100),
+                         hardware_decoder='Qt 未提供实际硬解状态',dropped_frames=None)
+        return value
+
+    def show_diagnostics(self):
+        import json
+        dialog=QDialog(self);dialog.setWindowTitle('播放诊断');dialog.resize(650,500)
+        layout=QVBoxLayout(dialog);text=QPlainTextEdit();text.setReadOnly(True);layout.addWidget(text)
+        update=lambda:text.setPlainText(json.dumps(self.diagnostics(),ensure_ascii=False,indent=2,default=str))
+        layout.addWidget(QPushButton('复制诊断（不含路径和访问密钥）',clicked=lambda:QApplication.clipboard().setText(text.toPlainText())))
+        timer=QTimer(dialog);timer.setInterval(1000);timer.timeout.connect(update);timer.start();update();dialog.show()
 
     def toggle_fullscreen(self):
         entering = not self.isFullScreen()

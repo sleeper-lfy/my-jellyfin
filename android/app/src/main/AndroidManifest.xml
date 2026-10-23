@@ -5,6 +5,7 @@
         android:icon="@mipmap/ic_lumen" android:roundIcon="@mipmap/ic_lumen" android:usesCleartextTraffic="true" android:supportsRtl="true">
         <activity android:name=".PrivateBrowserActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity android:name=".PlayerActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".RemoteActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>

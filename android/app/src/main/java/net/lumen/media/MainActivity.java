@@ -124,8 +124,8 @@ public final class MainActivity extends Activity {
         TextView brand=text(title,24,Color.WHITE);row.addView(brand,new LinearLayout.LayoutParams(0,dp(52),1));
         if(!back){Button collection=button("",()->{kind="";query="";favorites=true;recommended=false;tagFilter="";actorFilter="";yearFilter="";showLibrary();});MediaStyle.icon(collection,"heart",favorites);collection.setContentDescription("收藏");row.addView(collection,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         Button more=button("",()->{});MediaStyle.icon(more,"more",false);more.setContentDescription("更多操作");more.setOnClickListener(view->{
-            PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("随机播放");menu.getMenu().add("观影统计");menu.getMenu().add("切换连接");
-            menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "随机播放":shuffle();break;case "观影统计":showStats();break;default:showConnection();}return true;});menu.show();
+            PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("随机播放");menu.getMenu().add("观影统计");menu.getMenu().add("电脑遥控");menu.getMenu().add("切换连接");
+            menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "随机播放":shuffle();break;case "观影统计":showStats();break;case "电脑遥控":startActivity(new Intent(this,RemoteActivity.class));break;default:showConnection();}return true;});menu.show();
         });row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(row);
     }
     private void showLibrary() {
@@ -286,6 +286,7 @@ public final class MainActivity extends Activity {
         if(cast.getChildCount()>0)page.addView(cast);
         page.addView(text(work.optString("overview","暂无简介"),15,MUTED));
         JSONArray files=work.getJSONArray("files");page.addView(text(work.optString("kind").equals("series")?"季与集":"视频文件",21,Color.WHITE));
+        page.addView(button("在电脑上播放",()->{Intent remote=new Intent(this,RemoteActivity.class);remote.putExtra("work_id",detailId);remote.putExtra("file_id",work.optLong("resume_file_id"));startActivity(remote);}));
         for(int i=0;i<files.length();i++) {
             JSONObject file=files.getJSONObject(i);long id=file.getLong("id");String name=file.optString("name");
             if(work.optString("kind").equals("series")&&!file.isNull("season")&&!file.isNull("episode"))name=String.format(java.util.Locale.ROOT,"S%02d E%02d  ·  ",file.optInt("season"),file.optInt("episode"))+name;
@@ -299,6 +300,17 @@ public final class MainActivity extends Activity {
                     images.addView(shot,new LinearLayout.LayoutParams(dp(240),dp(150)));loadImage(shot,episodeStills.optString(j));
                 }
                 shots.addView(images);page.addView(shots);
+            }
+        }
+        JSONArray bookmarks=work.optJSONArray("bookmarks");
+        if(bookmarks!=null&&bookmarks.length()>0){
+            page.addView(text("时间点书签",21,Color.WHITE));
+            for(int i=0;i<bookmarks.length();i++){
+                JSONObject mark=bookmarks.optJSONObject(i);if(mark==null)continue;
+                if(i<12&&!mark.isNull("image")){ImageView preview=new ImageView(this);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);page.addView(preview,new LinearLayout.LayoutParams(-1,dp(140)));loadImage(preview,mark.optString("image"));}
+                page.addView(button(String.format(java.util.Locale.ROOT,"%d:%02d · %s",mark.optInt("position")/60,mark.optInt("position")%60,mark.optString("title")),()->{
+                    Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",mark.optLong("file_id"));intent.putExtra("start_position",mark.optDouble("position"));startActivity(intent);
+                }));if(!mark.optString("note").isEmpty())page.addView(text(mark.optString("note"),14,MUTED));
             }
         }
         JSONArray stills=work.optJSONArray("stills");
@@ -365,7 +377,7 @@ public final class MainActivity extends Activity {
                 status.setText("已交给电脑端下载器，目录："+directory+(result!=null&&!result.optBoolean("directory_sent")?"\n"+result.optString("message"):"")+"\n外部下载完成后，点击下方检查入库。");return;
             }
             if(phase.equals("failed")||phase.equals("partial")||phase.equals("cancelled")){status.setText("下载未完成："+state.optString("error","请检查电脑端任务"));return;}
-            status.setText(phase.equals("queued")?"等待电脑端下载…":phase.equals("importing")?"视频已保存，正在补充影视资料…":payload==null?"电脑端正在下载…":payload.optString("message","电脑端正在下载…"));
+            status.setText(phase.equals("paused")?"电脑端已暂停后台队列…":phase.equals("queued")?"等待电脑端下载…":phase.equals("importing")?"视频已保存，正在补充影视资料…":payload==null?"电脑端正在下载…":payload.optString("message","电脑端正在下载…"));
             downloadUpdates.postDelayed(()->pollDownload(task,workId,status,ticket),1000);
         });
     }

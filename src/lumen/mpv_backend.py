@@ -57,6 +57,7 @@ class MpvMedia(QObject):
         self._suspended=None
         self._seek_on_load=None
         self.enhanced=False
+        self.subtitle_style={}
         self._state = QMediaPlayer.PlaybackState.StoppedState
         self._status = QMediaPlayer.MediaStatus.NoMedia
         self._duration = self._position = 0
@@ -97,6 +98,7 @@ class MpvMedia(QObject):
         self.engine=self.create_engine(window_id)
         saved,self._suspended=self._suspended,None
         self.set_enhancement(self.enhanced)
+        self.set_subtitle_style(**self.subtitle_style)
         if saved:
             source,position,playing,volume,muted,speed=saved
             self.setSource(QUrl.fromLocalFile(source))
@@ -156,6 +158,19 @@ class MpvMedia(QObject):
         self.engine.dscale = 'mitchell' if enabled else 'bilinear'
         self.engine.cscale = 'spline36' if enabled else 'bilinear'
         self.engine.glsl_shaders = [str(Path(__file__).with_name('shaders') / 'gentle-sharpen.glsl')] if enabled else []
+
+    def set_subtitle_style(self,delay=0,size=22,position=90):
+        self.subtitle_style={'delay':delay,'size':size,'position':position}
+        if self.engine is not None:
+            self.engine.sub_delay=delay;self.engine.sub_font_size=size;self.engine.sub_pos=position
+
+    def diagnostics(self):
+        values={}
+        if self.engine is not None:
+            for key in ('video-codec','audio-codec','video-params','hwdec-current','decoder-frame-drop-count','frame-drop-count','avsync','demuxer-cache-duration','cache-speed'):
+                try:values[key]=self.engine[key]
+                except (RuntimeError,AttributeError,ValueError):values[key]=None
+        return values
 
     def poll(self):
         if not self._source or self.engine is None: return

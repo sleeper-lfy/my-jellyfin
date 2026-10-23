@@ -80,10 +80,12 @@ def public_work(work, detail=False):
 
 
 class LanServer:
-    def __init__(self, directory, host='0.0.0.0', port=8097, clock=time.monotonic, discovery_port=8098):
+    def __init__(self, directory, host='0.0.0.0', port=8097, clock=time.monotonic, discovery_port=8098, remote=None, budget=None):
         self.directory, self.host, self.port, self.clock = Path(directory), host, port, clock
         lib = Library(directory)
         self.token = ensure_token(lib)
+        from .task_journal import TaskBudget
+        self.budget=budget or TaskBudget(lib.setting('background_concurrency',1))
         lib.close()
         self.lock = threading.RLock()
         self.sessions = {}
@@ -92,12 +94,38 @@ class LanServer:
         self.discovery = None
         self.discovery_port = discovery_port
         self.downloads = None
+        self.remote = remote
+        from concurrent.futures import ThreadPoolExecutor
+        self.bookmark_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Bookmark')
+        self.bookmark_slots=threading.BoundedSemaphore(8)
+        self.closing=threading.Event()
+
+    def capture_bookmark(self,identifier):
+        if self.closing.is_set() or not self.bookmark_slots.acquire(blocking=False):return
+        slots=self.bookmark_slots;closing=self.closing
+        def run():
+            library=Library(self.directory,initialize=False)
+            acquired=False
+            try:
+                self.budget.acquire(closing.is_set);acquired=True
+                from .media_tools import capture_bookmark
+                capture_bookmark(library,identifier,closing.is_set)
+            except Exception:pass  # A saved time bookmark remains usable without its optional screenshot.
+            finally:
+                library.close();slots.release()
+                if acquired:self.budget.release()
+        try:self.bookmark_pool.submit(run)
+        except RuntimeError:slots.release()
 
     def start(self):
         if self.http:
             return
+        if self.closing.is_set():
+            from concurrent.futures import ThreadPoolExecutor
+            self.closing=threading.Event();self.bookmark_slots=threading.BoundedSemaphore(8)
+            self.bookmark_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Bookmark')
         from .downloads import DownloadQueue
-        self.downloads = DownloadQueue(self.directory)
+        self.downloads = DownloadQueue(self.directory,budget=self.budget)
         service = self
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -146,6 +174,20 @@ class LanServer:
                         body = json.loads(self.rfile.read(length))
                         if not isinstance(body,dict): raise ApiError(400,'请求内容须为对象')
                     if self.command in {'GET','HEAD'}:
+                        if path == '/api/remote':
+                            if not service.remote or not library.setting('remote_enabled',False):raise ApiError(403,'请在电脑设置中启用手机遥控')
+                            return self.send_json(200,service.remote.state())
+                        match=re.fullmatch(r'/api/files/(\d+)/(preferences|bookmarks)',path)
+                        if match:
+                            from .media_tools import preferences,bookmarks
+                            return self.send_json(200,preferences(library,int(match[1])) if match[2]=='preferences' else {'items':self.bookmarks(library,int(match[1]))})
+                        match=re.fullmatch(r'/api/bookmarks/([a-f0-9]{32})/image',path)
+                        if match:
+                            row=library.db.execute('SELECT image FROM bookmarks WHERE id=?',(match[1],)).fetchone()
+                            if not row or not row['image']:raise ApiError(404,'书签截图尚未生成')
+                            target=Path(row['image']).resolve()
+                            if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'截图不在缓存内')
+                            return self.send_file(target,'image/jpeg')
                         if path == '/api/info':
                             return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now()})
                         if path == '/api/filters':
@@ -163,7 +205,9 @@ class LanServer:
                         if match:
                             row=library.db.execute('SELECT * FROM tasks WHERE id=? AND kind=?',(match[1],'download-library')).fetchone()
                             if not row: raise ApiError(404,'下载任务不存在')
-                            return self.send_json(200,{key:json.loads(row[key]) if key in {'payload','result'} else row[key] for key in row.keys()})
+                            result={key:json.loads(row[key]) if key in {'payload','result'} else row[key] for key in row.keys()}
+                            if service.downloads.paused.is_set() and result['status'] in {'queued','running','importing'}:result['status']='paused'
+                            return self.send_json(200,result)
                         if path == '/api/stats':
                             return self.send_json(200,library.stats())
                         match = re.fullmatch(r'/api/works/(\d+)/stills/(\d+)',path)
@@ -183,6 +227,8 @@ class LanServer:
                                 if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'封面路径不在缓存内')
                                 return self.send_file(target,'image/jpeg')
                             result=public_work(work,True)
+                            rows=library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=? ORDER BY b.file_id,b.position LIMIT 300',(work['id'],))
+                            result['bookmarks']=[{**{key:row[key] for key in row.keys() if key!='image'},'image':f"/api/bookmarks/{row['id']}/image" if row['image'] else None} for row in rows]
                             result['resume_file_id']=library.resume_file(work['id'])['id'] if work['files'] else None
                             if work['kind'] in {'movie','series','vr'}:
                                 from .downloads import download_folder
@@ -209,6 +255,24 @@ class LanServer:
                                 return self.send_file(subtitles[index],types[subtitles[index].suffix.lower()])
                             return self.send_json(200,{'items':[{'name':p.name,'mime':types[p.suffix.lower()],'url':f'/api/files/{file["id"]}/subtitles/{i}'} for i,p in enumerate(subtitles)]})
                     else:
+                        if path=='/api/remote':
+                            if not service.remote or not library.setting('remote_enabled',False):raise ApiError(403,'请在电脑设置中启用手机遥控')
+                            return self.send_json(202,{'command_id':service.remote.submit(body)})
+                        match=re.fullmatch(r'/api/files/(\d+)/(preferences|bookmarks)',path)
+                        if match:
+                            from .media_tools import preferences,add_bookmark
+                            if match[2]=='preferences':return self.send_json(200,preferences(library,int(match[1]),body))
+                            if not body.keys()<={'position','title','note'}:raise ApiError(400,'无效书签参数')
+                            item=add_bookmark(library,int(match[1]),body.get('position'),body.get('title',''),body.get('note',''))
+                            service.capture_bookmark(item['id'])
+                            return self.send_json(201,{'id':item['id']})
+                        match=re.fullmatch(r'/api/bookmarks/([a-f0-9]{32})/(delete|capture)',path)
+                        if match:
+                            from .media_tools import delete_bookmark
+                            if match[2]=='capture':
+                                if not library.db.execute('SELECT 1 FROM bookmarks WHERE id=?',(match[1],)).fetchone():raise ApiError(404,'书签不存在')
+                                service.capture_bookmark(match[1]);return self.send_json(202,{'ok':True})
+                            delete_bookmark(library,match[1]);return self.send_json(200,{'ok':True})
                         match=re.fullmatch(r'/api/works/(\d+)/(downloads|download-directory|import-downloads)',path)
                         if match:
                             work_id=int(match[1]);library.work(work_id)
@@ -280,6 +344,10 @@ class LanServer:
                     if not 1800 <= year <= 2200: raise ApiError(400, '无效年份')
                     filters.update(year_min=year, year_max=year)
                 return filters
+
+            def bookmarks(self,library,file_id):
+                from .media_tools import bookmarks
+                return [{**{k:v for k,v in row.items() if k!='image'},'image':f"/api/bookmarks/{row['id']}/image" if row['image'] else None} for row in bookmarks(library,file_id)]
 
             def file(self,library,file_id):
                 row=library.db.execute('SELECT * FROM files WHERE id=?',(file_id,)).fetchone()
@@ -362,6 +430,9 @@ class LanServer:
             return {'ok':True}
 
     def stop(self):
+        self.closing.set()
+        self.bookmark_pool.shutdown(wait=False,cancel_futures=True)
+        if self.remote:self.remote.clear()
         if self.downloads:
             self.downloads.stop()
             self.downloads = None

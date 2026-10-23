@@ -4,6 +4,8 @@ from html import escape
 from pathlib import Path
 import time
 import traceback
+import threading
+import uuid
 from PySide6.QtCore import Qt, QSize, QThread, Signal, QTimer, QUrl, QRect, QPoint
 from PySide6.QtGui import QPixmap, QIcon, QColor, QPainter, QFont, QDesktopServices, QPixmapCache, QLinearGradient, QPainterPath
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -55,22 +57,38 @@ class Job(QThread):
     def __init__(self, directory, function, parent=None):
         super().__init__(parent)
         self.directory, self.function = directory, function
+        self.paused=threading.Event()
+        self.budget=None
+
+    def cancelled(self):
+        while self.paused.is_set() and not self.isInterruptionRequested():time.sleep(.1)
+        return self.isInterruptionRequested()
 
     def run(self):
-        library = Library(self.directory)
+        library = None
+        acquired=False
         try:
+            if self.budget:
+                self.progress.emit(0,0,'等待后台处理名额')
+                self.budget.acquire(self.cancelled);acquired=True
+            library=Library(self.directory)
+            library.parent_task_id=getattr(self,'task_identifier',None)
             def report(done, total, message):
+                if self.cancelled():raise ImportCancelled('任务已停止')
                 self.progress.emit(done, total, message)
-            report.cancelled = self.isInterruptionRequested
+            report.cancelled = self.cancelled
+            if self.cancelled():raise ImportCancelled('任务已停止')
             self.done.emit(self.function(library, report))
         except ImportCancelled:
             self.done.emit({"cancelled":True})
         except Exception as exc:
             self.failed.emit(str(exc))
-            with (self.directory / 'diagnostics.log').open('a', encoding='utf-8') as stream:
-                traceback.print_exc(file=stream)
+            try:
+                with (self.directory / 'diagnostics.log').open('a', encoding='utf-8') as stream:traceback.print_exc(file=stream)
+            except OSError:pass
         finally:
-            library.close()
+            if library:library.close()
+            if acquired:self.budget.release()
 
 
 def poster_regions(rect):
@@ -488,8 +506,10 @@ class Details(QWidget):
         self.files_heading=label('视频文件 / 季与集 · 双击播放', 'subtitle')
         outer.addWidget(self.files_heading)
         outer.addWidget(self.files)
-        self.files.setMinimumHeight(90)
-        self.files.setMaximumHeight(200)
+        self.bookmark_heading=label('时间点书签 · 双击跳转','subtitle');outer.addWidget(self.bookmark_heading)
+        self.bookmark_list=QListWidget();self.bookmark_list.setIconSize(QSize(144,81));self.bookmark_list.setMaximumHeight(260);outer.addWidget(self.bookmark_list)
+        self.bookmark_list.itemDoubleClicked.connect(lambda row:window.play_file(row.data(Qt.ItemDataRole.UserRole)));self.refresh_bookmarks()
+        self.files.setFixedHeight(min(200,max(56,len(w['files'])*44+12)))
         self.files.setVisible(bool(w['files']))
         self.files_heading.setVisible(bool(w['files']))
         self.episode_overview=label('')
@@ -565,6 +585,19 @@ class Details(QWidget):
         from .images import image_cache
         image_cache().changed.connect(self.render_artwork)
         self.render_artwork()
+
+    def refresh_bookmarks(self):
+        entries=self.library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=? ORDER BY b.file_id,b.position LIMIT 300',(self.work_id,)).fetchall()
+        self.bookmark_list.clear();files_by_id={file['id']:file for file in self.work['files']}
+        for entry in entries:
+            file=files_by_id.get(entry['file_id'])
+            if not file:continue
+            row=QListWidgetItem(f"{Path(file['path']).name} · {int(entry['position'])//60:02}:{int(entry['position'])%60:02} · {entry['title']}\n{entry['note']}")
+            row.setData(Qt.ItemDataRole.UserRole,{**file,'position':entry['position'],'completed':0})
+            if entry['image']:row.setIcon(QIcon(entry['image']))
+            self.bookmark_list.addItem(row)
+        self.bookmark_list.setFixedHeight(min(260,max(110,len(entries)*104+8)))
+        self.bookmark_heading.setVisible(bool(entries));self.bookmark_list.setVisible(bool(entries))
 
     def render_artwork(self):
         from .images import image_cache
@@ -852,6 +885,9 @@ class MainWindow(QMainWindow):
     def __init__(self, directory=None):
         super().__init__()
         self.library = Library(directory)
+        from .task_journal import TaskJournal,TaskBudget
+        self.task_journal=TaskJournal(self.library.directory)
+        self.task_budget=TaskBudget(self.library.setting('background_concurrency',1))
         self.lan_server = None
         self.setWindowTitle('Lumen · 私人光影库')
         self.resize(1400, 900)
@@ -859,6 +895,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(STYLE)
         self.setAcceptDrops(True)
         self.jobs = []
+        self.job_queue=[];self.jobs_paused=False;self._job_functions={}
         self._closing = False
         self._browse_job=None;self._browse_pending=None;self._browse_epoch=0
         self.section, self.subtab = 'home', 0
@@ -869,7 +906,9 @@ class MainWindow(QMainWindow):
         self.player = Player(self.library, self)
         self.player.queueNext.connect(lambda: self.step_playback(1))
         self.player.queuePrevious.connect(lambda: self.step_playback(-1))
-        self.player.refreshed.connect(self.refresh)
+        self.player.refreshed.connect(self.playback_refreshed)
+        from .remote import DesktopRemote
+        self.remote=DesktopRemote(self)
         self.root = QWidget()
         self.root.setObjectName('root')
         self.setCentralWidget(self.root)
@@ -904,6 +943,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(ActionButton('随机播放','shuffle',self.show_queue).icon_only())
         utilities=ActionButton('工具','more').icon_only();utility_menu=QMenu(utilities)
         utility_menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork());utility_menu.addAction('导入与刮削任务',self.show_tasks);utilities.setMenu(utility_menu);header_layout.addWidget(utilities)
+        utility_menu.addAction('目录监控与媒体库体检…',self.library_tools)
         header_layout.addWidget(ActionButton('设置','settings',self.settings).icon_only())
         root.addWidget(header)
         body = QHBoxLayout()
@@ -1021,7 +1061,7 @@ class MainWindow(QMainWindow):
         self.job_progress.setMaximumHeight(18)
         self.job_progress.hide()
         root.addWidget(self.job_progress)
-        self.cancel_job = button('停止当前任务',self.stop_jobs)
+        self.cancel_job = button('停止处理队列',self.stop_jobs)
         self.cancel_job.hide()
         root.addWidget(self.cancel_job)
         self.status = label('就绪', 'subtitle')
@@ -1044,9 +1084,43 @@ class MainWindow(QMainWindow):
         self.media_scheduler.timeout.connect(self.schedule_media)
         self.media_scheduler.start()
         QTimer.singleShot(4000, self.schedule_discovery)
+        self.watch_scheduler=QTimer(self);self.watch_scheduler.setInterval(10000);self.watch_scheduler.timeout.connect(self.schedule_watched);self.watch_scheduler.start()
+        with self.library.db:
+            self.library.db.execute("UPDATE tasks SET status='cancelled',error='应用重启，未完成任务可重试' WHERE kind='background' AND status IN ('running','paused','queued')")
+
+    def library_tools(self):
+        from .library_tools_ui import LibraryTools
+        LibraryTools(self).exec()
+
+    def playback_refreshed(self):
+        self.refresh()
+        if self.detail_page:self.detail_page.refresh_bookmarks()
+
+    def schedule_watched(self):
+        if self.jobs or self.job_queue or self.jobs_paused or self._closing or not any(row.get('enabled',True) for row in self.library.setting('watched_folders',[])):return
+        from .media_tools import watch_folders
+        self.run_job('目录自动监控',lambda lib,p:watch_folders(lib,p,cancelled=p.cancelled),quiet=True)
+
+    def pause_jobs(self,paused):
+        self.jobs_paused=paused
+        self.task_budget.set_paused(paused)
+        if self.lan_server:self.lan_server.downloads.pause(paused)
+        for job in self.jobs:
+            job.paused.set() if paused else job.paused.clear()
+            identifier=getattr(job,'task_identifier',None)
+            row=self.library.db.execute('SELECT payload FROM tasks WHERE id=?',(identifier,)).fetchone() if identifier else None
+            if row:self.task_journal.record(identifier,'background','paused' if paused else 'running',json.loads(row['payload']))
+        if not paused:self.start_queued_jobs()
+
+    def start_queued_jobs(self):
+        if self._closing or self.jobs_paused:return
+        limit=max(1,min(3,int(self.library.setting('background_concurrency',1))))
+        while self.job_queue and len(self.jobs)<limit:
+            title,function,callback,identifier,quiet=self.job_queue.pop(0)
+            self.run_job(title,function,callback,_identifier=identifier,quiet=quiet)
 
     def schedule_media(self):
-        if self.jobs or self._closing:
+        if self.jobs or self.job_queue or self.jobs_paused or self._closing:
             return
         pending = self.library.db.execute('SELECT COUNT(*) FROM import_cache WHERE pending IN (1,2)').fetchone()[0]
         if pending:
@@ -1532,26 +1606,43 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def stop_jobs(self):
+        if self.lan_server:self.lan_server.downloads.cancel_all()
         for job in self.jobs:
             job.requestInterruption()
         self.cancel_job.setEnabled(False)
         self.status.setText('正在安全停止任务…')
+        for title,function,callback,identifier,quiet in self.job_queue:
+            self.task_journal.record(identifier,'background','cancelled',{'title':title},error='队列已停止')
+        self.job_queue.clear()
 
-    def run_job(self, title, function, callback=None):
+    def run_job(self, title, function, callback=None, _identifier=None, quiet=False):
         if self._closing:
             return
-        if any(j.isRunning() for j in self.jobs):
-            QMessageBox.information(self, '任务进行中', '请等待当前后台任务完成后再执行此操作。播放和浏览仍可继续。')
+        identifier=_identifier or uuid.uuid4().hex
+        self._job_functions[identifier]=(title,function,callback,quiet)
+        if len(self._job_functions)>300:self._job_functions.pop(next(iter(self._job_functions)))
+        if self.jobs_paused or len(self.jobs)>=self.library.setting('background_concurrency',1):
+            if len(self.job_queue)>=100:
+                self.status.setText('后台队列已满，请等待部分任务完成');return
+            self.job_queue.append((title,function,callback,identifier,quiet))
+            if not quiet:self.task_journal.record(identifier,'background','queued',{'title':title})
+            self.status.setText(f'已排队：{title} · 等待 {len(self.job_queue)} 项')
             return
-        self.status.setText(title + '…')
+        if not quiet:self.task_journal.record(identifier,'background','running',{'title':title})
+        if not quiet:self.status.setText(title + '…')
         self.job_progress.setRange(0, 0)
-        self.job_progress.show()
+        if not quiet:self.job_progress.show()
         self.cancel_job.setEnabled(True)
-        self.cancel_job.setVisible(title.startswith(('直接下载','快速导入','后台补充','本地 NFO','检查下载')))
+        self.cancel_job.setVisible(not quiet)
         job = Job(self.library.directory, function, self)
+        job.task_identifier=identifier
+        job.budget=self.task_budget
         self.jobs.append(job)
         last_refresh = [time.monotonic()]
+        started=time.monotonic();last_saved=[0];last_counter=[started,0]
         def show_progress(done, total, message):
+            if job not in self.jobs:return
+            self.job_progress.show();self.cancel_job.show()
             if total>2147483647:
                 self.job_progress.setRange(0,10000)
                 self.job_progress.setValue(min(10000,int(done*10000//total)))
@@ -1561,6 +1652,11 @@ class MainWindow(QMainWindow):
                 self.job_progress.setValue(done if total else 0)
                 self.job_progress.setFormat('%v / %m · %p%')
             self.status.setText(title + ' · ' + message)
+            if not quiet and time.monotonic()-last_saved[0]>=1:
+                current=time.monotonic();elapsed=max(.001,current-last_counter[0]);speed=max(0,done-last_counter[1])/elapsed;last_counter[:]=[current,done]
+                self.task_journal.record(identifier,'background','paused' if job.paused.is_set() else 'running',
+                                  {'title':title,'progress':{'completed':done,'total':total,'stage':message,'units_per_second':round(speed,2),'unit':'bytes' if '下载' in title and '检查' not in title and total>1048576 else 'items'}})
+                last_saved[0]=time.monotonic()
             if title.startswith('快速导入') and self.detail_page is None and time.monotonic() - last_refresh[0] > 2:
                 self.refresh()
                 last_refresh[0] = time.monotonic()
@@ -1573,23 +1669,30 @@ class MainWindow(QMainWindow):
             self.job_progress.hide()
             self.cancel_job.hide()
             self.jobs.remove(job)
+            self.job_progress.setVisible(bool(self.jobs));self.cancel_job.setVisible(bool(self.jobs))
             job.deleteLater()
             if self._closing:
                 if not self.jobs and self._browse_job is None:
                     QTimer.singleShot(0, self.close)
                 return
+            if not quiet:
+                cancelled=isinstance(outcome.get('value'),dict) and outcome['value'].get('cancelled')
+                self.task_journal.record(identifier,'background','failed' if 'error' in outcome else 'cancelled' if cancelled else 'done',{'title':title},outcome.get('value') if isinstance(outcome.get('value'),dict) else {},outcome.get('error'))
             from .images import image_cache
             image_cache().invalidate()
-            self.refresh()
+            if not quiet or outcome.get('value',{}).get('imported') or outcome.get('value',{}).get('updated'):self.refresh()
+            if title=='书签截图' and self.detail_page:self.detail_page.refresh_bookmarks()
             if 'error' in outcome:
                 self.status.setText(title + '失败：' + outcome['error'])
                 QMessageBox.warning(self, title, outcome['error'])
             elif isinstance(outcome.get('value'), dict) and outcome['value'].get('cancelled'):
                 self.status.setText('任务已停止，已完成内容保留')
             else:
-                self.status.setText(title + '完成')
+                if not quiet or outcome.get('value',{}).get('imported') or outcome.get('value',{}).get('updated'):self.status.setText(title + '完成')
+                elif outcome.get('value',{}).get('offline'):self.status.setText('监控目录离线，已保留原有媒体资料')
                 if callback:
                     callback(outcome.get('value'))
+            self.start_queued_jobs()
         job.finished.connect(finished)
         job.start()
 
@@ -1697,7 +1800,7 @@ class MainWindow(QMainWindow):
             raise RuntimeError('\n'.join(errors))
 
     def schedule_discovery(self):
-        if self._closing:
+        if self._closing or self.job_queue or self.jobs_paused:
             return
         if any(j.isRunning() for j in self.jobs):
             return
@@ -1717,14 +1820,38 @@ class MainWindow(QMainWindow):
         table.horizontalHeader().setStretchLastSection(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        rows = [dict(r) for r in self.library.db.execute('SELECT * FROM tasks ORDER BY updated DESC LIMIT 300')]
-        for row, task in enumerate(rows):
-            table.insertRow(row)
-            for column, text in enumerate([task['kind'], task['status'], task['updated'][:19], task['error'] or task['result']]):
-                item = QTableWidgetItem(str(text))
-                item.setToolTip(str(text))
-                table.setItem(row, column, item)
+        rows=[]
+        def reload():
+            selected=rows[table.currentRow()]['id'] if 0<=table.currentRow()<len(rows) else None
+            rows[:]=[dict(r) for r in self.library.db.execute('SELECT * FROM tasks ORDER BY updated DESC LIMIT 300')]
+            table.setRowCount(len(rows))
+            for index,task in enumerate(rows):
+                payload=json.loads(task['payload']);progress=payload.get('progress',{})
+                if not progress and 'bytes' in payload:progress={'completed':payload['bytes'],'total':payload.get('total',0),'stage':payload.get('message','下载'),'path':payload.get('target',payload.get('path','')),'unit':'bytes','units_per_second':payload.get('bytes_per_second',0)}
+                quantity=(f"{progress.get('completed',0)/1048576:.1f} / {progress.get('total',0)/1048576:.1f} MiB" if progress.get('unit')=='bytes' else f"{progress.get('completed',0)} / {progress.get('total',0)}")
+                detail=task['error'] or (f"{quantity} · {progress.get('stage','')} · {progress.get('path','')}" if progress else task['result'])
+                if progress.get('units_per_second') is not None:detail+=(f" · {progress['units_per_second']/1048576:.2f} MiB/s" if progress.get('unit')=='bytes' else f" · {progress['units_per_second']} 项/秒")
+                state=task['status']
+                if self.lan_server and self.lan_server.downloads.paused.is_set() and task['kind']=='download-library' and state in {'running','queued','importing'}:state='paused'
+                states={'queued':'排队中','running':'进行中','paused':'已暂停','importing':'入库中','failed':'失败','partial':'部分完成','done':'已完成','cancelled':'已停止','external':'外部工具处理'}
+                kinds={'import':'导入','media':'补充媒体','scrape':'刮削','download':'HTTP 下载','download-library':'下载并入库','match':'匹配确认','move':'文件整理','background':'后台处理'}
+                for column,text in enumerate([payload.get('title',kinds.get(task['kind'],task['kind'])),states.get(state,state),task['updated'][:19],detail]):
+                    item=QTableWidgetItem(str(text));item.setToolTip(str(text));table.setItem(index,column,item)
+                    if column==1:item.setForeground(QColor('#e98383' if state in {'failed','partial'} else '#6bc9a5' if state=='done' else '#00a4dc' if state in {'running','importing'} else '#e7c567' if state=='paused' else '#cccccc'))
+                if task['id']==selected:table.selectRow(index)
+        reload();timer=QTimer(dialog);timer.setInterval(1000);timer.timeout.connect(reload);timer.start()
         layout.addWidget(table)
+        paused=QCheckBox('暂停后台队列（在安全点暂停处理，播放与浏览继续）');paused.setChecked(self.jobs_paused);paused.toggled.connect(self.pause_jobs);layout.addWidget(paused)
+        def cancel_selected():
+            index=table.currentRow()
+            if not 0<=index<len(rows):return
+            identifier=json.loads(rows[index]['payload']).get('parent_task_id',rows[index]['id'])
+            if self.lan_server and self.lan_server.downloads.cancel(identifier):return
+            for job in self.jobs:
+                if getattr(job,'task_identifier',None)==identifier:job.requestInterruption();return
+            for queued in list(self.job_queue):
+                if queued[3]==identifier:self.job_queue.remove(queued);self.task_journal.record(identifier,'background','cancelled',{'title':queued[0]});reload();return
+        layout.addWidget(button('停止选中后台任务',cancel_selected))
         def inspect_task():
             index = table.currentRow()
             if index >= 0:
@@ -1745,12 +1872,26 @@ class MainWindow(QMainWindow):
                 return
             task = rows[index]
             payload = json.loads(task['payload'])
-            if task['kind'] == 'move':
+            if task['kind']=='download' and payload.get('parent_task_id'):
+                parent=self.library.db.execute('SELECT * FROM tasks WHERE id=?',(payload['parent_task_id'],)).fetchone()
+                if parent:task=dict(parent);payload=json.loads(task['payload'])
+            if task['status'] in {'running','queued','paused'}:return
+            if task['kind']=='background' and task['id'] in self._job_functions:
+                title,function,callback,quiet=self._job_functions[task['id']];dialog.accept();self.run_job(title,function,callback,quiet=quiet)
+            elif task['kind'] == 'move':
                 dialog.accept()
                 self.run_job('恢复文件整理', lambda lib, p: execute_move(lib, task_id=task['id']))
             elif task['kind'] == 'import':
                 dialog.accept()
-                self.run_job('重试导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p, fast=payload.get('fast',True), cancelled=p.cancelled))
+                errors=json.loads(task['result']).get('errors',[])
+                candidates=[error['path'] for error in errors] or None
+                self.run_job('重试导入失败项' if candidates else '继续导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p, fast=payload.get('fast',True), cancelled=p.cancelled,candidates=candidates))
+            elif task['kind']=='download':
+                from .downloads import download_direct
+                dialog.accept();self.run_job('重试直接下载',lambda lib,p:download_direct(lib,payload['plugin'],payload['url'],payload['target'],p,p.cancelled))
+            elif task['kind']=='download-library' and type(payload.get('index')) is int:
+                from .downloads import download_to_library
+                dialog.accept();self.run_job('重试下载入库',lambda lib,p:download_to_library(lib,payload['work_id'],payload['index'],p,p.cancelled,directory=payload.get('directory')))
             elif task['kind'] == 'media':
                 dialog.accept()
                 with self.library.db:
@@ -1837,8 +1978,9 @@ class MainWindow(QMainWindow):
         self.lan_server = None
         try:
             if enabled:
-                server = LanServer(self.library.directory,port=port)
+                server = LanServer(self.library.directory,port=port,remote=self.remote,budget=self.task_budget)
                 server.start()
+                server.downloads.pause(self.jobs_paused)
                 self.lan_server = server
             self.library.set_setting('lan', {'enabled':enabled,'port':port})
         except Exception:
@@ -1855,6 +1997,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._closing = True
+        self.watch_scheduler.stop();self.remote.timer.stop();self.remote.clear()
+        for title,function,callback,identifier,quiet in self.job_queue:
+            if not quiet:self.task_journal.record(identifier,'background','cancelled',{'title':title},error='应用关闭，未执行队列任务')
+        self.job_queue.clear()
         if self.jobs or self._browse_job is not None:
             self._closing = True
             self._browse_pending=None
@@ -1871,5 +2017,6 @@ class MainWindow(QMainWindow):
         self.media_scheduler.stop()
         if self.lan_server:
             self.lan_server.stop()
+        self.task_journal.stop()
         self.library.close()
         event.accept()

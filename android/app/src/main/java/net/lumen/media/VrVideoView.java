@@ -24,7 +24,7 @@ import javax.microedition.khronos.opengles.GL10;
 
 /** VLC decodes into an OES texture; this view projects each eye on a VR180 hemisphere. */
 public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Renderer, SensorEventListener {
-    public interface Listener { void ready(); void lost(); void failed(String reason); void tap(); void zoom(float fov); boolean gesture(android.view.View view,MotionEvent event); }
+    public interface Listener { void ready(); void lost(); void failed(String reason); void tap(); void zoom(float fov); boolean gesture(android.view.View view,MotionEvent event); default void viewChanged(){} }
     private final Listener listener;
     private final SensorManager sensors;
     private final Sensor rotation;
@@ -73,6 +73,9 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     }
     public void setFov(float degrees) { fov=PlaybackPolicy.fov(degrees);requestRender(); }
     public float getFov(){return fov;}
+    public float getViewYaw(){return yaw;}
+    public float getViewPitch(){return pitch;}
+    public void setViewAngles(float horizontal,float vertical){yaw=VrProjection.wrap(horizontal);pitch=VrProjection.clampPitch(vertical);requestRender();}
     public void recenter() { yaw=pitch=sensorYaw=sensorPitch=0;baseline=false;requestRender(); }
     public int[] setVideoSize(int w,int h) {
         if(w<=0||h<=0)return new int[]{videoWidth,videoHeight};
@@ -162,7 +165,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
             }
             touchX=event.getX();touchY=event.getY();return true;
         }
-        if(event.getActionMasked()==MotionEvent.ACTION_UP){if(!moved)performClick();return true;}
+        if(event.getActionMasked()==MotionEvent.ACTION_UP){if(!moved)performClick();else listener.viewChanged();return true;}
         return true;
     }
     @Override public boolean performClick(){super.performClick();listener.tap();return true;}

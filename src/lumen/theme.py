@@ -22,7 +22,7 @@ QPushButton:disabled { color: #777777; background: #202020; }
 QPushButton#primary { background: #00a4dc; color: #ffffff; border: 0; font-weight: 600; }
 QPushButton#nav { text-align: left; border: 0; background: transparent; padding: 13px 20px; }
 QPushButton#nav:checked { background: #262626; color: #ffffff; border-left: 3px solid #00a4dc; border-radius: 0; }
-QLineEdit, QSpinBox, QComboBox, QTextEdit, QPlainTextEdit { background: #252525; color: #ffffff; border: 1px solid #404040; border-radius: 3px; padding: 7px; selection-background-color: #00a4dc; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit, QPlainTextEdit { background: #252525; color: #ffffff; border: 1px solid #404040; border-radius: 3px; padding: 7px; selection-background-color: #00a4dc; }
 QComboBox QAbstractItemView { background: #222222; selection-background-color: #333333; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: 0; }
 QListWidget, QTreeWidget, QTableWidget { background: transparent; alternate-background-color: #242424; border: 0; border-radius: 8px; outline: 0; }
@@ -50,8 +50,8 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 # Components share the same neutral surfaces, cyan focus and compact spacing.
 STYLE += '''
 QPushButton { min-height: 20px; border-radius: 5px; padding: 8px 14px; }
-QLineEdit, QSpinBox, QComboBox, QPlainTextEdit { min-height: 24px; border-radius: 5px; padding: 8px 10px; background: #202024; border-color: #38383d; }
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: #00a4dc; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit { min-height: 24px; border-radius: 5px; padding: 8px 10px; background: #202024; border-color: #38383d; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border-color: #00a4dc; }
 QComboBox::drop-down { border: 0; width: 24px; }
 QComboBox QAbstractItemView { padding: 4px; outline: 0; border: 1px solid #414149; }
 QLabel#eyebrow { color: #90909c; font-size: 12px; }

@@ -28,6 +28,10 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 更多交互说明与截图复现方法见 [UI 设计说明](docs/ui-design.md)。
 
+### 后续源码功能（尚未打包）
+
+增加目录增量监控、双端播放诊断和字幕调节、带截图的时间点书签、Android 每视频 VR 设置记忆、手机遥控电脑、媒体库体检及可暂停 / 取消 / 重试的后台队列。使用入口、当前限制及实际页面截图见 [媒体管理与播放工具](docs/media-tools.md)。现有 0.4.2 安装包不包含这些后续更新。
+
 ## 下载
 
 优先查看 [target 安装包目录](target/README.md)：Android APK 已放入该目录；Windows EXE 安装包仅在明确请求打包与发布后由 Windows 工作流构建、安装验证并提交，并提供 [Releases 单文件下载](https://github.com/sleeper-lfy/my-jellyfin/releases)。
@@ -107,7 +111,7 @@ Linux 运行可验证核心逻辑、真实解码和 UI，但不代表 Windows �
 
 ## 文档
 
-[需求](docs/requirements.md) · [技术选型](docs/architecture-decision.md) · [架构](docs/architecture.md) · [插件开发](docs/plugin-development.md) · [UI 规范](docs/ui-design.md) · [阶段验收](docs/implementation-plan.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
+[需求](docs/requirements.md) · [技术选型](docs/architecture-decision.md) · [架构](docs/architecture.md) · [插件开发](docs/plugin-development.md) · [UI 规范](docs/ui-design.md) · [媒体工具](docs/media-tools.md) · [阶段验收](docs/implementation-plan.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
 
 ## 0.4.0 播放与媒体资料
 

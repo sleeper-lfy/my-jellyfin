@@ -199,6 +199,12 @@ class Library:
           result TEXT NOT NULL DEFAULT '{}', error TEXT, updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS lists (name TEXT PRIMARY KEY, filters TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS playback_preferences (
+          file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE, value TEXT NOT NULL DEFAULT '{}');
+        CREATE TABLE IF NOT EXISTS bookmarks (
+          id TEXT PRIMARY KEY, file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+          position REAL NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', image TEXT, created TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS bookmarks_file ON bookmarks(file_id,position);
         ''')
         self.db.commit()
 
@@ -296,7 +302,7 @@ class Library:
             self.db.executemany('INSERT INTO name_keys VALUES (?,?)',[(key,work_id) for key in keys])
             self.db.execute('UPDATE external_ids SET kind=? WHERE work_id=?',(kind,work_id))
 
-    def import_folder(self, root, kind, progress=None, fast=False, cancelled=None):
+    def import_folder(self, root, kind, progress=None, fast=False, cancelled=None, candidates=None):
         if kind not in {'movie', 'series', 'other', 'vr'}:
             raise ValueError('无效媒体类型')
         root = Path(root).resolve(strict=True)
@@ -319,7 +325,7 @@ class Library:
             report(0, 0, '扫描文件夹', root)
             paths = []
             last_scan = time.monotonic()
-            for candidate in root.rglob('*'):
+            for candidate in (root.rglob('*') if candidates is None else map(Path,candidates)):
                 check_cancelled(cancelled)
                 if candidate.is_file() and not candidate.is_symlink() and candidate.suffix.lower() in VIDEO_EXTENSIONS and root in candidate.resolve().parents:
                     paths.append(candidate)
@@ -522,6 +528,8 @@ class Library:
         return result
 
     def task(self, task_id, kind, status, payload, result=None, error=None):
+        parent=getattr(self,'parent_task_id',None)
+        if parent and parent!=task_id:payload={**payload,'parent_task_id':parent}
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO tasks VALUES (?,?,?,?,?,?,?)',
                             (task_id, kind, status, json.dumps(payload, ensure_ascii=False), json.dumps(result or {}, ensure_ascii=False), error, now()))

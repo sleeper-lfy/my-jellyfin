@@ -28,6 +28,12 @@ class Settings(QDialog):
         form.addRow('FFmpeg', label(tool('ffmpeg') or '未安装；请将 ffmpeg.exe / ffprobe.exe 所在目录加入 PATH'))
         form.addRow('FFprobe', label(tool('ffprobe') or '未安装'))
         form.addRow(button('保存默认代理', self.save_proxy, True))
+        parallel=QSpinBox();parallel.setRange(1,3);parallel.setValue(self.library.setting('background_concurrency',1));parallel.setSuffix(' 项')
+        def concurrency(value):
+            self.library.set_setting('background_concurrency',value);window.task_budget.set_limit(value);window.start_queued_jobs()
+        parallel.valueChanged.connect(concurrency)
+        form.addRow('后台任务并发上限',parallel)
+        form.addRow(button('目录监控与媒体库体检…',window.library_tools))
         form.addRow(button('备份本地数据库…', self.backup))
         form.addRow(button('恢复数据库备份…', self.restore))
         note = label('备份包含资料、评分、队列和历史，不包含视频、图片缓存及插件。\n完整迁移请同时备份数据目录及原视频目录。恢复前自动保留当前数据库副本。')
@@ -126,6 +132,8 @@ class Settings(QDialog):
         self.lan_key.setReadOnly(True)
         self.lan_key.setEchoMode(QLineEdit.EchoMode.Password)
         lan_form.addRow('服务', self.lan_enabled)
+        remote=QCheckBox('允许已连接手机遥控电脑播放（选片、音量、音轨和字幕）');remote.setChecked(self.library.setting('remote_enabled',False))
+        remote.toggled.connect(lambda enabled:self.library.set_setting('remote_enabled',enabled));lan_form.addRow('手机遥控',remote)
         lan_form.addRow('端口', self.lan_port)
         lan_form.addRow('访问密钥', self.lan_key)
         key_actions = QHBoxLayout()
@@ -251,7 +259,7 @@ class Settings(QDialog):
         if self.window.lan_server:
             QMessageBox.information(self, "局域网服务正在运行", "请先在局域网 / Android 设置中关闭服务，再恢复数据库，以免手机播放记录写入恢复中的数据库。")
             return
-        if any(j.isRunning() for j in self.window.jobs):
+        if self.window.jobs or self.window.job_queue:
             QMessageBox.information(self, '任务进行中', '请等待后台任务结束后再恢复。')
             return
         path, _ = QFileDialog.getOpenFileName(self, '选择数据库备份', '', 'SQLite (*.sqlite)')

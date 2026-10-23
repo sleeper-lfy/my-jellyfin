@@ -24,11 +24,14 @@ with tempfile.TemporaryDirectory(prefix='lumen-mpv-gl-') as directory:
     player.open_file(window.library.query()[0]['files'][0]);spin(1200)
     assert player.media.position()>0 and not errors, errors
     player.enhance.setChecked(True);spin(250)
+    player.subtitle_delay.setValue(.3);player.subtitle_size.setValue(26);player.subtitle_position.setValue(85)
+    assert player.diagnostics()['backend']=='libmpv'
     windowed_geometry=player.geometry();windowed_flags=player.windowFlags()
     player.toggle_fullscreen();spin(250);player.show_controls();spin(100)
     assert player.isFullScreen() and player.windowFlags() & Qt.WindowType.FramelessWindowHint
     assert not player.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
     assert player.overlay.geometry()==player.rect()
+    assert abs(player.media.engine.sub_delay-.3)<.01 and player.media.engine.sub_font_size==26
     if sys.platform=='win32':
         # This is the entire monitor, including the strip normally occupied by
         # Explorer's taskbar. availableGeometry() would only test fake fullscreen.

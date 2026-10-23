@@ -221,11 +221,13 @@ def download_to_library(library, work_id, index, progress=None, cancelled=None, 
     task_id=task_id or uuid.uuid4().hex
     payload={'work_id':work_id,'index':index,'directory':str(folder),'bytes':0,'total':0}
     def report(done,total,message):
-        payload.update(bytes=done,total=total,message=message)
+        elapsed=max(.001,time.monotonic()-report.previous[0]);speed=max(0,done-report.previous[1])/elapsed;report.previous=(time.monotonic(),done)
+        payload.update(bytes=done,total=total,message=message,bytes_per_second=round(speed,2))
         if time.monotonic()-report.saved>=.5:
             library.task(task_id,'download-library','running',payload); report.saved=time.monotonic()
         if progress: progress(done,total,message)
     report.saved=0
+    report.previous=(time.monotonic(),0)
     library.task(task_id,'download-library','running',payload)
     saved=None
     try:
@@ -233,7 +235,10 @@ def download_to_library(library, work_id, index, progress=None, cancelled=None, 
             resolve_target=lambda headers:folder/video_filename(headers,entry['url'],work['title']))
         payload['path']=saved['path']
         library.task(task_id,'download-library','importing',payload)
-        result=register_download(library,work_id,saved['path'],folder,saved['sha256'],report,cancelled)
+        def import_progress(done,total,message):
+            payload['message']=message;library.task(task_id,'download-library','importing',payload)
+            if progress:progress(done,total,message)
+        result=register_download(library,work_id,saved['path'],folder,saved['sha256'],import_progress,cancelled)
         result.update(bytes=saved['bytes'],task_id=task_id)
         library.task(task_id,'download-library','done',payload,result)
         return result
@@ -304,34 +309,65 @@ def import_download_folder(library, work_id, progress=None, cancelled=None, *, d
 
 class DownloadQueue:
     """A bounded background queue for authenticated client requests."""
-    def __init__(self, directory):
+    def __init__(self, directory,budget=None):
         import queue,threading
         self.directory=Path(directory); self.pending=queue.Queue(maxsize=16)
         self.closed=threading.Event();self.lock=threading.Lock();self.active={};self.thread=None
+        from .task_journal import TaskBudget
+        self.budget=budget or TaskBudget(1);self.threads=[];self.cancelled_ids=set();self.paused=threading.Event()
+
+    def pause(self,paused):
+        self.paused.set() if paused else self.paused.clear()
+
+    def cancel(self,identifier):
+        with self.lock:
+            if identifier not in self.active.values():return False
+            self.cancelled_ids.add(identifier);return True
+
+    def cancel_all(self):
+        with self.lock:self.cancelled_ids.update(self.active.values())
+
+    def cancelled(self,identifier):
+        while self.paused.is_set() and not self.closed.is_set() and identifier not in self.cancelled_ids:self.closed.wait(.1)
+        return self.closed.is_set() or identifier in self.cancelled_ids
 
     def submit(self, work_id, index=None, action='download'):
-        import threading,queue
+        import threading
         from .core import Library
-        with self.lock:
-            if self.closed.is_set(): raise ValueError('下载服务正在停止')
-            library=Library(self.directory,initialize=False)
-            try:
-                url=None
-                if action=='download': url=resource(library,work_id,index)[1]['url']
-                elif action=='import': library.work(work_id)
-                else: raise ValueError('无效下载操作')
-                key=(work_id,url,action)
+        library=Library(self.directory,initialize=False)
+        try:
+            url=None
+            if action=='download':url=resource(library,work_id,index)[1]['url']
+            elif action=='import':library.work(work_id)
+            else:raise ValueError('无效下载操作')
+            key=(work_id,url,action)
+            with self.lock:
+                if self.closed.is_set():raise ValueError('下载服务正在停止')
                 if key in self.active:return self.active[key]
-                if self.pending.full(): raise ValueError('下载队列已满，请稍后重试')
-                task_id=uuid.uuid4().hex
-                directory=str(download_folder(library,work_id))
-                library.task(task_id,'download-library','queued',{'work_id':work_id,'index':index,'action':action,'directory':directory})
-            finally: library.close()
-            self.active[key]=task_id
-            self.pending.put_nowait((task_id,work_id,index,action,url,directory))
-            if self.thread is None:
-                self.thread=threading.Thread(target=self.run,name='LumenDownloads',daemon=True);self.thread.start()
+                if self.pending.full():raise ValueError('下载队列已满，请稍后重试')
+            task_id=uuid.uuid4().hex;directory=str(download_folder(library,work_id))
+            payload={'work_id':work_id,'index':index,'action':action,'directory':directory}
+            # SQLite can be busy during import. Never hold the control lock
+            # while writing: PC pause/cancel must remain immediate.
+            library.task(task_id,'download-library','queued',payload)
+            error=None;duplicate=None
+            with self.lock:
+                if self.closed.is_set():error='下载服务正在停止'
+                elif key in self.active:duplicate=self.active[key]
+                elif self.pending.full():error='下载队列已满，请稍后重试'
+                else:
+                    self.active[key]=task_id
+                    self.pending.put_nowait((task_id,work_id,index,action,url,directory))
+                    if self.thread is None:
+                        for index in range(3):
+                            worker=threading.Thread(target=self.run,name=f'LumenDownloads-{index}',daemon=True);self.threads.append(worker);worker.start()
+                        self.thread=self.threads[0]
+            if error:
+                library.task(task_id,'download-library','cancelled',payload,error=error);raise ValueError(error)
+            if duplicate:
+                library.task(task_id,'download-library','cancelled',payload,error='重复请求已合并');return duplicate
             return task_id
+        finally:library.close()
 
     def run(self):
         import queue
@@ -340,21 +376,27 @@ class DownloadQueue:
             try: task_id,work_id,index,action,url,directory=self.pending.get(timeout=.2)
             except queue.Empty: continue
             library=Library(self.directory,initialize=False)
+            library.parent_task_id=task_id
+            payload={'work_id':work_id,'index':index,'action':action,'directory':directory}
+            acquired=False
             try:
+                self.budget.acquire(lambda:self.cancelled(task_id));acquired=True
+                check_cancelled(lambda:self.cancelled(task_id))
                 if action=='import':
-                    result=import_download_folder(library,work_id,cancelled=self.closed.is_set,directory=directory)
-                    library.task(task_id,'download-library','done',{'work_id':work_id},result)
+                    result=import_download_folder(library,work_id,cancelled=lambda:self.cancelled(task_id),directory=directory)
+                    library.task(task_id,'download-library','done',payload,result)
                 elif resource(library,work_id,index)[2]=='magnet':
                     result=launch_magnet(library,work_id,index,directory=directory,expected_url=url)
-                    library.task(task_id,'download-library','external',{'work_id':work_id},result)
-                else: download_to_library(library,work_id,index,cancelled=self.closed.is_set,task_id=task_id,directory=directory,expected_url=url)
+                    library.task(task_id,'download-library','external',payload,result)
+                else: download_to_library(library,work_id,index,cancelled=lambda:self.cancelled(task_id),task_id=task_id,directory=directory,expected_url=url)
             except Exception as error:
                 row=library.db.execute('SELECT status,payload FROM tasks WHERE id=?',(task_id,)).fetchone()
                 if not row or row['status'] not in {'failed','partial','cancelled'}:
-                    library.task(task_id,'download-library','cancelled' if isinstance(error,ImportCancelled) else 'failed',{'work_id':work_id},error=str(error))
+                    library.task(task_id,'download-library','cancelled' if isinstance(error,ImportCancelled) else 'failed',payload,error=str(error))
             finally:
                 library.close()
-                with self.lock: self.active.pop((work_id,url,action),None)
+                if acquired:self.budget.release()
+                with self.lock:self.active.pop((work_id,url,action),None);self.cancelled_ids.discard(task_id)
                 self.pending.task_done()
 
     def stop(self):
@@ -368,4 +410,4 @@ class DownloadQueue:
             try: library.task(task_id,'download-library','cancelled',{'work_id':work_id},error='服务已停止，尚未开始下载')
             finally: library.close()
             self.pending.task_done()
-        if self.thread: self.thread.join(timeout=1)
+        for thread in self.threads:thread.join(timeout=1)
