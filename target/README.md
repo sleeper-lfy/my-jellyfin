@@ -5,9 +5,11 @@
 本次按明确请求打包，源码为 `91f07502e6afd58a46375082f9f487ab15e51eb9`。新增目录监控、播放诊断、字幕调节、时间书签、按视频保存 VR 设置、手机遥控、媒体库体检和后台队列管理；没有增加新的 GPU 增强算法、安卓离线观看或 2D VR。
 
 - [Android APK](Lumen-android-debug.apk)：0.4.3 / versionCode 6，已构建，33 项测试、lint、签名与 ZIP 对齐检查通过，与上一版签名相同，可覆盖安装。
-- Windows EXE：由 [专用打包工作流](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/package-current.yml) 构建、测试并安装验证；结果记录在 `package-status.json`。确认 `windows-installer.json` 的源码提交为上述提交后，再按下方说明合并分片安装。源码仍为旧提交时，Windows 文件仍是 0.4.2。
+- Windows EXE：已完成 [构建、测试和安装验证](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39930617864)，180 项测试全部通过。下载本目录的 4 个 `.exe.part*` 分片、`windows-installer.json` 和 `Prepare-Installer.ps1`，运行脚本合并得到完整安装包（约 192 MiB）；也可登录 GitHub 后从该运行的 `Lumen-windows-x64` Artifact 下载完整 EXE。
 
 本次仅提交安装包到本目录并保存 Actions Artifacts，不创建或更新 Release。下方 v0.4.2 链接继续指向历史版本。
+
+两端源码与校验值已核对，Windows 分片已重新合并并核对完整 EXE，APK 已从公开链接重新下载校验；见 `package-download-verification.json`。[0.4.3 更新说明](../docs/releases/0.4.3.md)。
 
 ## 0.4.2 统一发布
 
@@ -19,13 +21,13 @@
 
 ## Android
 
-下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.2 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
+下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.3 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
 
 ## Windows EXE 安装包
 
-优先从 [Releases](https://github.com/sleeper-lfy/my-jellyfin/releases) 下载 **Lumen-Setup-x64.exe**，双击安装。支持 Windows 10/11 x64，包含 Python/Qt 和 FFmpeg，不需额外安装开发环境。安装位置默认为当前用户的 `%LOCALAPPDATA%\Programs\Lumen`，可创建桌面和开始菜单快捷方式，并支持卸载。卸载不删除媒体或 `%LOCALAPPDATA%\Lumen` 资料库。
+当前 0.4.3 从本目录分片合并，或从上方 Actions Artifact 获取 **Lumen-Setup-x64.exe**；[Releases](https://github.com/sleeper-lfy/my-jellyfin/releases) 中仍是历史 0.4.2。双击安装器安装。支持 Windows 10/11 x64，包含 Python/Qt 和 FFmpeg，不需额外安装开发环境。安装位置默认为当前用户的 `%LOCALAPPDATA%\Programs\Lumen`，可创建桌面和开始菜单快捷方式，并支持卸载。卸载不删除媒体或 `%LOCALAPPDATA%\Lumen` 资料库。
 
-Windows 工作流会先运行测试、打包程序，再静默安装、验证安装后的程序和卸载；成功后才发布 Releases 并提交到本目录。**当前目录没有 `windows-installer.json` 时，代表安装包尚未交付；构建脚本不是安装包。**
+Windows 工作流会先运行测试、打包程序，再静默安装、验证安装后的程序和卸载；成功后提交到本目录，只有明确请求发布时才更新 Releases。**当前目录没有 `windows-installer.json` 时，代表安装包尚未交付；构建脚本不是安装包。**
 
 本目录的交付方式：
 
@@ -36,7 +38,7 @@ Windows 工作流会先运行测试、打包程序，再静默安装、验证安
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Prepare-Installer.ps1
 ```
 
-Releases 中的 EXE 始终是完整单文件，不需要合并。开发版本尚未进行商业代码签名。
+Actions Artifact 和历史 Releases 中的 EXE 是完整单文件，不需要合并。开发版本尚未进行商业代码签名。
 
 构建状态：https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/windows.yml
 

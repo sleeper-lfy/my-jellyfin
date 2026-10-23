@@ -153,3 +153,11 @@ Python 全量 161 项通过、1 项默认原生播放检查跳过；另行运行
 Python 完整回归 179 项通过、1 项默认原生检查跳过；真实 libmpv 图形检查另行通过，包括 GPU 视频 / Qt 浮层、全屏重建保留字幕参数、定位和重开。最终调整字幕输入框对比度及书签区高度后，10 项界面检查再次通过。Android 33 项单元 / 界面测试与 lint 通过，未运行安装包构建。新测试覆盖稳定文件监控、NFO 增量、离线资料保留、书签真实帧截图、观看统计隔离、偏好校验、旧备份迁移、遥控 GUI 线程执行、暂停取消和跨入口并发上限，以及 SQLite 写锁期间界面定时器继续响应。
 
 未增加 2D VR，未增加安卓离线观看。本轮不生成新 EXE / APK、不修改 target、不发布 Release，已发布的 0.4.2 文件保持不变。Windows / Android 实际设备体验仍需硬件验收。
+
+## 0.4.3 按明确请求打包（2026-10-23，未发布 Release）
+
+停止新增功能，应用版本提升为 0.4.3 / Android versionCode 6，应用源码固定为 `91f07502e6afd58a46375082f9f487ab15e51eb9`。GPU 增强仍为原有缩放与轻度锐化，没有引入新的超分或修复算法。
+
+Android 构建、33 项测试、lint、签名、版本号和 ZIP 对齐检查通过；签名与上一版一致。Windows 在 GitHub Windows runner 完成 180 项测试（无失败、错误或跳过）、程序 / 插件 worker 验证、EXE 安装器构建及静默安装 / 启动 / 卸载验证。[打包运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39930617864) 成功，完整 EXE 在 Actions Artifact，校验分片与完整 APK 已提交 target。
+
+Windows EXE 200,923,659 字节，SHA-256 `05a847024c5be7283551510bc8eeacf30e142f3257a78b9cf22357e827d89f8a`；分片已从 Git 拉取、逐片核对并合并校验。APK 100,845,994 字节，SHA-256 `40b85bfd091299058cfb2fd97e3934e76c5716a87662aa5085bf2ca795cb1da0`，已从 GitHub 公开地址重新下载校验。记录见 `target/package-status.json` 与 `target/package-download-verification.json`。本次没有发布 Release，历史 v0.4.2 保持不变。使用与下载说明见 [0.4.3](releases/0.4.3.md)。

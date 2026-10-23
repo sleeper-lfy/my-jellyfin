@@ -28,13 +28,13 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 更多交互说明与截图复现方法见 [UI 设计说明](docs/ui-design.md)。
 
-### 后续源码功能（尚未打包）
+### 0.4.3 新增功能
 
-增加目录增量监控、双端播放诊断和字幕调节、带截图的时间点书签、Android 每视频 VR 设置记忆、手机遥控电脑、媒体库体检及可暂停 / 取消 / 重试的后台队列。使用入口、当前限制及实际页面截图见 [媒体管理与播放工具](docs/media-tools.md)。现有 0.4.2 安装包不包含这些后续更新。
+增加目录增量监控、双端播放诊断和字幕调节、带截图的时间点书签、Android 每视频 VR 设置记忆、手机遥控电脑、媒体库体检及可暂停 / 取消 / 重试的后台队列。使用入口、当前限制及实际页面截图见 [媒体管理与播放工具](docs/media-tools.md)。[0.4.3 两端安装包已打包到 target](target/README.md)，本次未发布 Release；历史 0.4.2 安装包不包含这些更新。
 
 ## 下载
 
-优先查看 [target 安装包目录](target/README.md)：Android APK 已放入该目录；Windows EXE 安装包仅在明确请求打包与发布后由 Windows 工作流构建、安装验证并提交，并提供 [Releases 单文件下载](https://github.com/sleeper-lfy/my-jellyfin/releases)。
+优先查看 [target 安装包目录](target/README.md)：当前为 0.4.3，Android 提供完整 APK，Windows 提供 EXE 校验分片及合并脚本；[本次 Actions](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39930617864) 的 `Lumen-windows-x64` Artifact 提供完整 EXE。打包与发布分别按明确请求执行，[Releases](https://github.com/sleeper-lfy/my-jellyfin/releases) 中仍为历史 0.4.2。
 
 - 源码：仓库页面点击 **Code → Download ZIP**。
 - Android APK：[Android 构建记录](https://github.com/sleeper-lfy/my-jellyfin/actions/workflows/android.yml)，打开成功的运行，在 **Artifacts** 下载 `Lumen-android-debug`，解压后安装 APK。
