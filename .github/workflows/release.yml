@@ -1,0 +1,122 @@
+name: Publish explicitly tagged Windows and Android release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check explicit release version
+        shell: pwsh
+        run: |
+          python -c "import os,tomllib; assert os.environ['GITHUB_REF_NAME']=='v'+tomllib.load(open('pyproject.toml','rb'))['project']['version']"
+          if ($LASTEXITCODE -ne 0) { throw 'Release tag does not match the source version' }
+      - name: Install Windows packaging tools
+        run: |
+          choco install ffmpeg innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging tools installation failed' }
+      - name: Test, build and verify Windows installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .local | Out-Null
+          & {
+            ./scripts/build-windows.ps1
+            ./scripts/build-installer-windows.ps1
+            ./scripts/verify-installer-windows.ps1
+          } *>&1 | Tee-Object .local/release-windows.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            dist/installer/Lumen-Setup-x64.exe
+            dist/installer/Lumen-Setup-x64.exe.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-diagnostics
+          path: |
+            .local/release-windows.log
+            .local/installer-test.log
+            .local/test-results.xml
+          if-no-files-found: ignore
+
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: .local/release-windows
+      - name: Verify the source-matched Android package and signature
+        run: |
+          python scripts/verify-android-target.py
+          signer=$(rg --files "$ANDROID_HOME/build-tools" -g apksigner | sort -V | tail -1)
+          test -n "$signer"
+          "$signer" verify --verbose --print-certs target/Lumen-android-debug.apk
+      - name: Save the Windows installer into target
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python scripts/package-installer-target.py .local/release-windows/Lumen-Setup-x64.exe target --revision "$SOURCE_COMMIT"
+      - name: Publish both verified installers together
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python scripts/publish-release.py
+      - name: Commit verified Windows delivery files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all -- target
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Deliver verified release installers to target [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+  report:
+    if: always()
+    needs: [windows, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: release-diagnostics
+          path: .local/release-diagnostics
+      - name: Record release outcome and bounded diagnostics
+        env:
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: python scripts/report-release.py
+      - name: Save the outcome for review
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add target/release-status.json
+          git commit -m "Record explicit release build outcome [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main

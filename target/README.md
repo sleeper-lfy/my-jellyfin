@@ -1,8 +1,14 @@
 # 可下载安装包
 
+## 0.4.2 统一发布
+
+完整 Windows EXE 和 Android APK 使用同一个 [v0.4.2 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.2) 交付，附带各自的 SHA-256。发布流程在 Windows 测试、打包、安装与卸载检查通过后统一上架，不会把旧 EXE 当作新版上传。本目录的 `windows-installer.json`、`android-build.json` 记录实际文件对应的源码和校验值；`release-status.json` 记录远端发布结果。
+
+本版包含 UI 调整、默认下载目录与下载后入库、详情刮削候选、局域网发现和 PC 真全屏修复，不包含 2D 视频 VR 观看功能。详细说明见 [0.4.2 更新记录](../docs/releases/0.4.2.md)。下方保留历史交付记录，判断版本时以当前构建清单为准。
+
 ## Android
 
-下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.1 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
+下载 `Lumen-android-debug.apk` 后安装，SHA-256 校验值见同名 `.sha256` 文件。当前为 0.4.2 LibVLC + VR180 测试版（已本地构建、单元测试和 lint 验证），Android 8.0+，约 96 MiB。
 
 ## Windows EXE 安装包
 
