@@ -1,8 +1,32 @@
 # Lumen · 私人光影库
 
-Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
+Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
-采用 PySide6 + Qt FFmpeg 播放后端 + SQLite。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
+采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
+
+## 软件界面
+
+以下 PC 图片来自实际运行的 Qt 程序（Linux 云环境），使用独立示例资料库；封面、标题和评分仅用于展示界面，不写入用户资料库。截图对应当前源码，历史安装包的界面可能不同。
+
+### PC 媒体库
+
+![Lumen PC 媒体库：深色海报墙、来源评分、收藏与想看操作](docs/screenshots/ui-library.png)
+
+| 已选筛选条件 | 影片详情 |
+| --- | --- |
+| [![标签、演员和年份筛选条件可逐项移除](docs/screenshots/ui-filter-results.png)](docs/screenshots/ui-filter-results.png) | [![详情页展示海报、播放、收藏、想看和个人评分](docs/screenshots/ui-detail.png)](docs/screenshots/ui-detail.png) |
+
+[查看 PC 筛选侧面板](docs/screenshots/ui-filters.png) · [查看小窗口详情布局](docs/screenshots/ui-detail-compact.png)
+
+### Android 界面预览
+
+以下是实际 Activity 在 Android 原生图形测试环境中的绘制结果，使用示例服务端数据，尚非手机实机截图。Windows / Android 真机显示仍需验收。
+
+| 媒体库 | 筛选 | 详情 |
+| --- | --- | --- |
+| [![Android 媒体库与海报收藏](docs/screenshots/ui-android-library.png)](docs/screenshots/ui-android-library.png) | [![Android 底部筛选面板](docs/screenshots/ui-android-filters.png)](docs/screenshots/ui-android-filters.png) | [![Android 详情页与个人操作](docs/screenshots/ui-android-detail.png)](docs/screenshots/ui-android-detail.png) |
+
+更多交互说明与截图复现方法见 [UI 设计说明](docs/ui-design.md)。
 
 ## 下载
 
@@ -39,8 +63,8 @@ py -3.12 -m venv .venv
 3. 设置 → 插件 → 安装 `plugins/tvmaze`，检查声明的域名后启用。关键词搜索或粘贴 TVmaze 详情页，确认候选再入库；影片来源按钮可打开浏览器。
 4. 设置 → 导入规则，可指定分区自动刮削插件和整理目标。**保存带目标的规则需要确认，之后唯一匹配成功会移动原文件。** 未匹配/多候选进入任务列表；也可在详情中手动整理并查看文件计划。
 5. 全局搜索或组合筛选后创建随机队列。全部匹配对象等概率洗牌，不局限当前显示页；整部电视剧算一个对象。上一/下一作品与剧内下一集分开，队列结束停止，重启可继续。
-6. 电影/电视剧可评 1–10 分、收藏、想看或不感兴趣。女演员墙仅包含显式女性演员，均分排除未评分、同作品多版本只计一次。
-7. 发现页刷新插件数据，按来源/分类筛选，只提供资料与来源网址，无资源下载/购买。定期刷新仅在程序运行时执行。
+6. 电影/电视剧可评 1–10 分、收藏、想看或不感兴趣。电影和 VR 电影的未知演员性别默认按女性展示，已明确的男性资料不变；电视剧保留原值。均分排除未评分、同作品多版本只计一次。
+7. 发现页刷新插件数据，按来源/分类筛选；插件提供剧照和下载链接时可在详情中查看并手动下载。HTTP 视频下载到指定目录后自动关联影片资料，磁力可交给外部下载工具。定期刷新仅在程序运行时执行，详见 [下载与影视入库](docs/downloads.md)。
 8. 统计页展示实际观看时间、严格超过 600 秒的有效播放、日周月年趋势、偏好和年报。暂停、缓冲与跳转不增加观看时间。
 
 ## 从 Jellyfin 接手本地媒体库
