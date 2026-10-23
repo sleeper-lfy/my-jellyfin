@@ -57,6 +57,9 @@ jobs:
     needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: write
     steps:
