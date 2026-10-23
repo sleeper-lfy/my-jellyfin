@@ -1,17 +1,17 @@
 {
-  "version": "0.4.3",
-  "version_code": 6,
+  "version": "0.4.4",
+  "version_code": 7,
   "min_sdk": 26,
-  "source_commit": "91f07502e6afd58a46375082f9f487ab15e51eb9",
-  "source_sha256": "e56ef5cade53240631934daaff6b05abc82d8a030fc9ba8189baaa156bd1078b",
-  "bytes": 100845994,
-  "sha256": "40b85bfd091299058cfb2fd97e3934e76c5716a87662aa5085bf2ca795cb1da0",
+  "source_commit": "58321846d0b9ea68d34d44dfb865c636e1a53161",
+  "source_sha256": "3479429035a55c9a3ad671b208ac2a1be1b28c00b72d88161d462a83b3592c7d",
+  "bytes": 100860534,
+  "sha256": "5e7f244fb21a6ba605f1455b0cd5bcaefa93b641cf29963c748a7f46d26caa86",
   "signing_certificate_sha256": "575f4907ec5c0b8fc337862fd290cf1aae65a2234587cd4b9f4ad855271a68f4",
   "checks": [
     "assembleDebug",
-    "testDebugUnitTest (33 tests)",
+    "testDebugUnitTest (46 tests)",
     "lintDebug",
     "apksigner verify; same signing certificate as previous target APK",
-    "zipalign -c -p 4; aapt versionCode 6 / versionName 0.4.3"
+    "zipalign -c -p 4; aapt versionCode 7 / versionName 0.4.4"
   ]
 }

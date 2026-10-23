@@ -1,5 +1,11 @@
 # 可下载安装包
 
+## 0.4.4 发布构建
+
+Windows + Android 正在执行明确授权的统一发布。新 APK 为 0.4.4 / versionCode 7；Windows 安装器完成验证后同步更新本目录并上传 [v0.4.4 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.4)。状态以 `release-status.json` 的 tag 与结果为准。下方为历史交付记录，不代表新 Windows 安装器已完成。
+
+本版包含导入、全屏、书签和内存优化，以及 Android GitHub 更新、VR 陀螺仪串轴修复和蓝牙上一集 / 下一集。[更新说明](../docs/releases/0.4.4.md)。
+
 ## 0.4.3 打包交付（不发布 Release）
 
 本次按明确请求打包，源码为 `91f07502e6afd58a46375082f9f487ab15e51eb9`。新增目录监控、播放诊断、字幕调节、时间书签、按视频保存 VR 设置、手机遥控、媒体库体检和后台队列管理；没有增加新的 GPU 增强算法、安卓离线观看或 2D VR。
