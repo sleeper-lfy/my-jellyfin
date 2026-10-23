@@ -1,3 +1,9 @@
+# 0.4.5 发布构建
+
+按明确要求统一发布 Windows + Android：包含大幅抬头的 VR 转向修复、上一 / 下个视频按钮及 VR 切换修复，以及带确认和取消的手机控制电脑关机。新 APK 为 0.4.5 / versionCode 8，54 项测试、lint、签名与版本校验通过。Windows 正在由发布流程构建验证；[v0.4.5 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 完成状态以 `release-status.json` 为准。下方保留 0.4.4 交付说明，尚未代表新 Windows 安装包已完成。
+
+[0.4.5 更新说明](../docs/releases/0.4.5.md)。
+
 # 可下载安装包 · Lumen 0.4.4
 
 [**v0.4.4 Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.4) 已统一发布两端安装包及 SHA-256。
