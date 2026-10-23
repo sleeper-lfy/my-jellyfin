@@ -1,0 +1,20 @@
+{
+  "tag": "v0.4.2",
+  "source_commit": "1519397ca4e23eea36987c540b0293a24774a6d2",
+  "verified_at": "2026-10-23T14:22:20.440526+08:00",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.2",
+  "assets": [
+    {
+      "file": "Lumen-Setup-x64.exe",
+      "bytes": 200561885,
+      "sha256": "2675c5b8a067f7b69735d23b7bede7566c3053120c9dc2a77b8cae356be67668",
+      "public_download_verified": true
+    },
+    {
+      "file": "Lumen-android-debug.apk",
+      "bytes": 100831570,
+      "sha256": "80c9c9b9c7616f6d316efa3e3c7d07a91e1ca248d7025e88ba4204447c1c929d",
+      "public_download_verified": true
+    }
+  ]
+}

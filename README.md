@@ -44,7 +44,7 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 ## Windows 安装与启动
 
-提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。安装包需等待 Windows 工作流验证成功后发布；以下为源码启动方式。
+提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.2 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.2)已通过 Windows 构建与安装验证并发布；以下为源码启动方式。
 
 需要 Windows 10/11 x64、Python 3.12、FFmpeg 与 FFprobe（两个程序加入 PATH）。可通过已安装的 Winget 获取 Python/FFmpeg，或从各项目官方渠道安装；保持包签名/校验验证。
 
@@ -91,7 +91,7 @@ py -3.12 -m venv .venv
 ./scripts/build-windows.ps1
 ```
 
-Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义测试、打包和 artifact；本次尚未在远端执行该工作流。
+Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.2 已通过专用发布流程完成 Windows 安装器验证与双端交付。
 
 Linux 云开发：
 
