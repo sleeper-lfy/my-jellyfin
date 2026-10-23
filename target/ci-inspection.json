@@ -1,60 +1,10 @@
 [
   {
-    "run": 39908371828,
+    "run": 39909482369,
     "jobs": [
       {
-        "name": "windows",
-        "conclusion": "success",
-        "steps": [
-          {
-            "name": "Set up job",
-            "conclusion": "success"
-          },
-          {
-            "name": "Run actions/checkout@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Run actions/setup-python@v5",
-            "conclusion": "success"
-          },
-          {
-            "name": "Check explicit release version",
-            "conclusion": "success"
-          },
-          {
-            "name": "Install Windows packaging tools",
-            "conclusion": "success"
-          },
-          {
-            "name": "Test, build and verify Windows installer",
-            "conclusion": "success"
-          },
-          {
-            "name": "Run actions/upload-artifact@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Run actions/upload-artifact@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Post Run actions/setup-python@v5",
-            "conclusion": "success"
-          },
-          {
-            "name": "Post Run actions/checkout@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Complete job",
-            "conclusion": "success"
-          }
-        ]
-      },
-      {
         "name": "publish",
-        "conclusion": "failure",
+        "conclusion": "success",
         "steps": [
           {
             "name": "Set up job",
@@ -69,61 +19,31 @@
             "conclusion": "success"
           },
           {
+            "name": "Validate the explicit retry request and unchanged source",
+            "conclusion": "success"
+          },
+          {
             "name": "Run actions/download-artifact@v4",
             "conclusion": "success"
           },
           {
-            "name": "Verify the source-matched Android package and signature",
-            "conclusion": "failure"
+            "name": "Verify Android integrity and signing certificate",
+            "conclusion": "success"
           },
           {
-            "name": "Save the Windows installer into target",
-            "conclusion": "skipped"
+            "name": "Prepare verified Windows delivery files",
+            "conclusion": "success"
           },
           {
-            "name": "Publish both verified installers together",
-            "conclusion": "skipped"
+            "name": "Publish both installers",
+            "conclusion": "success"
           },
           {
-            "name": "Commit verified Windows delivery files",
-            "conclusion": "skipped"
+            "name": "Record outcome and commit verified delivery files",
+            "conclusion": "success"
           },
           {
             "name": "Post Run actions/setup-python@v5",
-            "conclusion": "skipped"
-          },
-          {
-            "name": "Post Run actions/checkout@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Complete job",
-            "conclusion": "success"
-          }
-        ]
-      },
-      {
-        "name": "report",
-        "conclusion": "success",
-        "steps": [
-          {
-            "name": "Set up job",
-            "conclusion": "success"
-          },
-          {
-            "name": "Run actions/checkout@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Run actions/download-artifact@v4",
-            "conclusion": "success"
-          },
-          {
-            "name": "Record release outcome and bounded diagnostics",
-            "conclusion": "success"
-          },
-          {
-            "name": "Save the outcome for review",
             "conclusion": "success"
           },
           {
@@ -138,8 +58,53 @@
       }
     ],
     "logs": {
-      "1_publish.txt": "2026-10-23T06:01:38.0207782Z Verified target APK, checksum, ZIP contents and matching Android source\n2026-10-23T06:01:38.0277261Z /home/runner/work/_temp/644be840-3dbe-4a3b-9485-dbbcec4117c4.sh: line 2: rg: command not found\n2026-10-23T06:01:38.0303576Z ##[error]Process completed with exit code 1.\n2026-10-23T06:01:38.0428542Z Post job cleanup.\n2026-10-23T06:01:38.1115015Z [command]/usr/bin/git version\n2026-10-23T06:01:38.1150801Z git version 2.55.0\n2026-10-23T06:01:38.1181621Z Temporarily overriding HOME='/home/runner/work/_temp/3fc186c7-71d3-424d-a760-ec358fc16974' before making global git config changes\n2026-10-23T06:01:38.1182757Z Adding repository directory to the temporary git global config as a safe directory\n2026-10-23T06:01:38.1186144Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/my-jellyfin/my-jellyfin\n2026-10-23T06:01:38.1221593Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-10-23T06:01:38.1257133Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"",
-      "publish/5_Verify the source-matched Android package and signature.txt": "2026-10-23T06:01:38.0207730Z Verified target APK, checksum, ZIP contents and matching Android source\n2026-10-23T06:01:38.0277231Z /home/runner/work/_temp/644be840-3dbe-4a3b-9485-dbbcec4117c4.sh: line 2: rg: command not found\n2026-10-23T06:01:38.0303564Z ##[error]Process completed with exit code 1."
+      "0_publish.txt": "2026-10-23T06:06:37.1377630Z     assert actual and actual.group(1) == expected, 'APK signing certificate differs from the build record'\n2026-10-23T06:06:37.1378194Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n2026-10-23T06:06:37.1378662Z AssertionError: APK signing certificate differs from the build record\n2026-10-23T06:06:37.2070104Z ##[group]Run python scripts/package-installer-target.py .local/release-windows/Lumen-Setup-x64.exe target --revision \"$SOURCE_COMMIT\"\n2026-10-23T06:06:37.2070879Z \u001b[36;1mpython scripts/package-installer-target.py .local/release-windows/Lumen-Setup-x64.exe target --revision \"$SOURCE_COMMIT\"\u001b[0m\n2026-10-23T06:06:37.2126878Z shell: /usr/bin/bash -e {0}\n2026-10-23T06:06:37.2127090Z env:\n2026-10-23T06:06:37.2127313Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.15/x64\n2026-10-23T06:06:37.2127651Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib/pkgconfig\n2026-10-23T06:06:37.2127988Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64\n2026-10-23T06:06:37.2128338Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64",
+      "publish/6_Verify Android integrity and signing certificate.txt": "2026-10-23T06:06:37.1377617Z     assert actual and actual.group(1) == expected, 'APK signing certificate differs from the build record'\n2026-10-23T06:06:37.1378191Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n2026-10-23T06:06:37.1378658Z AssertionError: APK signing certificate differs from the build record"
     }
+  },
+  {
+    "run": 39909863176,
+    "jobs": [
+      {
+        "name": "inspect",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Read selected build logs",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Save the redacted report",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "logs": {
+      "0_inspect.txt": "2026-10-23T06:10:19.2307116Z     raise CalledProcessError(retcode, process.args,\n2026-10-23T06:10:19.2308251Z subprocess.CalledProcessError: Command '['gh', 'api', 'repos/sleeper-lfy/my-jellyfin/releases/tags/v0.4.2']' returned non-zero exit status 1.\n2026-10-23T06:10:19.2447303Z ##[error]Process completed with exit code 1.\n2026-10-23T06:10:19.4573206Z Post job cleanup.\n2026-10-23T06:10:19.5310018Z [command]/usr/bin/git version\n2026-10-23T06:10:19.5341708Z git version 2.55.0\n2026-10-23T06:10:19.5370598Z Temporarily overriding HOME='/home/runner/work/_temp/95450dac-0539-4aa0-b548-4d29da0764ce' before making global git config changes\n2026-10-23T06:10:19.5371873Z Adding repository directory to the temporary git global config as a safe directory\n2026-10-23T06:10:19.5374211Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/my-jellyfin/my-jellyfin\n2026-10-23T06:10:19.5406247Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-10-23T06:10:19.5432957Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"",
+      "inspect/3_Read selected build logs.txt": "2026-10-23T06:10:19.2307058Z     raise CalledProcessError(retcode, process.args,\n2026-10-23T06:10:19.2308243Z subprocess.CalledProcessError: Command '['gh', 'api', 'repos/sleeper-lfy/my-jellyfin/releases/tags/v0.4.2']' returned non-zero exit status 1.\n2026-10-23T06:10:19.2447262Z ##[error]Process completed with exit code 1."
+    }
+  },
+  {
+    "release_lookup_error": "gh: Not Found (HTTP 404)\n"
+  },
+  {
+    "release_cli": "release not found\n"
   }
 ]
