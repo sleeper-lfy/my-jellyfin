@@ -101,6 +101,8 @@ class HomePage(QScrollArea):
                 continue
             self.layout.addWidget(label(title,'sectionTitle'))
             cards=PosterList(self.window.play_work)
+            cards.favoriteRequested.connect(self.window.toggle_favorite)
+            cards.watchlistRequested.connect(lambda work_id:self.window.toggle_card_personal(work_id,'watchlist'))
             cards.setObjectName('posters')
             cards.setViewMode(QListWidget.ViewMode.IconMode)
             cards.setFlow(QListWidget.Flow.LeftToRight)

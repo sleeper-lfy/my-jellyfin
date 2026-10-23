@@ -23,4 +23,4 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-lumen = ["shaders/*.glsl"]
+lumen = ["shaders/*.glsl", "icons/*.svg"]

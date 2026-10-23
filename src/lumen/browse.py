@@ -16,7 +16,11 @@ def load_view(library,request):
     if section=='movie' and tab==1:
         return {'items':library.actresses(request['actor_min'],request['actor_sort'])}
     if section=='discover':
-        return {'items':library.recommendations(True) if tab==0 else library.query({'local':False})}
+        items=library.query({**request['filters'],'local':False})
+        if tab==0:
+            selected={item['id'] for item in items}
+            items=[item for item in library.recommendations(True) if item['id'] in selected]
+        return {'items':items}
     result={'items':library.query(request['filters'])}
     if section=='other':result['tree']=library.query({'kinds':['other']})
     return result

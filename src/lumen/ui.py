@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 import time
 import traceback
-from PySide6.QtCore import Qt, QSize, QThread, Signal, QTimer, QUrl, QRect
+from PySide6.QtCore import Qt, QSize, QThread, Signal, QTimer, QUrl, QRect, QPoint
 from PySide6.QtGui import QPixmap, QIcon, QColor, QPainter, QFont, QDesktopServices, QPixmapCache, QLinearGradient, QPainterPath
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
  QGridLayout, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
@@ -17,6 +17,7 @@ from .files import plan_move, execute_move
 from .player import Player
 from .presentation import rating_text
 from .theme import STYLE
+from .components import ActionButton,FlowLayout,chip,icon
 
 KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'other': '其他'}
 
@@ -72,7 +73,15 @@ class Job(QThread):
             library.close()
 
 
+def poster_regions(rect):
+    image=rect.adjusted(8,8,-8,-82)
+    return image,{'favorite':QRect(image.right()-38,image.top()+8,30,30),
+                  'watchlist':QRect(image.right()-38,image.top()+44,30,30)}
+
+
 class PosterList(QListWidget):
+    favoriteRequested=Signal(int)
+    watchlistRequested=Signal(int)
     def __init__(self, play, parent=None):
         super().__init__(parent)
         self.play = play
@@ -83,11 +92,27 @@ class PosterList(QListWidget):
             if route_vertical_wheel(self,event):return
         super().wheelEvent(event)
 
+    def mouseMoveEvent(self,event):
+        item=self.itemAt(event.position().toPoint());tip=''
+        if item:
+            data=item.data(Qt.ItemDataRole.UserRole) or {}
+            if data.get('kind'):
+                _,areas=poster_regions(self.visualItemRect(item))
+                for key,area in areas.items():
+                    if area.contains(event.position().toPoint()):tip=('取消' if data.get(key) else '加入')+('收藏' if key=='favorite' else '想看')
+        self.setToolTip(tip)
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event):
         item = self.itemAt(event.position().toPoint())
         if item and event.button() == Qt.MouseButton.LeftButton:
             data = item.data(Qt.ItemDataRole.UserRole) or {}
-            rect = self.visualItemRect(item).adjusted(8, 8, -8, -82)
+            rect,actions=poster_regions(self.visualItemRect(item))
+            if data.get('kind'):
+                for key,area in actions.items():
+                    if area.contains(event.position().toPoint()):
+                        (self.favoriteRequested if key=='favorite' else self.watchlistRequested).emit(data['id'])
+                        return
             center = rect.center()
             point = event.position().toPoint()
             if data.get('files') and abs(point.x()-center.x()) < 27 and abs(point.y()-center.y()) < 27:
@@ -137,41 +162,41 @@ class PosterDelegate(QStyledItemDelegate):
                 painter.setBrush(QColor('#00a4dc'))
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawEllipse(center, 26, 26)
-                painter.setPen(QColor('white'))
-                painter.setFont(QFont('Segoe UI',18))
-                painter.drawText(QRect(center.x()-22,center.y()-24,48,48),Qt.AlignmentFlag.AlignCenter,'▶')
+                icon('play','#ffffff',True).paint(painter,QRect(center.x()-12,center.y()-14,28,28))
         files = data.get('files',[])
         unfinished = next((f for f in files if f.get('position',0)>0 and not f.get('completed')),None)
         if unfinished and unfinished.get('duration'):
             progress = min(1,unfinished['position']/unfinished['duration'])
             painter.fillRect(QRect(image_rect.x(),image_rect.bottom()-4,image_rect.width(),5), QColor(0,0,0,160))
             painter.fillRect(QRect(image_rect.x(),image_rect.bottom()-4,int(image_rect.width()*progress),5), QColor('#00a4dc'))
-        if data.get('kind') == 'series' and files:
-            badge = QRect(image_rect.right()-36,image_rect.top()+7,28,28)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor('#00a4dc'))
-            painter.drawEllipse(badge)
-            painter.setPen(QColor('white'))
-            painter.setFont(QFont('Segoe UI',10))
-            painter.drawText(badge,Qt.AlignmentFlag.AlignCenter,str(len(files)))
+        if data.get('kind')=='series' and files:
+            badge=QRect(image_rect.x()+8,image_rect.y()+8,48,25)
+            painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor(0,0,0,180));painter.drawRoundedRect(badge,12,12)
+            painter.setPen(QColor('white'));painter.setFont(QFont('Segoe UI',9));painter.drawText(badge,Qt.AlignmentFlag.AlignCenter,f'{len(files)} 集')
+        if data.get('kind'):
+            _,actions=poster_regions(option.rect)
+            for key,name,color in [('favorite','heart','#f4779b'),('watchlist','bookmark','#65d3ed')]:
+                if hover or data.get(key):
+                    area=actions[key];painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor(0,0,0,190));painter.drawEllipse(area)
+                    icon(name,color if data.get(key) else '#eeeeee',bool(data.get(key))).paint(painter,area.adjusted(6,6,-6,-6))
         painter.setClipping(False)
         if selected:
             painter.setPen(QColor('#00a4dc'))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(image_rect,3,3)
-        painter.setPen(QColor('#eeeeee'))
-        painter.setFont(QFont('Segoe UI',11))
-        title = data.get('title') or data.get('name','')
-        painter.drawText(QRect(rect.x(),image_rect.bottom()+7,rect.width(),22),Qt.AlignmentFlag.AlignCenter,painter.fontMetrics().elidedText(title,Qt.TextElideMode.ElideRight,rect.width()-4))
-        painter.setPen(QColor('#999999'))
-        painter.setFont(QFont('Segoe UI',10))
-        subtitle = data.get('_subtitle') or str(data.get('year') or '')
-        if data.get('kind'):
-            subtitle += '  ·  ' + ('♥ 喜欢' if data.get('favorite') else '♡ 未喜欢')
-        painter.drawText(QRect(rect.x(),image_rect.bottom()+30,rect.width(),18),Qt.AlignmentFlag.AlignCenter,painter.fontMetrics().elidedText(subtitle,Qt.TextElideMode.ElideRight,rect.width()-4))
-        if data.get('kind'):
-            painter.setPen(QColor('#e5c25b'))
-            painter.drawText(QRect(rect.x(),image_rect.bottom()+51,rect.width(),20),Qt.AlignmentFlag.AlignCenter, rating_text(data))
+        painter.setPen(QColor('#eeeeee'));painter.setFont(QFont('Segoe UI',11))
+        title=data.get('title') or data.get('name','')
+        painter.drawText(QRect(rect.x(),image_rect.bottom()+8,rect.width(),23),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,painter.fontMetrics().elidedText(title,Qt.TextElideMode.ElideRight,rect.width()-2))
+        painter.setPen(QColor('#9999a3'));painter.setFont(QFont('Segoe UI',9))
+        subtitle=data.get('_subtitle') or str(data.get('year') or '')
+        source=next((source for source in data.get('sources',[]) if source.get('rating') is not None),None)
+        meta=QRect(rect.x(),image_rect.bottom()+33,rect.width()-(54 if source else 0),19)
+        painter.drawText(meta,Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,painter.fontMetrics().elidedText(subtitle,Qt.TextElideMode.ElideRight,meta.width()))
+        if source:
+            star=QRect(rect.right()-47,image_rect.bottom()+35,14,14);icon('star','#e7c567',True).paint(painter,star)
+            painter.setPen(QColor('#e7c567'));painter.drawText(QRect(rect.right()-29,image_rect.bottom()+33,30,19),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,f"{source['rating']:.1f}")
+        if data.get('kind') and data.get('rating') is not None:
+            painter.setPen(QColor('#adb8c8'));painter.drawText(QRect(rect.x(),image_rect.bottom()+53,rect.width(),18),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,f"我的评分  {data['rating']}")
         painter.restore()
 
     def sizeHint(self, option, index):
@@ -187,10 +212,8 @@ class TagCompleter(QCompleter):
     def splitPath(self, path):
         return [path.replace('，', ',').rsplit(',', 1)[-1].strip()]
 
-    def pathFromIndex(self, index):
-        value = super().pathFromIndex(index)
-        entered = self.combo.entered.replace('，', ',')
-        return entered.rsplit(',', 1)[0] + ', ' + value if ',' in entered else value
+    def pathFromIndex(self,index):
+        return self.combo.completed_text(super().pathFromIndex(index))
 
 
 class FilterCombo(QComboBox):
@@ -210,16 +233,33 @@ class FilterCombo(QComboBox):
         self.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.completer().setFilterMode(Qt.MatchFlag.MatchContains)
         self.completer().setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        self.lineEdit().setPlaceholderText('输入搜索或下拉选择' + ('；多个标签以逗号分隔' if multiple else '；留空不限'))
+        self.completer().popup().setStyleSheet('QAbstractItemView { background: #222228; color: #eeeeee; selection-background-color: #214655; border: 1px solid #46464f; padding: 4px; outline: 0; } QAbstractItemView::item { padding: 7px 10px; }')
+        self.completer().popup().setMaximumWidth(600)
+        self.lineEdit().setPlaceholderText('输入搜索或下拉选择' + ('，可多选' if multiple else ''))
+        self.setMaxVisibleItems(10)
+        self.setMinimumContentsLength(10)
+        self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.lineEdit().setClearButtonEnabled(True)
 
     def remember(self, value):
         self.entered = value
 
-    def chosen(self, value):
-        if self.multiple and ',' in self.entered.replace('，', ',') and ',' not in value:
-            prefix = self.entered.replace('，', ',').rsplit(',', 1)[0]
-            self.setEditText(prefix + ', ' + value)
-        self.entered = self.currentText()
+    def completed_text(self,value):
+        if not value:return ''
+        if ',' in value:return value
+        parts=[part.strip() for part in self.entered.replace('，',',').split(',')]
+        if parts and self.findText(parts[-1])<0:parts.pop()
+        values=[part for part in parts if part]
+        if value not in values:values.append(value)
+        return ', '.join(values)
+
+    def setEditText(self,text):
+        self.entered=str(text)
+        super().setEditText(str(text))
+
+    def chosen(self,value):
+        if self.multiple:self.setEditText(self.completed_text(value))
+        self.entered=self.currentText()
 
     def text(self):
         return self.currentText().strip()
@@ -228,81 +268,141 @@ class FilterCombo(QComboBox):
         return int(self.text()) if self.text().isdigit() else 0
 
 
+def filter_tokens(filters):
+    tokens=[]
+    kinds=filters.get('kinds')
+    if kinds is not None and set(kinds)!=set(KINDS):tokens.append(('kinds',None,'分类：'+' / '.join(KINDS[kind] for kind in kinds if kind in KINDS)))
+    if filters.get('query'):tokens.append(('query',None,'搜索：'+filters['query']))
+    for key,prefix in [('tags_all',''),('tags_any','任一：'),('tags_not','排除：')]:
+        for value in filters.get(key,[]):tokens.append((key,value,prefix+value))
+    if filters.get('actor'):tokens.append(('actor',None,filters['actor']))
+    low,high=filters.get('year_min'),filters.get('year_max')
+    if low or high:tokens.append(('years',None,str(low) if low==high else f"{low or '最早'} — {high or '至今'}"))
+    if filters.get('favorite'):tokens.append(('favorite',None,'已收藏'))
+    if filters.get('watched'):tokens.append(('watched',None,'已观看' if filters['watched']=='yes' else '未观看'))
+    if filters.get('watchlist'):tokens.append(('watchlist',None,'想看'))
+    if filters.get('folder'):tokens.append(('folder',None,'目录：'+Path(filters['folder']).name))
+    for key,title in [('rating_min','评分 ≥ '),('rating_max','评分 ≤ ')]:
+        if filters.get(key):tokens.append((key,None,title+str(filters[key])))
+    return tokens
+
+
 class FilterDialog(QDialog):
     def __init__(self, filters, parent=None, options=None):
         super().__init__(parent)
-        options = options or {}
-        self.setWindowTitle('组合筛选 · 应用于完整媒体库')
-        self.resize(520, 600)
-        layout = QFormLayout(self)
-        self.query = QLineEdit(filters.get('query', ''))
-        layout.addRow('关键词 / 别名 / 路径', self.query)
-        self.types = {}
-        row = QHBoxLayout()
-        for kind, text in KINDS.items():
-            check = QCheckBox(text)
-            check.setChecked(kind in filters.get('kinds', KINDS))
-            row.addWidget(check)
-            self.types[kind] = check
-        layout.addRow('媒体分区', row)
-        self.fields = {}
-        for key, title in [('tags_any','包含任一标签'), ('tags_all','同时包含标签'), ('tags_not','排除标签')]:
-            field = FilterCombo(options.get('tags', []), ', '.join(filters.get(key, [])), multiple=True)
-            self.fields[key] = field
-            layout.addRow(title, field)
-        self.numbers = {}
-        for key, title, maximum in [('year_min','起始年份',2100), ('year_max','截止年份',2100), ('rating_min','最低个人评分',10), ('rating_max','最高个人评分',10)]:
-            if key.startswith('year_'):
-                field = FilterCombo(options.get('years', []), filters.get(key) or '')
-            else:
-                field = QSpinBox()
-                field.setRange(0, maximum)
-                field.setSpecialValueText('不限')
-                field.setValue(filters.get(key) or 0)
-            self.numbers[key] = field
-            layout.addRow(title, field)
-        self.watched = QComboBox()
-        for text, value in [('不限', ''), ('已观看', 'yes'), ('未观看', 'no')]:
-            self.watched.addItem(text, value)
-        self.watched.setCurrentIndex(max(0, self.watched.findData(filters.get('watched', ''))))
-        layout.addRow('观看状态', self.watched)
-        self.favorite = QCheckBox('仅收藏')
-        self.favorite.setChecked(filters.get('favorite', False))
-        layout.addRow('', self.favorite)
-        self.folder = QLineEdit(filters.get('folder', ''))
-        row = QHBoxLayout()
-        row.addWidget(self.folder)
-        row.addWidget(button('选择', self.choose_folder))
-        layout.addRow('目录范围', row)
-        self.actor = FilterCombo(options.get('actors', []), filters.get('actor', ''))
-        layout.addRow('演员姓名', self.actor)
-        controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        controls.accepted.connect(self.accept)
-        controls.rejected.connect(self.reject)
-        layout.addRow(controls)
+        self.setObjectName('filterPanel')
+        self.setWindowTitle('筛选媒体库')
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint,True)
+        self.resize(500,740)
+        self.original=dict(filters)
+        options=options or {}
+        outer=QVBoxLayout(self);outer.setContentsMargins(0,0,0,0);outer.setSpacing(0)
+        header=QHBoxLayout();header.setContentsMargins(24,20,16,8)
+        title=QVBoxLayout();title.addWidget(label('筛选媒体库','panelTitle'));title.addWidget(label('组合条件，找到想看的那一部','subtitle'))
+        header.addLayout(title,1);header.addWidget(ActionButton('关闭筛选','close',self.reject).icon_only())
+        outer.addLayout(header)
+        scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content=QWidget();layout=QVBoxLayout(content);layout.setContentsMargins(24,12,24,20);layout.setSpacing(10);scroll.setWidget(content);outer.addWidget(scroll,1)
+        self.scroll=scroll
+        def field(title,control,parent=layout):
+            column=QVBoxLayout();column.setSpacing(5);column.addWidget(label(title,'filterLabel'));column.addWidget(control);parent.addLayout(column)
+        self.query=QLineEdit(filters.get('query',''));self.query.setClearButtonEnabled(True);self.query.setPlaceholderText('标题、别名或文件路径')
+        self.types={};layout.addWidget(label('媒体分类','filterLabel'));scopes=QHBoxLayout();scopes.setSpacing(6)
+        for kind,title in KINDS.items():
+            control=QPushButton(title);control.setObjectName('scopeChip');control.setCheckable(True);control.setChecked(kind in filters.get('kinds',KINDS));self.types[kind]=control;scopes.addWidget(control)
+        layout.addLayout(scopes)
+        self.fields={'tags_all':FilterCombo(options.get('tags',[]),', '.join(filters.get('tags_all',[])),multiple=True)}
+        field('标签',self.fields['tags_all'])
+        self.selected_tags=QWidget();self.tag_flow=FlowLayout(self.selected_tags);layout.addWidget(self.selected_tags)
+        self.fields['tags_all'].currentTextChanged.connect(self.update_tags)
+        self.actor=FilterCombo(options.get('actors',[]),filters.get('actor',''));field('演员',self.actor)
+        self.numbers={};years=QHBoxLayout()
+        for key,title in [('year_min','起始年份'),('year_max','截止年份')]:
+            control=FilterCombo(options.get('years',[]),filters.get(key) or '');self.numbers[key]=control;field(title,control,years)
+        layout.addLayout(years)
+        self.watched=QComboBox()
+        for title,value in [('全部观看状态',''),('已观看','yes'),('未观看','no')]:self.watched.addItem(title,value)
+        self.watched.setCurrentIndex(max(0,self.watched.findData(filters.get('watched',''))))
+        status_row=QHBoxLayout();field('观看状态',self.watched,status_row)
+        self.favorite=ActionButton('仅看已收藏','heart',checked=bool(filters.get('favorite')),accent='#f4779b');self.favorite.setObjectName('favoriteAction');field('收藏',self.favorite,status_row);layout.addLayout(status_row)
+        self.advanced_toggle=ActionButton('高级条件','chevron',lambda:self.show_advanced(not self.advanced.isVisible()))
+        layout.addWidget(self.advanced_toggle)
+        self.advanced=QFrame();self.advanced.setObjectName('advancedFilters');advanced=QVBoxLayout(self.advanced);advanced.setContentsMargins(12,12,12,12);advanced.setSpacing(12)
+        field('关键词',self.query,advanced)
+        for key,title in [('tags_any','包含任一标签'),('tags_not','排除标签')]:
+            control=FilterCombo(options.get('tags',[]),', '.join(filters.get(key,[])),multiple=True);self.fields[key]=control;field(title,control,advanced)
+        ratings=QHBoxLayout()
+        for key,title in [('rating_min','最低个人评分'),('rating_max','最高个人评分')]:
+            control=QSpinBox();control.setRange(0,10);control.setSpecialValueText('不限');control.setValue(filters.get(key) or 0);self.numbers[key]=control;field(title,control,ratings)
+        advanced.addLayout(ratings)
+        self.folder=QLineEdit(filters.get('folder',''));self.folder.setClearButtonEnabled(True);self.folder.setPlaceholderText('仅搜索指定文件夹')
+        directory=QHBoxLayout();directory.addWidget(self.folder,1);directory.addWidget(ActionButton('选择目录','folder',self.choose_folder).icon_only())
+        advanced.addWidget(label('目录范围','filterLabel'));advanced.addLayout(directory)
+        layout.addWidget(self.advanced);layout.addStretch(1)
+        self.show_advanced(any(filters.get(key) for key in ['tags_any','tags_not','rating_min','rating_max','folder']))
+        footer=QFrame();footer.setObjectName('filterFooter');actions=QHBoxLayout(footer);actions.setContentsMargins(24,14,24,14)
+        actions.addWidget(ActionButton('重置','close',self.reset));actions.addStretch();apply=button('应用筛选',self.accept,True);apply.setMinimumWidth(160);apply.setMinimumHeight(42);actions.addWidget(apply);outer.addWidget(footer)
+        self.update_tags()
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        parent=self.parentWidget()
+        if parent is not None:
+            window=parent.window();origin=window.mapToGlobal(QPoint(0,0));width=min(500,window.width());height=max(420,window.height()-68)
+            self.setGeometry(origin.x()+window.width()-width,origin.y()+68,width,height)
+
+    def show_advanced(self,visible):
+        self.advanced.setVisible(bool(visible));self.advanced_toggle.setText('收起高级条件' if visible else '高级条件')
+
+    def update_tags(self,*_):
+        clear(self.tag_flow)
+        values=list(dict.fromkeys(value.strip() for value in self.fields['tags_all'].text().replace('，',',').split(',') if value.strip()))
+        for value in values:
+            self.tag_flow.addWidget(chip(value,lambda checked=False,value=value:self.remove_tag(value),True))
+        self.selected_tags.setVisible(bool(values))
+
+    def remove_tag(self,value):
+        values=[part.strip() for part in self.fields['tags_all'].text().replace('，',',').split(',') if part.strip() and part.strip()!=value]
+        self.fields['tags_all'].setEditText(', '.join(values))
+
+    def reset(self):
+        self.original.pop('watchlist',None)
+        self.query.clear();self.actor.setEditText('');self.folder.clear();self.favorite.setChecked(False);self.watched.setCurrentIndex(0)
+        for field in self.fields.values():field.setEditText('')
+        for field in self.numbers.values():
+            if isinstance(field,FilterCombo):field.setEditText('')
+            else:field.setValue(0)
+        for control in self.types.values():control.setChecked(True)
+        self.show_advanced(False)
 
     def accept(self):
-        for key in ('year_min', 'year_max'):
-            field = self.numbers[key]
-            if field.text() and not 1800 <= field.value() <= 2200:
-                QMessageBox.information(self, '年份', '请选择或输入 1800–2200 的年份，留空表示不限。')
-                return
-        if self.numbers['year_min'].value() and self.numbers['year_max'].value() and self.numbers['year_min'].value() > self.numbers['year_max'].value():
-            QMessageBox.information(self, '年份', '起始年份不能晚于截止年份。')
-            return
+        for key in ('year_min','year_max'):
+            field=self.numbers[key]
+            if field.text() and not 1800<=field.value()<=2200:
+                QMessageBox.information(self,'年份','请选择或输入 1800–2200 的年份，留空表示不限。');return
+        if self.numbers['year_min'].value() and self.numbers['year_max'].value() and self.numbers['year_min'].value()>self.numbers['year_max'].value():
+            QMessageBox.information(self,'年份','起始年份不能晚于截止年份。');return
+        if self.numbers['rating_min'].value() and self.numbers['rating_max'].value() and self.numbers['rating_min'].value()>self.numbers['rating_max'].value():
+            QMessageBox.information(self,'评分','最低评分不能高于最高评分。');return
+        if not any(control.isChecked() for control in self.types.values()):
+            QMessageBox.information(self,'媒体分类','请至少选择一个分类。');return
         super().accept()
 
     def choose_folder(self):
-        path = QFileDialog.getExistingDirectory(self, '随机 / 筛选目录范围')
-        if path:
-            self.folder.setText(path)
+        path=QFileDialog.getExistingDirectory(self,'选择目录范围',self.folder.text())
+        if path:self.folder.setText(path)
 
     def filters(self):
-        return {'query': self.query.text(), 'kinds': [k for k, c in self.types.items() if c.isChecked()],
-                **{k: [s.strip() for s in f.text().replace('，', ',').split(',') if s.strip()] for k, f in self.fields.items()},
-                **{k: f.value() for k, f in self.numbers.items() if f.value()},
-                'watched': self.watched.currentData(), 'folder': self.folder.text(), 'actor': self.actor.text(),
-                **({'favorite': True} if self.favorite.isChecked() else {})}
+        return {'query':self.query.text().strip(),'kinds':[key for key,control in self.types.items() if control.isChecked()],
+                **{key:list(dict.fromkeys(part.strip() for part in field.text().replace('，',',').split(',') if part.strip())) for key,field in self.fields.items()},
+                **{key:field.value() for key,field in self.numbers.items() if field.value()},
+                'watched':self.watched.currentData(),'folder':self.folder.text().strip(),'actor':self.actor.text(),
+                **({'watchlist':True} if self.original.get('watchlist') else {}),
+                **({'favorite':True} if self.favorite.isChecked() else {})}
+
+
+class MetadataLinks(QWidget):
+    linkActivated=Signal(str)
 
 
 class Details(QWidget):
@@ -320,69 +420,62 @@ class Details(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(34, 30, 34, 24)
         outer.setSpacing(16)
-        outer.addWidget(button('← 返回', self.accept), alignment=Qt.AlignmentFlag.AlignLeft)
+        outer.addWidget(ActionButton('返回媒体库','back',self.accept),alignment=Qt.AlignmentFlag.AlignLeft)
         self.setMinimumHeight(760)
-        top = QHBoxLayout()
+        top = QHBoxLayout();top.setSpacing(28)
         poster = self.poster = QLabel()
         poster.setFixedSize(210, 315)
         poster.setAlignment(Qt.AlignmentFlag.AlignCenter)
         poster.setScaledContents(False)
         poster.setStyleSheet('background: #181818; border: none;')
         self.poster_path=w['thumbnail']
-        top.addWidget(poster)
-        info = QVBoxLayout()
-        heading = label(w['title'], 'heading')
-        heading.setWordWrap(True)
-        info.addWidget(heading)
-        info.addWidget(label(f"{KINDS[w['kind']]}  /  {w['year'] or '年份待补充'}  /  {len(w['files'])} 个视频文件", 'subtitle'))
-        def links(values, field):
-            widget = QLabel()
-            widget.setTextFormat(Qt.TextFormat.RichText)
-            widget.setWordWrap(True)
-            widget.setText('  ·  '.join(f'<a href="{index}" style="color:#00a4dc;text-decoration:none">{escape(value)}</a>' for index,value in enumerate(values)))
-            widget.linkActivated.connect(lambda index: window.search_metadata(field, values[int(index)]))
-            info.addWidget(widget)
-            return widget
-        self.tag_links = links(w['metadata'].get('tags', []), 'tags_all')
-        self.actor_links = links([actor['name'] for actor in w['metadata'].get('actors', [])], 'actor')
-        if w['metadata'].get('released'):
-            info.addWidget(label('上映 / 首播：' + str(w['metadata']['released']), 'subtitle'))
-        description = label(w['metadata'].get('overview', '暂无简介。可通过刮削插件补充资料。') if w['kind'] != 'other' else '保留原始目录结构，不进行联网刮削。')
-        description.setWordWrap(True)
-        info.addWidget(description, 1)
-        recommended = next((item for item in window.current_items if item.get('id') == work_id and item.get('reasons')), None)
+        top.addWidget(poster,0,Qt.AlignmentFlag.AlignTop)
+        info = QVBoxLayout();info.setSpacing(12)
+        heading=label(w['title'],'detailTitle');heading.setWordWrap(True);info.addWidget(heading)
+        facts=QHBoxLayout();facts.setSpacing(16)
+        facts.addWidget(label(str(w['year'] or '年份待补充'),'subtitle'));facts.addWidget(label(KINDS[w['kind']],'subtitle'))
+        duration=max((file['duration'] for file in w['files']),default=0)
+        if duration:facts.addWidget(label(f'{duration/60:.0f} 分钟','subtitle'))
+        source=next((source for source in w['sources'] if source.get('rating') is not None),None)
+        if source:facts.addWidget(label(f"★ {source['rating']:.1f}",'sourceScore'))
+        facts.addStretch();info.addLayout(facts)
+        actions=QHBoxLayout();actions.setSpacing(8)
+        play=button('播放' if not any(file['position'] for file in w['files']) else '继续播放',lambda:window.play_work(work_id),True)
+        play.setIcon(icon('play','#ffffff',True));play.setMinimumHeight(46);play.setMinimumWidth(170);play.setEnabled(bool(w['files']));actions.addWidget(play)
+        self.favorite_action=ActionButton('已收藏' if w['favorite'] else '收藏','heart',checked=bool(w['favorite']),accent='#f4779b');self.favorite_action.setObjectName('favoriteAction')
+        self.favorite_action.clicked.connect(lambda value:self.personal(favorite=value));actions.addWidget(self.favorite_action)
+        self.watchlist_action=ActionButton('已想看' if w['watchlist'] else '想看','bookmark',checked=bool(w['watchlist']))
+        self.watchlist_action.clicked.connect(lambda value:self.personal(watchlist=value));actions.addWidget(self.watchlist_action)
+        self.rating_action=ActionButton(f"{w['rating']} 分" if w['rating'] else '评分','star',self.choose_rating,accent='#e7c567');self.rating_action.setVisible(w['kind']!='other');self.rating_action.setToolTip('我的评分');self.rating_action.setAccessibleName('我的评分');actions.addWidget(self.rating_action)
+        more=ActionButton('更多操作','more').icon_only();self.management_menu=QMenu(more)
+        if w['kind']!='other':
+            self.management_menu.addAction(icon('search'),'刮削匹配…',self.scrape)
+            self.management_menu.addAction('编辑资料 / 锁定…',self.edit)
+            self.management_menu.addSeparator()
+        self.management_menu.addAction(icon('folder'),'整理文件…',self.organize)
+        self.management_menu.addAction('从 NFO 补充图片…',lambda:window.import_nfo_artwork(work_id))
+        self.management_menu.addAction('重新截取封面…',self.recapture)
+        if w['kind']!='other':self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
+        self.dislike_action=self.management_menu.addAction(icon('ban'),'不感兴趣');self.dislike_action.setCheckable(True);self.dislike_action.setChecked(bool(w['disliked']));self.dislike_action.triggered.connect(lambda value:self.personal(disliked=value))
+        more.setMenu(self.management_menu);actions.addWidget(more);actions.addStretch();info.addLayout(actions)
+        def links(values,field):
+            # Keep the navigation signal available for keyboard and assistive actions.
+            widget=MetadataLinks();flow=FlowLayout(widget)
+            if field=='actor' and values:
+                caption=label('主演','eyebrow');caption.setMinimumHeight(30);flow.addWidget(caption)
+            for index,value in enumerate(values):flow.addWidget(chip(value,lambda checked=False,index=index:widget.linkActivated.emit(str(index))))
+            widget.linkActivated.connect(lambda index:window.search_metadata(field,values[int(index)]))
+            info.addWidget(widget);widget.setVisible(bool(values));return widget
+        self.tag_links=links(w['metadata'].get('tags',[]),'tags_all')
+        self.actor_links=links([actor['name'] for actor in w['metadata'].get('actors',[])],'actor')
+        if w['metadata'].get('released'):info.addWidget(label('上映 / 首播  '+str(w['metadata']['released']),'subtitle'))
+        description=label(w['metadata'].get('overview','暂无简介，可通过刮削补充。') if w['kind']!='other' else '保留原始目录结构。')
+        description.setWordWrap(True);info.addWidget(description,1)
+        recommended=next((item for item in window.current_items if item.get('id')==work_id and item.get('reasons')),None)
         if recommended:
-            reasons = label('推荐原因：' + '；'.join(recommended['reasons']), 'subtitle')
-            reasons.setWordWrap(True)
-            info.addWidget(reasons)
-        actions = QHBoxLayout()
-        play = button('▶  继续播放', lambda: window.play_work(work_id), True)
-        play.setEnabled(bool(w['files']))
-        actions.addWidget(play)
-        actions.addWidget(button('整理文件…', self.organize))
-        info.addLayout(actions)
-        top.addLayout(info, 1)
-        outer.addLayout(top)
-        personal = QHBoxLayout()
-        if w['kind'] != 'other':
-            personal.addWidget(label('个人评分'))
-            rating = QSpinBox()
-            rating.setRange(0, 10)
-            rating.setSpecialValueText('未评分')
-            rating.setValue(w['rating'] or 0)
-            rating.valueChanged.connect(lambda value: self.personal(rating=value or None))
-            personal.addWidget(rating)
-        for key, title in [('favorite','喜欢'),('watchlist','想看'),('disliked','不感兴趣')]:
-            check = QCheckBox(title)
-            check.setChecked(bool(w[key]))
-            check.toggled.connect(lambda value, key=key: self.personal(**{key: value}))
-            personal.addWidget(check)
-        personal.addStretch()
-        if w['kind'] != 'other':
-            personal.addWidget(button('合并重复作品', self.merge_duplicate))
-            personal.addWidget(button('编辑资料 / 锁定', self.edit))
-            personal.addWidget(button('刮削…', self.scrape))
-        outer.addLayout(personal)
+            reasons=label('推荐原因：'+'；'.join(recommended['reasons']),'subtitle');reasons.setWordWrap(True);info.addWidget(reasons)
+        top.addLayout(info,1);outer.addLayout(top)
+        divider=QFrame();divider.setObjectName('personalBar');divider.setFixedHeight(1);outer.addWidget(divider)
         self.files = QListWidget()
         for f in w['files']:
             title = ((f"S{f['season']:02} E{f['episode']:02}  ·  " if f['season'] is not None and f['episode'] is not None else '待补充季集  ·  ') if w['kind'] == 'series' else '') + (f.get('title') or Path(f['path']).name)
@@ -445,28 +538,27 @@ class Details(QWidget):
         self.download_directory_label.setWordWrap(True)
         outer.addWidget(self.download_directory_label)
         directory_actions=QHBoxLayout()
-        directory_actions.addWidget(button('更改本片下载目录…',self.choose_download_folder))
-        directory_actions.addWidget(button('恢复分类默认目录',self.reset_download_folder))
-        directory_actions.addWidget(button('检查下载文件并入库',self.import_downloads))
+        download_options=ActionButton('下载选项','more');download_menu=QMenu(download_options)
+        download_menu.addAction('更改本片下载目录…',self.choose_download_folder)
+        download_menu.addAction('恢复分类默认目录',self.reset_download_folder)
+        download_menu.addSeparator();download_menu.addAction('检查下载文件并入库',self.import_downloads)
+        download_options.setMenu(download_menu);directory_actions.addWidget(download_options);directory_actions.addStretch()
         outer.addLayout(directory_actions)
-        self.download_directory_label.setVisible(w['kind'] != 'other')
-        for index in range(directory_actions.count()):directory_actions.itemAt(index).widget().setVisible(w['kind'] != 'other')
+        self.download_directory_label.setVisible(w['kind']!='other');download_options.setVisible(w['kind']!='other')
         self.resource_buttons=[]
         for entry in w['metadata'].get('download_url',[]):
             method=entry.get('method',w['metadata'].get('download_method'))
             text=entry.get('description') or ('磁力下载' if method=='magnet' else '直接下载')
             control=button(('磁力 · ' if method=='magnet' else '直链 · ')+text,
                            lambda checked=False,entry=entry:self.start_download(entry))
-            self.resource_buttons.append(control);outer.addWidget(control)
+            control.setObjectName('resourceAction');control.setIcon(icon('folder'));self.resource_buttons.append(control);outer.addWidget(control)
         if not self.resource_buttons:
             outer.addWidget(label('来源尚未提供下载资源；可刷新来源详情。','subtitle'))
         self.refresh_resources=button('刷新剧照与下载资源',lambda:self.window.refresh_source_details(self.work_id))
         outer.addWidget(self.refresh_resources)
-        outer.addWidget(button('从本地 NFO 补充图片…',lambda:self.window.import_nfo_artwork(self.work_id)))
         if not self.work['files']:
             outer.addWidget(label('此影片尚未入库。查看剧照和下载资源无需先导入视频。','subtitle'))
         bottom = QHBoxLayout()
-        bottom.addWidget(button('重新截取封面…', self.recapture))
         bottom.addStretch()
         bottom.addWidget(button('返回媒体库', self.accept))
         outer.addLayout(bottom)
@@ -595,9 +687,26 @@ class Details(QWidget):
             painter.fillRect(area, fade)
             painter.restore()
 
+    def choose_rating(self):
+        menu=QMenu(self.rating_action)
+        for value in range(10,0,-1):
+            action=menu.addAction(f"{'★' if self.work['rating']==value else '☆'}  {value} 分")
+            action.triggered.connect(lambda checked=False,value=value:self.personal(rating=value))
+        menu.addSeparator();menu.addAction('清除评分',lambda:self.personal(rating=None))
+        menu.exec(self.rating_action.mapToGlobal(QPoint(0,self.rating_action.height())))
+
     def personal(self, **fields):
-        self.library.update_personal(self.work_id, **fields)
+        try:self.library.update_personal(self.work_id,**fields)
+        except Exception as error:
+            self.favorite_action.setChecked(bool(self.work['favorite']));self.watchlist_action.setChecked(bool(self.work['watchlist']))
+            QMessageBox.warning(self,'未保存',str(error));return
+        self.work.update(fields)
+        self.favorite_action.setChecked(bool(self.work['favorite']));self.favorite_action.setText('已收藏' if self.work['favorite'] else '收藏')
+        self.watchlist_action.setChecked(bool(self.work['watchlist']));self.watchlist_action.setText('已想看' if self.work['watchlist'] else '想看')
+        self.rating_action.setText(f"{self.work['rating']} 分" if self.work['rating'] else '评分')
+        self.dislike_action.setChecked(bool(self.work['disliked']))
         self.window.refresh()
+        self.window.status.setText('已保存 · '+('已收藏' if fields.get('favorite') else '已取消收藏' if 'favorite' in fields else '个人偏好已更新'))
 
     def edit(self):
         dialog = QDialog(self)
@@ -792,10 +901,10 @@ class MainWindow(QMainWindow):
         self.search.setMaximumWidth(240)
         self.search.returnPressed.connect(self.search_all)
         header_layout.addWidget(self.search)
-        for text, action in [('随机播放', self.show_queue), ('本地 NFO 图片', lambda checked=False:self.import_nfo_artwork()), ('设置', self.settings)]:
-            control = button(text, action)
-            control.setObjectName('headerButton')
-            header_layout.addWidget(control)
+        header_layout.addWidget(ActionButton('随机播放','shuffle',self.show_queue).icon_only())
+        utilities=ActionButton('工具','more').icon_only();utility_menu=QMenu(utilities)
+        utility_menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork());utility_menu.addAction('导入与刮削任务',self.show_tasks);utilities.setMenu(utility_menu);header_layout.addWidget(utilities)
+        header_layout.addWidget(ActionButton('设置','settings',self.settings).icon_only())
         root.addWidget(header)
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -824,8 +933,8 @@ class MainWindow(QMainWindow):
         main.setContentsMargins(42, 18, 42, 12)
         main.setSpacing(10)
         tools_row = QHBoxLayout()
-        self.import_control = button('＋ 添加媒体', self.import_dialog)
-        self.filter_control = button('筛选', self.filter_dialog)
+        self.import_control = ActionButton('添加媒体','plus',self.import_dialog)
+        self.filter_control = ActionButton('筛选','filter',self.filter_dialog)
         self.heading = label('', 'heading')
         tools_row.addWidget(self.heading)
         tools_row.addStretch()
@@ -839,12 +948,13 @@ class MainWindow(QMainWindow):
         self.tabs.setExpanding(False)
         self.tabs.currentChanged.connect(self.tab_changed)
         main.addWidget(self.tabs)
+        self.filter_chips=QWidget();self.filter_flow=FlowLayout(self.filter_chips);main.addWidget(self.filter_chips)
         from .home import HomePage
         self.home_page = HomePage(self)
         self.home_page.hide()
         self.toolbar = QHBoxLayout()
-        self.toolbar.addWidget(button('洗牌播放全部结果', self.shuffle))
-        self.toolbar.addWidget(button('保存智能片单', self.save_list))
+        self.toolbar.addWidget(ActionButton('随机播放','shuffle',self.shuffle))
+        lists=ActionButton('片单','bookmark');list_menu=QMenu(lists);list_menu.addAction('保存当前筛选为片单…',self.save_list);list_menu.addAction('打开片单…',self.load_list);lists.setMenu(list_menu);self.toolbar.addWidget(lists)
         self.toolbar.addWidget(button('打开智能片单', self.load_list))
         self.toolbar.addWidget(button('刷新新片', self.discover))
         self.toolbar.addStretch()
@@ -879,6 +989,8 @@ class MainWindow(QMainWindow):
         self.tree.itemClicked.connect(self.folder_selected)
         self.splitter.addWidget(self.tree)
         self.cards = PosterList(self.play_work)
+        self.cards.favoriteRequested.connect(self.toggle_favorite)
+        self.cards.watchlistRequested.connect(lambda work_id:self.toggle_card_personal(work_id,'watchlist'))
         self.cards.setObjectName('posters')
         self.cards.setViewMode(QListWidget.ViewMode.IconMode)
         self.cards.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -1014,6 +1126,7 @@ class MainWindow(QMainWindow):
 
     def refresh(self, *_, _data=None):
         if self._closing:return
+        self.render_filter_chips()
         request={'section':self.section,'tab':self.subtab,'filters':self.effective_filters(),
                  'actor_min':self.actor_min.currentData(),'actor_sort':self.actor_sort.currentData(),
                  'year':getattr(self,'report_year',__import__('datetime').datetime.now().year)}
@@ -1033,7 +1146,7 @@ class MainWindow(QMainWindow):
         self.cards.setEnabled(True);self.home_page.setEnabled(True)
         actresses = self.section == 'movie' and self.subtab == 1
         for index in range(4):
-            self.toolbar.itemAt(index).widget().setVisible((self.section == 'discover') if index == 3 else self.section not in {'discover','stats'})
+            self.toolbar.itemAt(index).widget().setVisible((self.section == 'discover') if index == 3 else index!=2 and self.section not in {'discover','stats'})
         self.view_mode.setVisible(not actresses and self.section != 'stats')
         self.actor_min.setVisible(actresses)
         self.actor_sort.setVisible(actresses)
@@ -1207,7 +1320,7 @@ class MainWindow(QMainWindow):
         menu.addAction('查看详情', lambda: self.open_item(item))
         if data.get('kind'):menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork(data['id']))
         if data.get('kind'):
-            menu.addAction('取消喜欢' if data.get('favorite') else '喜欢', lambda: self.toggle_favorite(data['id']))
+            menu.addAction('取消收藏' if data.get('favorite') else '收藏', lambda: self.toggle_favorite(data['id']))
         if data.get('files'):
             menu.addAction('播放 / 继续观看', lambda: self.play_work(data['id']))
         if data.get('kind') in {'movie', 'vr'}:
@@ -1222,10 +1335,27 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.warning(self, '分类未更改', str(exc))
 
-    def toggle_favorite(self, work_id):
-        work = self.library.work(work_id)
-        self.library.update_personal(work_id, favorite=not work['favorite'])
-        self.refresh()
+    def toggle_favorite(self,work_id):
+        self.toggle_card_personal(work_id,'favorite')
+
+    def toggle_card_personal(self,work_id,field):
+        work=self.library.work(work_id);value=not bool(work[field])
+        try:self.library.update_personal(work_id,**{field:value})
+        except Exception as error:QMessageBox.warning(self,'未保存',str(error));return
+        for record in self.current_items:
+            if record.get('id')==work_id and record.get('kind'):record[field]=int(value)
+        remove=(field=='favorite' and self.effective_filters().get('favorite') or field=='watchlist' and self.effective_filters().get('watchlist')) and not value
+        for cards in self.findChildren(PosterList):
+            for index in range(cards.count()-1,-1,-1):
+                item=cards.item(index);record=item.data(Qt.ItemDataRole.UserRole) or {}
+                if record.get('id')!=work_id or not record.get('kind'):continue
+                if remove and cards is self.cards:cards.takeItem(index);self.display_count-=1
+                else:record[field]=int(value);item.setData(Qt.ItemDataRole.UserRole,record)
+        if remove:
+            self.current_items=[item for item in self.current_items if item.get('id')!=work_id]
+            self.subtitle.setText(f'{len(self.current_items)} 部作品');self.empty.setText('暂无符合条件的作品，可调整筛选。');self.empty.setVisible(not self.current_items)
+        name='收藏' if field=='favorite' else '想看'
+        self.status.setText(('已加入' if value else '已移出')+name+' · '+work['title'])
 
     def search_all(self):
         query = self.search.text()
@@ -1234,19 +1364,42 @@ class MainWindow(QMainWindow):
         self.search.setText(query)
         self.refresh()
 
+    def render_filter_chips(self):
+        clear(self.filter_flow)
+        filters=self.effective_filters()
+        if 'kinds' not in self.filters:filters.pop('kinds',None)
+        tokens=filter_tokens(filters)
+        for key,value,text in tokens:self.filter_flow.addWidget(chip(text,lambda checked=False,key=key,value=value:self.remove_filter(key,value),True))
+        if tokens:self.filter_flow.addWidget(ActionButton('清空筛选','close',self.clear_filters))
+        self.filter_chips.setVisible(bool(tokens) and self.section!='stats')
+        self.filter_control.setText('筛选'+(f' · {len(tokens)}' if tokens else ''))
+        self.filter_control.setIcon(icon('filter','#75d5ef' if tokens else '#dedee3'))
+
+    def remove_filter(self,key,value=None):
+        if key=='years':self.filters.pop('year_min',None);self.filters.pop('year_max',None)
+        elif key.startswith('tags_'):
+            self.filters[key]=[tag for tag in self.filters.get(key,[]) if tag!=value]
+            if not self.filters[key]:self.filters.pop(key,None)
+        else:
+            self.filters.pop(key,None)
+            if key=='query':self.search.clear()
+            if key=='watchlist' and self.section=='home' and self.subtab==3:self.tabs.setCurrentIndex(2)
+        if self.section=='home' and self.subtab==2:self.heading.setText('媒体库')
+        self.refresh()
+
+    def clear_filters(self):
+        self.filters={};self.search.clear()
+        if self.section=='home' and self.subtab in {1,3}:self.tabs.setCurrentIndex(2)
+        self.refresh()
+
     def filter_dialog(self):
-        dialog = FilterDialog(self.effective_filters(), self, self.library.filter_options(local=self.section != 'discover'))
+        dialog=FilterDialog(self.effective_filters(),self,self.library.filter_options(local=self.section!='discover'))
         if dialog.exec():
-            filters = dialog.filters()
-            if not filters['kinds']:
-                QMessageBox.information(self, '筛选范围', '请至少选择一个媒体分区。')
-                return
-            self.navigate('home')
-            self.subtab = 2
-            self.tabs.setCurrentIndex(2)
-            self.filters = filters
-            self.search.setText(filters.get('query', ''))
-            self.refresh()
+            filters=dialog.filters()
+            if self.section!='discover':
+                self.navigate('home');self.subtab=2;self.tabs.setCurrentIndex(2);self.heading.setText('媒体库')
+            self.filters=filters;self.search.setText(filters.get('query',''));self.refresh()
+        dialog.deleteLater()
 
     def save_list(self):
         name, ok = QInputDialog.getText(self, '保存智能片单', '片单名称')

@@ -74,7 +74,7 @@ public class BrowseUiTest {
             fields.get(2).setText("2024",false);dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertFalse(dialog.isShowing());
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);String query=(String)path.invoke(activity);
             assertTrue(query.contains("tag=Drama"));assertTrue(query.contains("actor=Example%20actor"));assertTrue(query.contains("year=2024"));
-            call(activity,"showFilters");AlertDialog clear=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();shadowOf(Looper.getMainLooper()).idle();
+            call(activity,"showFilters");AlertDialog clear=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();assertTrue(clear.isShowing());clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
             assertTrue(((String)path.invoke(activity)).endsWith("&tag=&actor=&year="));
         }
     }

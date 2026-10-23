@@ -64,6 +64,7 @@ def public_work(work, detail=False):
     result.update(cover=f"/api/works/{work['id']}/cover" if work['thumbnail'] else None,
                   file_count=len(work['files']), tags=work['metadata'].get('tags', []),
                   position=max((f['position'] for f in work['files']),default=0))
+    result['community_rating']=next((source['rating'] for source in work.get('sources',[]) if source.get('rating') is not None),None)
     if detail:
         from .artwork import still_paths
         result['stills']=[f"/api/works/{work['id']}/stills/{i}" for i,_ in enumerate(still_paths(work))]
