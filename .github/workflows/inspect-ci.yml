@@ -1,6 +1,9 @@
 name: Inspect selected CI failures
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/ci-inspect.json']
 permissions:
   contents: write
   actions: write
