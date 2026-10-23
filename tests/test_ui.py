@@ -249,7 +249,7 @@ def test_details_are_inline_and_metadata_links_filter_all_media(qapp,tmp_path,vi
     window.close()
 
 
-def test_fullscreen_controls_restore_and_can_be_kept_visible(qapp,library,video_factory):
+def test_fullscreen_controls_restore_and_can_be_kept_visible(qapp,library,video_factory,monkeypatch):
     from PySide6.QtCore import Qt,QPoint
     from PySide6.QtGui import QCursor
     library.import_folder(video_factory('Fullscreen.mp4','blue',30).parent,'movie')
@@ -267,7 +267,10 @@ def test_fullscreen_controls_restore_and_can_be_kept_visible(qapp,library,video_
     player.hide_controls()
     # Exercise the polling fallback without depending on mouse event delivery.
     player.last_cursor=QCursor.pos()+QPoint(1,1)
-    player.check_pointer()
+    # Offscreen Qt has no window manager to reactivate a recreated window.
+    with monkeypatch.context() as focus:
+        focus.setattr(player, 'isActiveWindow', lambda: True)
+        player.check_pointer()
     assert player.footer.isVisible()
     player.auto_hide.setChecked(False)
     player.hide_controls()
@@ -304,7 +307,7 @@ def test_player_controls_fit_small_fullscreen_and_long_metadata(qapp,library,vid
     player.close()
 
 
-def test_fullscreen_controls_avoid_taskbar_on_ultrawide(qapp, library, monkeypatch):
+def test_fullscreen_uses_entire_monitor_instead_of_taskbar_work_area(qapp, library, monkeypatch):
     from PySide6.QtCore import QPoint, QRect
     from PySide6.QtWidgets import QPushButton
     player = Player(library)
@@ -325,17 +328,52 @@ def test_fullscreen_controls_avoid_taskbar_on_ultrawide(qapp, library, monkeypat
                      QRect(80, 0, width-80, height), QRect(0, 0, width-80, height)]:
             player.show_controls()
             qapp.processEvents()
-            assert player.overlay.geometry() == safe
+            # The taskbar must be behind fullscreen, not consume a reserved
+            # strip of the video/control surface as in the old workaround.
+            assert player.overlay.geometry() == player.rect()
             assert player.canvas.geometry() == player.rect()
             for button in player.footer.findChildren(QPushButton):
                 if button.isVisible():
-                    assert safe.contains(button.mapTo(player, QPoint(0, 0)))
-                    assert safe.contains(button.mapTo(player, button.rect().bottomRight()))
+                    assert player.rect().contains(button.mapTo(player, QPoint(0, 0)))
+                    assert player.rect().contains(button.mapTo(player, button.rect().bottomRight()))
         monkeypatch.setattr(player, 'isFullScreen', lambda: False)
         player.show_controls()
         assert player.overlay.geometry() == player.rect()
         monkeypatch.setattr(player, 'isFullScreen', lambda: True)
     player.close()
+
+
+def test_fullscreen_restores_window_and_clears_shell_state_on_exit_and_close(qapp,library,monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QWidget
+    import lumen.player as module
+    calls=[]
+    monkeypatch.setattr(module,'set_fullscreen_window',lambda hwnd,enabled:calls.append((int(hwnd),enabled)))
+    owner=QWidget();owner.show()
+    player=Player(library,owner);player.resize(680,460);player.move(40,60);player.show();qapp.processEvents()
+    geometry=player.geometry();flags=player.windowFlags()
+    assert flags & Qt.WindowType.WindowType_Mask == Qt.WindowType.Window
+    for _ in range(2):
+        player.toggle_fullscreen();qapp.processEvents()
+        assert player.isFullScreen() and player.windowFlags() & Qt.WindowType.FramelessWindowHint
+        assert not player.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+        assert calls[-1][1] is True
+        player.toggle_fullscreen();qapp.processEvents()
+        assert not player.isFullScreen() and player.geometry()==geometry and player.windowFlags()==flags
+        assert calls[-1][1] is False
+    player.showMaximized();qapp.processEvents()
+    player.toggle_fullscreen();qapp.processEvents()
+    player.toggle_fullscreen();qapp.processEvents()
+    assert player.isMaximized()
+    player.toggle_fullscreen();qapp.processEvents()
+    player.close();qapp.processEvents()
+    assert calls[-1][1] is False and not player.isFullScreen() and not player.isVisible()
+    # A queued callback may run after close / Esc; it must not re-mark or show it.
+    previous=len(calls);player.apply_native_fullscreen();qapp.processEvents()
+    assert len(calls)==previous and not player.isVisible()
+    player.show();qapp.processEvents()
+    assert not player.isFullScreen() and player.windowFlags()==flags
+    player.close();owner.close()
 
 
 def test_vertical_wheel_over_home_row_scrolls_page_not_row(qapp,tmp_path,video_factory):

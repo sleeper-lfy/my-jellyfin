@@ -1,5 +1,6 @@
 """Actual native GPU composition check. Requires a display (Xvfb also works), not offscreen Qt."""
 import argparse
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -23,7 +24,16 @@ with tempfile.TemporaryDirectory(prefix='lumen-mpv-gl-') as directory:
     player.open_file(window.library.query()[0]['files'][0]);spin(1200)
     assert player.media.position()>0 and not errors, errors
     player.enhance.setChecked(True);spin(250)
+    windowed_geometry=player.geometry();windowed_flags=player.windowFlags()
     player.toggle_fullscreen();spin(250);player.show_controls();spin(100)
+    assert player.isFullScreen() and player.windowFlags() & Qt.WindowType.FramelessWindowHint
+    assert not player.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert player.overlay.geometry()==player.rect()
+    if sys.platform=='win32':
+        # This is the entire monitor, including the strip normally occupied by
+        # Explorer's taskbar. availableGeometry() would only test fake fullscreen.
+        assert player.frameGeometry()==player.screen().geometry(), (player.frameGeometry(),player.screen().geometry())
+    assert player.pause.isVisible() and player.fullscreen_control.isVisible()
     # The native render host and masked Qt controls must both be visible.
     image=player.screen().grabWindow(player.winId()).toImage()
     colored=sum(1 for x in range(image.width()//4,image.width()*3//4,25)
@@ -36,6 +46,8 @@ with tempfile.TemporaryDirectory(prefix='lumen-mpv-gl-') as directory:
     bottom=image.pixelColor(image.width()//2,image.height()*2//3)
     assert top.red()>150 and top.blue()<80 and bottom.blue()>150 and bottom.red()<80, 'Video orientation is incorrect'
     player.toggle_fullscreen();spin(200)
+    assert not player.isFullScreen() and player.windowFlags()==windowed_flags
+    assert player.geometry()==windowed_geometry
     player.media.pause();spin(200);player.media.setPosition(4000);spin(250)
     assert abs(player.media.position()-4000)<250
     player.close();player.open_file(window.library.query()[0]['files'][0]);spin(400)

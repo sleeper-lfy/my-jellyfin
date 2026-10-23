@@ -1,12 +1,13 @@
 from pathlib import Path
 from datetime import datetime, timedelta
 from .presentation import rating_text
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize, QRect
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from .core import WatchSession
+from .windows_fullscreen import set_fullscreen_window
 
 
 class Player(QDialog):
@@ -15,7 +16,11 @@ class Player(QDialog):
     refreshed = Signal()
 
     def __init__(self, library, parent=None):
-        super().__init__(parent)
+        # A normal top-level window lets the Windows shell recognize fullscreen;
+        # an owned dialog can leave Explorer's taskbar above the video.
+        super().__init__(parent, Qt.WindowType.Window)
+        self._windowed_geometry = None
+        self._windowed_flags = None
         self.library = library
         self.setWindowTitle('Lumen · 播放器')
         self.resize(1100, 720)
@@ -274,16 +279,6 @@ class Player(QDialog):
         if not hasattr(self, 'fullscreen_control'):
             return
         area = self.rect()
-        screen = self.screen()
-        if self.isFullScreen() and screen is not None:
-            # Windows can keep the taskbar above a fullscreen dialog. Keep
-            # controls inside the work area even then; video still fills the
-            # entire screen. Map from global coordinates for secondary monitors.
-            available = screen.availableGeometry()
-            safe = QRect(self.mapFromGlobal(available.topLeft()), available.size())
-            intersection = area.intersected(safe)
-            if not intersection.isEmpty():
-                area = intersection
         self.overlay.setGeometry(area)
         width = area.width()
         self.ends_at.setVisible(width >= 1000)
@@ -318,11 +313,15 @@ class Player(QDialog):
         self.last_cursor = QCursor.pos()
         self.pointer_timer.start()
         self.show_controls()
+        if self.isFullScreen():
+            QTimer.singleShot(0, self.apply_native_fullscreen)
 
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange and hasattr(self, 'idle'):
             QTimer.singleShot(0, self.show_controls)
+            if self.isFullScreen():
+                QTimer.singleShot(0, self.apply_native_fullscreen)
 
     def check_pointer(self):
         # Some Windows video/fullscreen paths do not deliver unpressed mouse
@@ -526,14 +525,42 @@ class Player(QDialog):
         self.position_changed(self.media.position())
 
     def toggle_fullscreen(self):
+        entering = not self.isFullScreen()
         if self.mpv_backend:
             self.media.detach_window()
-        self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        if entering:
+            self._windowed_geometry = self.saveGeometry()
+            self._windowed_flags = self.windowFlags()
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+            self.showFullScreen()
+        else:
+            set_fullscreen_window(self.winId(), False)
+            self.restore_windowed()
         self.raise_()
         self.activateWindow()
+        if entering:
+            self.apply_native_fullscreen()
         if self.mpv_backend:
             self.media.attach_window(int(self.canvas.winId()))
         self.show_controls()
+
+    def apply_native_fullscreen(self):
+        # Queued state/resize events must not re-enter fullscreen after Esc or
+        # after the player has closed. Do not promote it on Alt+Tab either.
+        if self.isFullScreen() and self.isVisible() and not self.isMinimized():
+            set_fullscreen_window(self.winId(), True)
+            self.sync_overlay()
+
+    def restore_windowed(self, show=True):
+        if self._windowed_flags is not None:
+            self.setWindowFlags(self._windowed_flags)
+        if self._windowed_geometry is not None:
+            self.restoreGeometry(self._windowed_geometry)
+        else:
+            self.setWindowState(Qt.WindowState.WindowNoState)
+        if show:
+            self.show()
+        self._windowed_geometry = self._windowed_flags = None
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
@@ -560,6 +587,9 @@ class Player(QDialog):
         self.finish()
         if self.mpv_backend:
             self.media.detach_window(False)
+        if self.isFullScreen():
+            set_fullscreen_window(self.winId(), False)
+            self.restore_windowed(show=False)
         self.track_dialog.close()
         self.idle.stop()
         self.pointer_timer.stop()

@@ -2,6 +2,10 @@
 
 Windows 正常界面默认使用 libmpv；视频由 libmpv 原生 GPU 窗口渲染，Qt 的控制层以独立的原生子窗口叠加，只覆盖标题、字幕和按钮区域，保留视频画面区域。缺少 libmpv 时显示兼容模式提示并使用 Qt Multimedia。无显示环境的 UI 自动测试使用 Qt 兼容模式，另有 libmpv 实际解码测试。
 
+PC 播放器使用独立普通窗口，全屏时切换为无边框并覆盖整个显示器，不再按任务栏占用后的可用区域缩进控制层。Windows 通过 `ITaskbarList2::MarkFullscreenWindow` 通知 Explorer 将任务栏放到全屏窗口后方，并使用当前显示器的物理像素边界定位，支持副屏负坐标及不同 DPI。不会全局隐藏任务栏，也不会将播放器设为永久置顶。退出全屏恢复原窗口位置、尺寸或最大化状态；关闭播放器时清除全屏标记。播放控制栏继续支持鼠标唤出、自动隐藏设置和 F / Esc 切换。
+
+`scripts/verify-mpv-render.py` 可在有图形环境、FFmpeg 和 libmpv 的系统上验证原生视频与控制层叠加、全屏切换、定位和重开；Windows 上还会断言全屏窗口覆盖完整显示器。Linux Xvfb 检查不代表 Windows Explorer 任务栏或真实显卡验收。
+
 播放设置 → “GPU 画质增强”：启用 spline36 缩放、Mitchell 缩小和应用自带的轻度锐化着色器。默认关闭，可随时切换；该功能不是 AI 超分，也不修改原文件。硬件解码采用 libmpv `auto-safe`，不支持时由软件解码。性能取决于分辨率、编码、显卡与驱动。音频默认立体声。
 
 Windows 构建脚本下载固定的 x86_64 上游 DLL 并验证 SHA-256，安装程序包含 DLL、着色器和构建记录，不要求用户安装 mpv。普通 x86_64 构建不额外要求 x86_64-v3/AVX2。Linux 开发环境需要系统 libmpv（Debian: libmpv2）和可用的 GPU 渲染驱动。显卡不兼容时可在播放设置勾选“兼容播放模式”，重启后使用原有 Qt 内核。
