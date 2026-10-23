@@ -104,15 +104,13 @@ def parse_name(path, kind):
     end = min([m.start() for m in (episode, year_match) if m] or [len(stem)])
     title = re.sub(r'[._]+', ' ', stem[:end]).strip(' -[]()') or stem
     season, number = (int(episode.group(1) or episode.group(3)), int(episode.group(2) or episode.group(4))) if episode else (1, 1)
-    if kind == 'series' and not episode:
-        season_match = re.search(r'(?i)(?:season|s|第)\s*(\d{1,2})', Path(path).parent.name)
-        number_match = re.match(r'(?i)(?:e|ep|第)?\s*(\d{1,3})(?:\D|$)', stem)
-        if not number_match:
-            number_match = re.search(r'(?:\s|第)(\d{1,3})(?:[话話集回])?$', stem)
-        if not number_match:
-            raise ValueError('未识别季集编号，请使用 剧名.S01E01 格式或 Season 1/01 标题 格式')
-        season, number = int(season_match.group(1)) if season_match else 1, int(number_match.group(1))
-        title = Path(path).parent.parent.name if season_match else Path(path).parent.name
+    if kind == 'series':
+        from .series import episode_numbers, season_folder
+        season, number = episode_numbers(Path(path))
+        if number is None and season_folder(Path(path).parent) is None:season=None
+        if not episode:
+            title = Path(path).parent.parent.name if season_folder(Path(path).parent) is not None else Path(path).parent.name
+            title = title or stem
     if kind == 'other':
         title = stem
     if kind != 'other':
@@ -250,6 +248,9 @@ class Library:
         if source['kind'] != target['kind'] or source['kind'] == 'other':
             raise ValueError('仅可合并相同类型的电影或电视剧')
         merged = {**source['metadata'], **target['metadata']}
+        for field in ('episode_details','episode_stills','nfo_thumbnails'):
+            if field in source['metadata'] or field in target['metadata']:
+                merged[field] = {**source['metadata'].get(field,{}), **target['metadata'].get(field,{})}
         merged['aliases'] = list(dict.fromkeys(source['metadata'].get('aliases',[]) + target['metadata'].get('aliases',[]) + ([source['title']] if source['title'] != target['title'] else [])))
         merged['external_ids'] = {**source['metadata'].get('external_ids',{}), **target['metadata'].get('external_ids',{})}
         with self.db if commit else nullcontext():
@@ -332,7 +333,12 @@ class Library:
                 if time.monotonic() - last_scan >= .25:
                     report(0, 0, f'扫描文件夹，已找到 {len(paths)} 个视频', candidate, False)
                     last_scan = time.monotonic()
-            paths.sort()
+            if kind == 'series':
+                from .series import SeriesPlan, natural_key
+                paths.sort(key=natural_key)
+                series_plan = SeriesPlan(self, paths, root, directory_cache, report, cancelled,partial=candidates is not None,fast=fast,signatures=signatures)
+            else:
+                paths.sort()
             if fast:
                 self.index_legacy_files(lambda text: report(0, len(paths), text, force=False), cancelled)
             for index, path in enumerate(paths):
@@ -344,6 +350,19 @@ class Library:
                     stat = path.stat()
                     signature = nfo.sidecar_signature(path, root, kind, directory_cache, signatures) if fast else ''
                     existing_file = self.db.execute('SELECT id,work_id FROM files WHERE path=?',(str(path),)).fetchone()
+                    if kind == 'series':
+                        group = series_plan.group(path)
+                        if existing_file and series_plan.existing[path]['kind'] == 'series':
+                            with self.db:
+                                if group['known'] != existing_file['work_id']:
+                                    source = self.work(existing_file['work_id'])
+                                    if all(Path(file['path']).is_relative_to(group['folder']) for file in source['files']):
+                                        self.merge_works(source['id'], group['known'], commit=False)
+                                        for other in series_plan.groups.values():
+                                            if other['known']==source['id']:other['known']=group['known']
+                                        existing_file = {'id': existing_file['id'], 'work_id': group['known']}
+                                self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (group['key'], existing_file['work_id']))
+                                self.db.execute('UPDATE files SET season=?,episode=? WHERE id=?', (*series_plan.numbers[path], existing_file['id']))
                     cache = self.db.execute('SELECT * FROM import_cache WHERE file_id=?', (existing_file['id'],)).fetchone() if existing_file else None
                     unchanged = cache and cache['size'] == stat.st_size and cache['modified'] == stat.st_mtime_ns
                     if fast and unchanged and cache['sidecars'] == signature:
@@ -381,14 +400,15 @@ class Library:
                             continue
                         report(index, len(paths), '分析媒体', path)
                         duration = probe(path, cancelled=cancelled) if cancelled else probe(path)
-                    entry = local['entry']
-                    numbered = kind == 'series' and entry and entry['episode'] is not None
-                    parsed = parse_name(path, 'movie' if numbered else kind)
-                    if numbered:
-                        parsed.update(season=entry['season'] if entry['season'] is not None else 1,episode=entry['episode'])
+                    parsed = parse_name(path, kind)
+                    if kind == 'series':
+                        group = series_plan.group(path)
+                        year = re.search(r'(?<!\d)(19\d{2}|20\d{2})(?!\d)', group['folder'].name)
+                        parsed.update(title=group['folder'].name, year=int(year.group()) if year else None,
+                                      season=series_plan.numbers[path][0], episode=series_plan.numbers[path][1])
                     if local['work']:
                         parsed.update({k:v for k,v in local['work']['metadata'].items() if k in {'title','year'}})
-                    key = identity(parsed['title'], parsed['year'], kind) if kind != 'other' else 'file:' + digest
+                    key = group['key'] if kind == 'series' else identity(parsed['title'], parsed['year'], kind) if kind != 'other' else 'file:' + digest
                     cover = self.directory / 'cache' / (digest + '.jpg')
                     try:
                         if not fast and not cover.exists():
@@ -400,6 +420,7 @@ class Library:
                         results['warnings'].append({'path': str(path), 'reason': '缩略图: ' + str(exc)})
                     with self.db:
                         known = self.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
+                        if kind == 'series' and not known and group['known'] is not None: known = (group['known'],)
                         linked = set()
                         for namespace,value in (local['work'] or {}).get('metadata',{}).get('external_ids',{}).items():
                             row = self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?',(kind,namespace,value)).fetchone()
@@ -415,6 +436,10 @@ class Library:
                                             (key, kind, parsed['title'], parsed['year'], now(), str(cover) if cover.exists() else None))
                             work_id = self.db.execute('SELECT id FROM works WHERE identity=?', (key,)).fetchone()[0]
                             self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (key,work_id))
+                        if kind == 'series':
+                            self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (key,work_id))
+                            self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (identity(parsed['title'],parsed['year'],kind),work_id))
+                            group['known'] = work_id
                         if cover.exists():
                             self.db.execute('UPDATE works SET thumbnail=COALESCE(thumbnail,?) WHERE id=?', (str(cover),work_id))
                         self.db.execute('INSERT INTO files(work_id,path,digest,root,season,episode,duration) VALUES (?,?,?,?,?,?,?)',

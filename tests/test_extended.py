@@ -19,7 +19,8 @@ def test_tv_filename_fallback_and_ambiguity():
     assert parse_name('/Shows/Our Show/Season 2/03 - title.mkv','series')['title']=='Our Show'
     assert parse_name('/Shows/Our Show/Season 2/03 - title.mkv','series')['episode']==3
     assert parse_name('Movie.1080p.WEB-DL.mp4','movie')['title']=='Movie'
-    with pytest.raises(ValueError): parse_name('unknown.mp4','series')
+    assert parse_name('unknown.mp4','series')['episode'] is None
+    assert parse_name('unknown.mp4','series')['season'] is None
 
 
 def test_discovered_work_merge_preserves_history_and_queue(library):

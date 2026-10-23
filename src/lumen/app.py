@@ -80,6 +80,8 @@ def main():
         return 1
     window = MainWindow(directory)
     window.show()
+    if sys.platform=='win32' and getattr(sys,'frozen',False) and not args.smoke:
+        QTimer.singleShot(15000,lambda:window.updater().startup())
     if args.smoke:
         def check():
             for section in ['home','movie','series','vr','other','discover','stats']:

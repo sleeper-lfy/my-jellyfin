@@ -36,6 +36,10 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 保留导入、全屏、书签与内存优化、Android GitHub 更新、VR 灵敏度 / 平滑 / 反转、目录监控、播放诊断、字幕调节、截图书签、手机播放遥控和后台队列。[媒体工具](docs/media-tools.md) · [稳定性修复与截图](docs/pc-stability-and-updates.md)。
 
+### 后续源码更新（尚未打包）
+
+电视剧改为按文件夹归集，缺少季集编号也可导入；修复任务与诊断窗口的大报告卡顿和点击剧照时的预览闪烁，并新增 PC GitHub 更新检测、后台下载及空闲时自动安装。入口、截图与验证范围见 [本轮 PC 修复](docs/pc-maintenance.md)。现有 0.4.5 Release 不包含这批修改。
+
 ## 下载
 
 [**Lumen 0.4.5 · Windows + Android Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 已提供两端安装包和 SHA-256：

@@ -250,7 +250,8 @@ def apply(library, work_id, file_id, data, fresh_work, fresh_file, root, warning
         year = metadata.get('year', item['year']) if 'year' not in item['locked'] else item['year']
         key = identity(title, year, item['kind'])
         linked = library.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
-        if linked and linked[0] != work_id: raise ValueError('NFO 标题对应另一部作品，请人工核对后合并')
+        if linked and linked[0] != work_id and not (item['kind'] == 'series' and library.db.execute("SELECT 1 FROM name_keys WHERE work_id=? AND key LIKE 'series-folder:%'",(work_id,)).fetchone()):
+            raise ValueError('NFO 标题对应另一部作品，请人工核对后合并')
         library.db.execute('UPDATE works SET title=?,year=? WHERE id=?',(title,year,work_id))
         library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(key,work_id))
         for alias in metadata.get('aliases', []):

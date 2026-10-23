@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QGridLayout, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
  QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
- QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter)
+ QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter, QSizePolicy)
 from .core import Library, thumbnail, tool, ImportCancelled
 from .plugins import Plugins
 from .files import plan_move, execute_move
@@ -653,22 +653,30 @@ class Details(QWidget):
         from .images import image_cache
         cache=image_cache()
         image=cache.request(self.poster_path,QSize(420,630))
-        if not image.isNull():self.poster.setPixmap(image.scaled(self.poster.size(),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+        poster_key=(image.cacheKey(),self.poster.width(),self.poster.height())
+        if not image.isNull() and getattr(self,'_poster_key',None)!=poster_key:
+            self.poster.setPixmap(image.scaled(self.poster.size(),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));self._poster_key=poster_key
         for path in self.backdrop_paths:
             image=cache.request(path,QSize(1400,800))
-            if not image.isNull() and image.width()>image.height():self.backdrop=image;break
+            if not image.isNull() and image.width()>image.height():
+                if self.backdrop.cacheKey()!=image.cacheKey():self.backdrop=image;self.update(QRect(0,0,self.width(),500))
+                break
         visible=self.still_gallery.viewport().rect();near=visible.adjusted(-visible.width(),0,visible.width(),0)
         for index in range(self.still_gallery.count()):
             item=self.still_gallery.item(index)
             if not self.still_gallery.visualItemRect(item).intersects(near):
-                if not item.icon().isNull():item.setIcon(QIcon())
+                if not item.icon().isNull():item.setIcon(QIcon());item.setData(Qt.ItemDataRole.UserRole+2,None)
                 continue
             image=cache.request(item.data(Qt.ItemDataRole.UserRole),self.still_gallery.iconSize()*self.devicePixelRatioF())
-            if not image.isNull():item.setIcon(QIcon(image))
+            if not image.isNull() and item.data(Qt.ItemDataRole.UserRole+2)!=image.cacheKey():
+                item.setIcon(QIcon(image));item.setData(Qt.ItemDataRole.UserRole+2,image.cacheKey())
         if getattr(self,'expanded_still_path',None):
-            image=cache.request(self.expanded_still_path,QSize(min(1400,max(320,self.width()-68)),720))
-            if not image.isNull():self.expanded_still.setPixmap(image.scaled(min(1400,max(320,self.width()-68)),720,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
-        self.update()
+            width=min(1400,max(320,self.width()-68));height=max(200,min(720,round(width*9/16)))
+            if self.expanded_still.height()!=height:self.expanded_still.setFixedHeight(height)
+            image=cache.request(self.expanded_still_path,QSize(width,height))
+            preview_key=(image.cacheKey(),width,height)
+            if not image.isNull() and getattr(self,'_preview_key',None)!=preview_key:
+                self.expanded_still.setPixmap(image.scaled(width,height,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));self._preview_key=preview_key
 
     def open_source(self, url):
         from .private_browser import open_private
@@ -697,16 +705,20 @@ class Details(QWidget):
         self.gallery_status.setText(f'已载入 {self.still_gallery.count()} 张剧照 · 点击放大' if self.still_gallery.count() else '此集暂无可显示的剧照。')
 
     def show_still(self, item):
-        # Expand inside the details page instead of opening a modal dialog.
+        path=item.data(Qt.ItemDataRole.UserRole)
+        if getattr(self,'expanded_still_path',None)==path:return
+        first=not hasattr(self,'expanded_still') or self.expanded_still.isHidden()
         if not hasattr(self,'expanded_still'):
-            self.expanded_still=QLabel()
-            self.expanded_still.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.expanded_still=QLabel();self.expanded_still.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.expanded_still.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+            self.expanded_still.setMinimumWidth(0);self.expanded_still.setStyleSheet('background:#080808;')
+            self.expanded_still.setFixedHeight(max(200,min(720,round((self.width()-68)*9/16))))
             self.layout().insertWidget(self.layout().indexOf(self.still_gallery)+1,self.expanded_still)
-        self.expanded_still_path=item.data(Qt.ItemDataRole.UserRole)
-        self.expanded_still.setText('正在加载剧照…');self.render_artwork()
-        self.expanded_still.show()
-        if self.window.details_scroll is not None:
-            QTimer.singleShot(0,lambda:self.window.details_scroll.ensureWidgetVisible(self.expanded_still) if self.window.detail_page is self else None)
+        self.expanded_still_path=path
+        if self.expanded_still.pixmap().isNull():self.expanded_still.setText('正在加载剧照…')
+        self.render_artwork();self.expanded_still.show()
+        if first and self.window.details_scroll is not None:
+            QTimer.singleShot(0,lambda:self.window.details_scroll.ensureWidgetVisible(self.expanded_still,0,16) if self.window.detail_page is self else None)
 
     def choose_download_folder(self):
         from .downloads import download_folder,set_download_folder
@@ -768,7 +780,13 @@ class Details(QWidget):
             area = QRect(0, 0, self.width(), min(500, self.height()))
             painter.save()
             painter.setClipRect(area)
-            image = self.backdrop.scaled(area.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            key=(self.backdrop.cacheKey(),area.width(),area.height())
+            if getattr(self,'_backdrop_key',None)!=key:
+                ratio=area.width()/max(1,area.height());width=self.backdrop.width();height=self.backdrop.height()
+                crop_width=min(width,max(1,round(height*ratio)));crop_height=min(height,max(1,round(width/ratio)))
+                cropped=self.backdrop.copy((width-crop_width)//2,(height-crop_height)//2,crop_width,crop_height)
+                self._backdrop_image=cropped.scaled(area.size(),Qt.AspectRatioMode.IgnoreAspectRatio,Qt.TransformationMode.SmoothTransformation);self._backdrop_key=key
+            image=self._backdrop_image
             painter.drawPixmap((area.width()-image.width())//2, (area.height()-image.height())//2, image)
             painter.fillRect(area, QColor(0, 0, 0, 165))
             fade = QLinearGradient(0, 100, 0, area.height())
@@ -951,6 +969,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1024, 700)
         self.setStyleSheet(STYLE)
         self.setAcceptDrops(True)
+        self._auxiliary_jobs=set()
         self.jobs = []
         self.job_queue=[];self.jobs_paused=False;self._job_functions={}
         self._closing = False
@@ -1000,7 +1019,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.search)
         header_layout.addWidget(ActionButton('随机播放','shuffle',self.show_queue).icon_only())
         utilities=ActionButton('工具','more').icon_only();utility_menu=QMenu(utilities)
-        utility_menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork());utility_menu.addAction('导入与刮削任务',self.show_tasks);utilities.setMenu(utility_menu);header_layout.addWidget(utilities)
+        utility_menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork());utility_menu.addAction('导入与刮削任务',self.show_tasks);utility_menu.addAction('检查软件更新…',self.check_updates);utilities.setMenu(utility_menu);header_layout.addWidget(utilities)
         utility_menu.addAction('目录监控与媒体库体检…',self.library_tools)
         header_layout.addWidget(ActionButton('设置','settings',self.settings).icon_only())
         root.addWidget(header)
@@ -1893,20 +1912,46 @@ class MainWindow(QMainWindow):
             self.run_job('定期发现新片', lambda lib, p: self.refresh_plugins(lib, due))
 
     def show_tasks(self):
-        dialog = QDialog(self)
+        if getattr(self,'tasks_dialog',None) is not None:
+            self.tasks_dialog.show();self.tasks_dialog.raise_();return
+        from .background import run_background
+        from . import tasks
+        dialog = QDialog(self);self.tasks_dialog=dialog
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.destroyed.connect(lambda:setattr(self,'tasks_dialog',None) if self.tasks_dialog is dialog else None)
+        dialog.finished.connect(lambda _code:setattr(self,'tasks_dialog',None) if self.tasks_dialog is dialog else None)
         dialog.resize(950, 650)
         dialog.setWindowTitle('任务与诊断')
         layout = QVBoxLayout(dialog)
         table = QTableWidget(0, 4)
         table.setHorizontalHeaderLabels(['类型','状态','更新时间','详情 / 失败原因'])
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        table.setWordWrap(False);table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        table.verticalHeader().setDefaultSectionSize(32)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for column,width in enumerate((180,100,180)):table.setColumnWidth(column,width)
         table.horizontalHeader().setStretchLastSection(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        rows=[]
+        rows=[];page=[0]
+        page_status=label('每页显示 100 条任务')
+        loading=[False];closed=[False]
+        dialog.finished.connect(lambda _code:closed.__setitem__(0,True))
         def reload():
+            if loading[0] or closed[0] or self._closing:return
+            loading[0]=True
+            def ready(records):
+                loading[0]=False
+                if not closed[0]:apply_records(records)
+            def failed(error):
+                loading[0]=False
+                if not closed[0]:table.setToolTip('任务暂未读出，可稍后自动重试：'+error)
+            run_background(self,lambda job:tasks.snapshot(self.library.directory,page[0]*100),ready,failed)
+        def apply_records(records):
+            if page[0]>0 and not records:page[0]-=1;reload();return
+            previous_page.setEnabled(page[0]>0);next_page.setEnabled(len(records)==100);page_status.setText(f'第 {page[0]+1} 页 · 每页 100 条')
             selected=rows[table.currentRow()]['id'] if 0<=table.currentRow()<len(rows) else None
-            rows[:]=[dict(r) for r in self.library.db.execute('SELECT * FROM tasks ORDER BY updated DESC LIMIT 300')]
+            bar=table.verticalScrollBar();position=bar.value();table.setUpdatesEnabled(False)
+            rows[:]=records
             table.setRowCount(len(rows))
             for index,task in enumerate(rows):
                 payload=json.loads(task['payload']);progress=payload.get('progress',{})
@@ -1919,11 +1964,20 @@ class MainWindow(QMainWindow):
                 states={'queued':'排队中','running':'进行中','paused':'已暂停','importing':'入库中','failed':'失败','partial':'部分完成','done':'已完成','cancelled':'已停止','external':'外部工具处理'}
                 kinds={'import':'导入','media':'补充媒体','scrape':'刮削','download':'HTTP 下载','download-library':'下载并入库','match':'匹配确认','move':'文件整理','background':'后台处理'}
                 for column,text in enumerate([payload.get('title',kinds.get(task['kind'],task['kind'])),states.get(state,state),task['updated'][:19],detail]):
-                    item=QTableWidgetItem(str(text));item.setToolTip(str(text));table.setItem(index,column,item)
+                    text=str(text).replace('\n',' ')[:2000]
+                    item=table.item(index,column)
+                    if item is None:item=QTableWidgetItem();table.setItem(index,column,item)
+                    if item.text()!=text:item.setText(text);item.setToolTip(text)
                     if column==1:item.setForeground(QColor('#e98383' if state in {'failed','partial'} else '#6bc9a5' if state=='done' else '#00a4dc' if state in {'running','importing'} else '#e7c567' if state=='paused' else '#cccccc'))
                 if task['id']==selected:table.selectRow(index)
+            bar.setValue(position);table.setUpdatesEnabled(True)
         reload();timer=QTimer(dialog);timer.setInterval(1000);timer.timeout.connect(reload);timer.start()
         layout.addWidget(table)
+        def turn_page(direction):
+            if loading[0]:return
+            page[0]=max(0,page[0]+direction);table.clearSelection();table.setCurrentCell(-1,-1);reload()
+        pagination=QHBoxLayout();previous_page=button('上一页',lambda:turn_page(-1));next_page=button('下一页',lambda:turn_page(1))
+        pagination.addWidget(previous_page);pagination.addWidget(page_status,1);pagination.addWidget(next_page);layout.addLayout(pagination)
         paused=QCheckBox('暂停后台队列（在安全点暂停处理，播放与浏览继续）');paused.setChecked(self.jobs_paused);paused.toggled.connect(self.pause_jobs);layout.addWidget(paused)
         def cancel_selected():
             index=table.currentRow()
@@ -1936,28 +1990,31 @@ class MainWindow(QMainWindow):
                 if queued[3]==identifier:self.job_queue.remove(queued);self.task_journal.record(identifier,'background','cancelled',{'title':queued[0]});reload();return
         layout.addWidget(button('停止选中后台任务',cancel_selected))
         def inspect_task():
-            index = table.currentRow()
-            if index >= 0:
-                task = rows[index]
-                detail = QDialog(dialog)
-                detail.setWindowTitle('任务完整详情')
-                detail.resize(850, 600)
-                content = QVBoxLayout(detail)
-                text = QPlainTextEdit(json.dumps({**task, 'payload':json.loads(task['payload']), 'result':json.loads(task['result'])}, ensure_ascii=False, indent=2))
-                text.setReadOnly(True)
-                content.addWidget(text)
-                content.addWidget(button('关闭', detail.accept))
-                detail.exec()
+            index=table.currentRow()
+            if not 0<=index<len(rows):return
+            identifier=rows[index]['id']
+            detail=QDialog(dialog);detail.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);detail.resize(850,600);detail.setWindowTitle('任务详情')
+            content=QVBoxLayout(detail);text=QPlainTextEdit('正在后台读取任务详情…');text.setReadOnly(True);text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap);content.addWidget(text)
+            alive=[True];detail.finished.connect(lambda _code:alive.__setitem__(0,False))
+            def ready(data):
+                if alive[0]:text.setPlainText(('记录较大，此处显示预览；可导出完整 JSON。\n\n' if data['truncated'] else '')+data['text'])
+            run_background(self,lambda job:tasks.record(self.library.directory,identifier,preview=True),ready,lambda error:text.setPlainText(error) if alive[0] else None)
+            def export():
+                destination,_=QFileDialog.getSaveFileName(detail,'导出完整任务记录',identifier+'.json','JSON (*.json)',options=QFileDialog.Option.DontUseNativeDialog)
+                if destination:run_background(self,lambda job:tasks.export(self.library.directory,identifier,destination,job.isInterruptionRequested),lambda path:text.appendPlainText('\n已导出：'+path) if alive[0] else None)
+            content.addWidget(button('导出完整 JSON',export));content.addWidget(button('关闭',detail.accept));detail.show()
         layout.addWidget(button('查看完整进度 / 结果 / 错误', inspect_task))
         def retry():
-            index = table.currentRow()
-            if index < 0:
-                return
-            task = rows[index]
-            payload = json.loads(task['payload'])
-            if task['kind']=='download' and payload.get('parent_task_id'):
-                parent=self.library.db.execute('SELECT * FROM tasks WHERE id=?',(payload['parent_task_id'],)).fetchone()
-                if parent:task=dict(parent);payload=json.loads(task['payload'])
+            index=table.currentRow()
+            if not 0<=index<len(rows):return
+            identifier=rows[index]['id']
+            def read(job):
+                task=tasks.record(self.library.directory,identifier,retry=True)
+                if task['kind']=='download' and task['payload'].get('parent_task_id'):task=tasks.record(self.library.directory,task['payload']['parent_task_id'],retry=True)
+                return task
+            run_background(self,read,lambda task:retry_task(task) if not closed[0] else None)
+        def retry_task(task):
+            payload=task['payload']
             if task['status'] in {'running','queued','paused'}:return
             if task['kind']=='background' and task['id'] in self._job_functions:
                 title,function,callback,quiet=self._job_functions[task['id']];dialog.accept();self.run_job(title,function,callback,quiet=quiet)
@@ -1966,8 +2023,7 @@ class MainWindow(QMainWindow):
                 self.run_job('恢复文件整理', lambda lib, p: execute_move(lib, task_id=task['id']))
             elif task['kind'] == 'import':
                 dialog.accept()
-                errors=json.loads(task['result']).get('errors',[])
-                candidates=[error['path'] for error in errors] or None
+                candidates=task.get('candidates') or None
                 self.run_job('重试导入失败项' if candidates else '继续导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p, fast=payload.get('fast',True), cancelled=p.cancelled,candidates=candidates))
             elif task['kind']=='download':
                 from .downloads import download_direct
@@ -1986,7 +2042,7 @@ class MainWindow(QMainWindow):
             elif task['kind'] == 'scrape':
                 QMessageBox.information(dialog, '重试刮削', '请在影片详情中重新刮削，或在发现页刷新；搜索结果仍需确认匹配。')
         layout.addWidget(button('恢复 / 重试选中任务', retry, True))
-        dialog.exec()
+        dialog.show()
 
     def render_stats(self,stats=None,report=None,history=None):
         clear(self.stats_layout)
@@ -2072,9 +2128,19 @@ class MainWindow(QMainWindow):
                 self.lan_server = previous
             raise
 
+    def updater(self):
+        if not hasattr(self,'desktop_updates'):
+            from .updates_ui import DesktopUpdates
+            self.desktop_updates=DesktopUpdates(self)
+        return self.desktop_updates
+
+    def check_updates(self):
+        self.updater().show();self.desktop_updates.check()
+
     def settings(self):
         from .settings import Settings
         Settings(self).exec()
+        if self._closing:return
         self.refresh()
         if self.detail_page is not None:self.reload_details(self.detail_page.work_id)
 
@@ -2085,7 +2151,8 @@ class MainWindow(QMainWindow):
         for title,function,callback,identifier,quiet in self.job_queue:
             if not quiet:self.task_journal.record(identifier,'background','cancelled',{'title':title},error='应用关闭，未执行队列任务')
         self.job_queue.clear()
-        if self.jobs or self._browse_job is not None:
+        if self.jobs or self._browse_job is not None or self._auxiliary_jobs:
+            for worker in self._auxiliary_jobs:worker.requestInterruption()
             self._closing = True
             self._browse_pending=None
             if self._browse_job is not None:self._browse_job.requestInterruption()
@@ -2104,3 +2171,4 @@ class MainWindow(QMainWindow):
         self.task_journal.stop()
         self.library.close()
         event.accept()
+        if getattr(self,'_update_pending',False):QApplication.instance().quit()

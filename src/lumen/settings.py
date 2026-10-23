@@ -40,6 +40,7 @@ class Settings(QDialog):
         note.setWordWrap(True)
         form.addRow(note)
         tabs.addTab(general, '通用 / 数据安全')
+        tabs.addTab(window.updater().panel(self),'软件更新')
         plugins = QWidget()
         layout = QVBoxLayout(plugins)
         self.list = QListWidget()
