@@ -1,1 +1,145 @@
-[]
+[
+  {
+    "run": 39908371828,
+    "jobs": [
+      {
+        "name": "windows",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Check explicit release version",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Windows packaging tools",
+            "conclusion": "success"
+          },
+          {
+            "name": "Test, build and verify Windows installer",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "publish",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify the source-matched Android package and signature",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Save the Windows installer into target",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Publish both verified installers together",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Commit verified Windows delivery files",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "report",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Record release outcome and bounded diagnostics",
+            "conclusion": "success"
+          },
+          {
+            "name": "Save the outcome for review",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "logs": {
+      "1_publish.txt": "2026-10-23T06:01:38.0207782Z Verified target APK, checksum, ZIP contents and matching Android source\n2026-10-23T06:01:38.0277261Z /home/runner/work/_temp/644be840-3dbe-4a3b-9485-dbbcec4117c4.sh: line 2: rg: command not found\n2026-10-23T06:01:38.0303576Z ##[error]Process completed with exit code 1.\n2026-10-23T06:01:38.0428542Z Post job cleanup.\n2026-10-23T06:01:38.1115015Z [command]/usr/bin/git version\n2026-10-23T06:01:38.1150801Z git version 2.55.0\n2026-10-23T06:01:38.1181621Z Temporarily overriding HOME='/home/runner/work/_temp/3fc186c7-71d3-424d-a760-ec358fc16974' before making global git config changes\n2026-10-23T06:01:38.1182757Z Adding repository directory to the temporary git global config as a safe directory\n2026-10-23T06:01:38.1186144Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/my-jellyfin/my-jellyfin\n2026-10-23T06:01:38.1221593Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-10-23T06:01:38.1257133Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"",
+      "publish/5_Verify the source-matched Android package and signature.txt": "2026-10-23T06:01:38.0207730Z Verified target APK, checksum, ZIP contents and matching Android source\n2026-10-23T06:01:38.0277231Z /home/runner/work/_temp/644be840-3dbe-4a3b-9485-dbbcec4117c4.sh: line 2: rg: command not found\n2026-10-23T06:01:38.0303564Z ##[error]Process completed with exit code 1."
+    }
+  }
+]
