@@ -1,6 +1,6 @@
 # 导入、书签、内存与 Android 更新修复（0.4.4）
 
-这些修改在 0.4.3 安装包交付后完成，纳入 0.4.4 发布构建。实际交付状态见 [0.4.4 更新说明](releases/0.4.4.md) 和 target/release-status.json；旧 0.4.3 安装包不包含本页更新。
+这些修改已包含在 [0.4.4 Windows + Android Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.4)。[更新说明](releases/0.4.4.md) 和 target/release-status.json 记录交付结果；旧 0.4.3 安装包不包含本页更新。
 
 ## PC 导入和刷新
 

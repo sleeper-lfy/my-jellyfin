@@ -173,3 +173,9 @@ PC 和 Android 增加明显的书签入口，PC 详情有空状态与添加按�
 Android 增加从 GitHub Releases / target 检查更新、流式下载与取消、大小 / SHA-256 / 包名 / 版本 / 签名验证及系统确认安装，入口不依赖媒体服务器连接。VR 改为从旋转矩阵视线计算朝向，修复横屏俯仰串入左右转向，增加灵敏度、时间平滑和上下反转并按文件保存；蓝牙默认媒体上下首对应上下集，已有自定义映射保留，首末集不越界。
 
 Python 完整回归 185 项通过、1 项默认原生环境检查跳过，另行原生 libmpv 图形检查通过；最终边界检查 18 项通过。Android 46 项单元 / 界面测试与 lint 通过，覆盖更新源回退、流式校验及清理、签名与只读安装 URI、两种横屏的抬头 / 左右转头独立性、平滑 / 反转 / 回正、MediaSession 路由和实际上一集 / 下一集请求。本轮不改 target 安装包、不打包、不发布；Android 安装器、真实陀螺仪、蓝牙及头显仍待设备验收。
+
+## 0.4.4 统一打包与 Release（2026-10-23）
+
+按后续明确要求，完成 Windows + Android 打包并发布 [v0.4.4](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.4)，包含上一节全部修复。版本更新为 0.4.4 / Android versionCode 7；修正更新页面测试对旧固定版本的依赖，46 项测试与 lint、签名、ZIP 对齐和 APK 版本检查通过，签名保持不变。
+
+[发布运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39972260074) 成功：Windows 测试、打包、安装 / 启动 / 卸载检查通过，发布前再次验证 Android 源码树与签名。标签源码为 `61196f2a2233ce0a6b9bb725e983e87211c61668`，Android 从 `58321846d0b9ea68d34d44dfb865c636e1a53161` 构建，两者 Android 源码树一致。Windows EXE 201245366 字节，Android APK 100860534 字节，均已从公开 Release 下载并核对 SHA-256；target 的 Windows 分片也与完整 EXE 一致。记录见 `target/release-status.json`、`target/release-download-verification.json`。同步 README 和 target 下载说明，未加入新功能；真实硬件验收范围保持上述说明。
