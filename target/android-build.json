@@ -1,15 +1,16 @@
 {
-  "version": "0.4.1",
-  "version_code": 4,
+  "version": "0.4.2",
+  "version_code": 5,
   "min_sdk": 26,
-  "source_commit": "aa429b5a450a24fc2f54eb7d116dd4da997c4a0a",
-  "source_sha256": "26583e69a0ad977f156c215279e257ebf16d9e1bf5d27c45a3e4d6115c707ad4",
-  "bytes": 100875349,
-  "sha256": "4482f7cbe8de6b871b790e33f290da7a5abd0b90370bfd8b50d01d8c2b0a7f9c",
+  "source_commit": "2ece88b4358182e24d65d9118bb94445d00fe5e3",
+  "source_sha256": "047b6e143db539d1f96d3a23030f94bb47bff97b316a95af3f50576180082074",
+  "bytes": 100831570,
+  "sha256": "80c9c9b9c7616f6d316efa3e3c7d07a91e1ca248d7025e88ba4204447c1c929d",
+  "signing_certificate_sha256": "575f4907ec5c0b8fc337862fd290cf1aae65a2234587cd4b9f4ad855271a68f4",
   "checks": [
     "assembleDebug",
-    "testDebugUnitTest (22 tests, Android 26/33/35)",
+    "testDebugUnitTest (30 tests)",
     "lintDebug",
-    "apksigner verify"
+    "apksigner verify; same signing certificate as previous target APK"
   ]
 }
