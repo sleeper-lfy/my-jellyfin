@@ -7,7 +7,7 @@ import subprocess
 import tomllib
 
 version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
-tag = os.environ['GITHUB_REF_NAME']
+tag = os.environ.get('RELEASE_TAG') or os.environ['GITHUB_REF_NAME']
 assert tag == 'v' + version
 revision = os.environ['SOURCE_COMMIT']
 windows = Path('.local/release-windows/Lumen-Setup-x64.exe')

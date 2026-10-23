@@ -5,14 +5,15 @@ from pathlib import Path
 import re
 
 report = {
-    'tag': os.environ['GITHUB_REF_NAME'],
-    'source_commit': os.environ['GITHUB_SHA'],
+    'tag': os.environ.get('RELEASE_TAG') or os.environ['GITHUB_REF_NAME'],
+    'source_commit': os.environ.get('SOURCE_COMMIT') or os.environ['GITHUB_SHA'],
+    'workflow_commit': os.environ['GITHUB_SHA'],
     'windows': os.environ['WINDOWS_RESULT'],
     'publish': os.environ['PUBLISH_RESULT'],
     'run_url': f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
 }
 report['release_url'] = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/releases/tag/{report['tag']}"
-if report['windows'] != 'success':
+if report['windows'] != 'success' or report['publish'] != 'success':
     messages = []
     for path in Path('.local/release-diagnostics').glob('*.log'):
         lines = path.read_text(errors='replace').splitlines()

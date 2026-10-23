@@ -71,9 +71,7 @@ jobs:
       - name: Verify the source-matched Android package and signature
         run: |
           python scripts/verify-android-target.py
-          signer=$(rg --files "$ANDROID_HOME/build-tools" -g apksigner | sort -V | tail -1)
-          test -n "$signer"
-          "$signer" verify --verbose --print-certs target/Lumen-android-debug.apk
+          python scripts/verify-android-signature.py
       - name: Save the Windows installer into target
         env:
           SOURCE_COMMIT: ${{ github.sha }}
