@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     private long detailId=0,renderedDetailId=0;
     private boolean returned=false;
     private JSONObject detail;
+    private final java.util.Map<Long,Integer> browsePositions=new java.util.HashMap<>();
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -130,7 +131,7 @@ public final class MainActivity extends Activity {
         });row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(row);
     }
     private void showLibrary() {
-        generation++;detailId=0;renderedDetailId=0;detailScroll=null;offset=0;base();header("Lumen",false);
+        generation++;detailId=0;renderedDetailId=0;detailScroll=null;offset=0;browsePositions.clear();base();header("Lumen",false);
         LinearLayout searchRow=new LinearLayout(this);searchRow.setPadding(dp(16),0,dp(16),0);
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint("搜索媒体库");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         Runnable applySearch=()->{query=search.getText().toString().trim();recommended=false;showLibrary();};
@@ -223,7 +224,7 @@ public final class MainActivity extends Activity {
             int width=(getResources().getDisplayMetrics().widthPixels-dp(32))/columns;
             width=(getResources().getDisplayMetrics().widthPixels-dp(32)-(columns-1)*dp(6))/columns;
             for(int i=0;i<items.length();i++) {
-                JSONObject work=items.getJSONObject(i);long id=work.getLong("id");
+                JSONObject work=items.getJSONObject(i);long id=work.getLong("id");browsePositions.put(id,offset+i);
                 LinearLayout card=new LinearLayout(this);card.setTag("card:"+id);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(3),dp(6),dp(3),dp(12));
                 FrameLayout cover=new FrameLayout(this);cover.setBackground(MediaStyle.surface(this,0xff25252b,0,6));cover.setClipToOutline(true);
                 ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
@@ -310,7 +311,7 @@ public final class MainActivity extends Activity {
                 JSONObject mark=bookmarks.optJSONObject(i);if(mark==null)continue;
                 if(i<12&&!mark.isNull("image")){ImageView preview=new ImageView(this);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);page.addView(preview,new LinearLayout.LayoutParams(-1,dp(140)));loadImage(preview,mark.optString("image"));}
                 page.addView(button(String.format(java.util.Locale.ROOT,"%d:%02d · %s",mark.optInt("position")/60,mark.optInt("position")%60,mark.optString("title")),()->{
-                    Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",mark.optLong("file_id"));intent.putExtra("start_position",mark.optDouble("position"));startActivity(intent);
+                    Intent intent=playerIntent(mark.optLong("file_id"),false);intent.putExtra("start_position",mark.optDouble("position"));startActivity(intent);
                 }));if(!mark.optString("note").isEmpty())page.addView(text(mark.optString("note"),14,MUTED));
             }
         }
@@ -419,7 +420,12 @@ public final class MainActivity extends Activity {
     }
     private void startPlayer(long fileId,boolean queue) {
         if(fileId<=0){message("没有可播放的视频");return;}
-        Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);startActivity(intent);
+        startActivity(playerIntent(fileId,queue));
+    }
+    private Intent playerIntent(long fileId,boolean queue){
+        Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);
+        intent.putExtra("browse_path",listPath().replaceFirst("offset=[0-9]+&limit=30&",""));
+        intent.putExtra("browse_position",browsePositions.getOrDefault(detailId,-1));return intent;
     }
     private void shuffle() {
         request(()->api.post("/api/queue",new JSONObject().put("kind",kind).put("q",query).put("favorite",favorites).put("tag",tagFilter).put("actor",actorFilter).put("year",yearFilter)),result->{

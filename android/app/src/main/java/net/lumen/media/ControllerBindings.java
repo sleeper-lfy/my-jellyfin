@@ -8,7 +8,7 @@ public final class ControllerBindings {
     public enum Action {
         TOGGLE("播放 / 暂停",false), PLAY("播放",false), PAUSE("暂停",false),
         FORWARD("快进 10 秒",true), BACKWARD("回退 10 秒",true),
-        NEXT_EPISODE("下一集",false), PREVIOUS_EPISODE("上一集",false),
+        NEXT_EPISODE("下个视频 / 下一集",false), PREVIOUS_EPISODE("上个视频 / 上一集",false),
         PROJECTION("标准 / 鱼眼切换",false), ZOOM_IN("拉近",true), ZOOM_OUT("拉远",true),
         RECENTER("回正朝向",false), RESET_VIEW("恢复初始视角与缩放",false), CONTROLS("显示 / 隐藏控制栏",false),
         NONE("不执行操作",false);

@@ -72,4 +72,19 @@ public class MediaToolsTest {
             call(activity,"send",new Class<?>[]{String.class,Object.class},"jump",-10);waitMain(()->body.get()!=null);assertEquals("jump",new JSONObject(body.get()).getString("action"));assertEquals(-10,new JSONObject(body.get()).getInt("value"));
         }
     }
+    @Test public void phonePowerRequiresConfirmationAndCanCancelCountdown()throws Exception{
+        AtomicReference<String> body=new AtomicReference<>();
+        try(MockWebServer server=new MockWebServer();ActivityController<RemoteActivity> lifecycle=Robolectric.buildActivity(RemoteActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){assertEquals("/api/remote",request.getPath());assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));body.set(request.getBody().readUtf8());return new MockResponse().setBody("{\"command_id\":\"power1\"}");}});server.start();
+            RemoteActivity activity=lifecycle.get();call(activity,"buildUi");field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            JSONObject ready=new JSONObject().put("shutdown_supported",true).put("shutdown_allowed",true);field(activity,"state",ready);call(activity,"powerState");
+            android.widget.Button shutdown=(android.widget.Button)read(activity,"shutdown"),cancel=(android.widget.Button)read(activity,"cancelShutdown");assertTrue(shutdown.isEnabled());shutdown.performClick();
+            AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();assertTrue(((TextView)dialog.findViewById(android.R.id.message)).getText().toString().contains("15 秒"));dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();assertNull(body.get());
+            shutdown.performClick();dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();waitMain(()->body.get()!=null);
+            JSONObject command=new JSONObject(body.get());assertEquals("shutdown",command.getString("action"));assertTrue(command.getBoolean("confirm"));
+            ready.put("shutdown_pending",12);call(activity,"powerState");assertFalse(shutdown.isEnabled());assertEquals(View.VISIBLE,cancel.getVisibility());body.set(null);cancel.performClick();waitMain(()->body.get()!=null);assertEquals("shutdown_cancel",new JSONObject(body.get()).getString("action"));
+            ready.put("shutdown_pending",0).put("shutdown_allowed",false);call(activity,"powerState");assertFalse(shutdown.isEnabled());
+        }
+    }
+
 }

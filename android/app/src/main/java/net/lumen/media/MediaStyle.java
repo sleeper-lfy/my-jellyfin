@@ -48,6 +48,8 @@ final class MediaStyle {
                 case "search":canvas.drawCircle(10,10,7,paint);path.moveTo(16,16);path.lineTo(21,21);break;
                 case "filter":path.moveTo(4,6);path.lineTo(20,6);path.moveTo(7,12);path.lineTo(17,12);path.moveTo(10,18);path.lineTo(14,18);break;
                 case "close":path.moveTo(6,6);path.lineTo(18,18);path.moveTo(18,6);path.lineTo(6,18);break;
+                case "previous":path.moveTo(6,5);path.lineTo(6,19);path.moveTo(18,5);path.lineTo(8,12);path.lineTo(18,19);path.close();break;
+                case "next":path.moveTo(18,5);path.lineTo(18,19);path.moveTo(6,5);path.lineTo(16,12);path.lineTo(6,19);path.close();break;
                 case "play":path.moveTo(8,5);path.lineTo(19,12);path.lineTo(8,19);path.close();break;
                 default:for(int x=5;x<=19;x+=7)canvas.drawCircle(x,12,1,paint);break;
             }

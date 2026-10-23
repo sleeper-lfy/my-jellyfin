@@ -177,8 +177,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     @Override public void onSensorChanged(SensorEvent event) {
         if(!tracking||!resumed)return;
         SensorManager.getRotationMatrixFromVector(rotationMatrix,event.values);
-        float azimuth=VrMotionFilter.heading(rotationMatrix),elevation=VrMotionFilter.elevation(rotationMatrix);
-        motion.update(azimuth,elevation,event.timestamp);sensorYaw=motion.yaw();sensorPitch=motion.pitch();requestRender();
+        motion.update(rotationMatrix,event.timestamp);sensorYaw=motion.yaw();sensorPitch=motion.pitch();requestRender();
     }
     @Override public void onAccuracyChanged(Sensor sensor,int accuracy) {}
     public void release() {

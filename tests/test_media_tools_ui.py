@@ -112,3 +112,58 @@ def test_authenticated_phone_commands_execute_only_when_gui_pumps(qapp,window,vi
         window.library.set_setting('remote_enabled',False)
         assert client.post('/api/remote',json={'action':'play'}).status_code==403
     window.player.close()
+
+
+def test_remote_shutdown_requires_opt_in_and_confirmation_and_can_be_cancelled(qapp,window,monkeypatch):
+    from lumen import remote
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(remote,'shutdown_supported',lambda:True)
+    requested=[];monkeypatch.setattr(remote,'request_shutdown',lambda:requested.append(True))
+    clock=[100.0];window.remote.power_clock=lambda:clock[0]
+    window.library.set_setting('remote_enabled',True);window.apply_lan(True,0);server=window.lan_server
+    with httpx.Client(base_url=f'http://127.0.0.1:{server.port}',headers={'Authorization':'Bearer '+server.token},trust_env=False) as client:
+        assert client.post('/api/remote',headers={'Authorization':''},json={'action':'shutdown','confirm':True}).status_code==401
+        assert client.post('/api/remote',json={'action':'shutdown','confirm':True}).status_code==403
+        window.library.set_setting('remote_shutdown_enabled',True)
+        for body in ({'action':'shutdown'},{'action':'shutdown','confirm':1},{'action':'shutdown','confirm':True,'command':'anything'}):
+            assert client.post('/api/remote',json=body).status_code==400
+        assert client.post('/api/remote',json={'action':'shutdown','confirm':True}).status_code==202
+        window.remote.pump();state=client.get('/api/remote').json();assert state['shutdown_pending']==15 and state['shutdown_allowed']
+        assert not requested and window.remote.power_dialog.isVisible()
+        clock[0]+=5;window.remote.pump();assert window.remote.state()['shutdown_pending']==10
+        assert client.post('/api/remote',json={'action':'shutdown_cancel'}).status_code==202
+        window.remote.pump();clock[0]+=20;window.remote.pump();assert not requested and not window.remote.shutdown_deadline
+        window.remote.submit({'action':'shutdown','confirm':True});window.remote.pump()
+        window.remote.power_dialog.button(QMessageBox.StandardButton.Cancel).click()
+        assert window.remote.power_dialog is None
+        clock[0]+=20;window.remote.pump();assert not requested
+        window.remote.submit({'action':'shutdown','confirm':True});window.remote.pump()
+        window.library.set_setting('remote_shutdown_enabled',False);clock[0]+=20;window.remote.pump();assert not requested
+        window.library.set_setting('remote_shutdown_enabled',True)
+        window.remote.submit({'action':'shutdown','confirm':True});window.remote.pump()
+        clock[0]+=15;window.remote.pump();spin(qapp,.15);window.remote.pump()
+        assert requested==[True] and window.remote.state()['shutdown_requested']
+        window.remote.pump();assert requested==[True]
+
+
+def test_shutdown_is_unsupported_off_windows_and_reports_os_errors(qapp,window,monkeypatch):
+    from lumen import remote
+    monkeypatch.setattr(remote,'shutdown_supported',lambda:False)
+    window.library.set_setting('remote_enabled',True);window.library.set_setting('remote_shutdown_enabled',True)
+    window.remote.submit({'action':'shutdown','confirm':True});window.remote.pump()
+    assert not window.remote.result['ok'] and not window.remote.state()['shutdown_supported']
+    monkeypatch.setattr(remote,'shutdown_supported',lambda:True)
+    def failed():raise OSError('simulated denial')
+    monkeypatch.setattr(remote,'request_shutdown',failed)
+    clock=[100.0];window.remote.power_clock=lambda:clock[0]
+    window.remote.submit({'action':'shutdown','confirm':True});window.remote.pump();clock[0]+=16;window.remote.pump();spin(qapp,.15);window.remote.pump()
+    assert window.remote.state()['shutdown_error'] and not window.remote.state()['shutdown_requested']
+
+
+def test_windows_shutdown_never_forces_unsaved_programs(monkeypatch):
+    from lumen import power
+    monkeypatch.setattr(power,'shutdown_supported',lambda:True)
+    calls=[];monkeypatch.setattr(power.subprocess,'run',lambda args,**kwargs:calls.append((args,kwargs)))
+    power.request_shutdown();args,options=calls[0]
+    assert args[1:]==['/s','/t','0'] and '/f' not in args
+    assert options['check'] and options['timeout']==10 and not options.get('shell',False)

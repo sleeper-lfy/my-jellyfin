@@ -257,6 +257,7 @@ class LanServer:
                     else:
                         if path=='/api/remote':
                             if not service.remote or not library.setting('remote_enabled',False):raise ApiError(403,'请在电脑设置中启用手机遥控')
+                            if body.get('action')=='shutdown' and not library.setting('remote_shutdown_enabled',False):raise ApiError(403,'请在电脑设置中允许手机关机')
                             return self.send_json(202,{'command_id':service.remote.submit(body)})
                         match=re.fullmatch(r'/api/files/(\d+)/(preferences|bookmarks)',path)
                         if match:

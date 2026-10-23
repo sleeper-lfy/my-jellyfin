@@ -2,10 +2,8 @@ package net.lumen.media;
 
 /** Time-based filtering in degrees; wraparound never becomes a 360-degree jump. */
 final class VrMotionFilter {
-    // Back-of-screen viewing ray (-device Z) is independent of display rotation.
-    // Euler angles of the old landscape remap put a neutral phone at a pitch pole.
-    static float heading(float[] matrix){return (float)Math.toDegrees(Math.atan2(-matrix[2],-matrix[5]));}
-    static float elevation(float[] matrix){return (float)Math.toDegrees(Math.asin(Math.max(-1,Math.min(1,-matrix[8]))));}
+    private final VrPoseTracker pose=new VrPoseTracker();
+    void update(float[] matrix,long nanos){if(pose.update(matrix))update(pose.yaw(),pose.pitch(),nanos);}
     private boolean ready,invertPitch;
     private long timestamp;
     private float lastYaw,originPitch,totalYaw,yaw,pitch;
@@ -15,7 +13,7 @@ final class VrMotionFilter {
     float sensitivity(){return sensitivity;}
     int smoothingMs(){return smoothingMs;}
     boolean inverted(){return invertPitch;}
-    void reset(){ready=false;totalYaw=yaw=pitch=0;timestamp=0;}
+    void reset(){pose.reset();ready=false;totalYaw=yaw=pitch=0;timestamp=0;}
     void update(float rawYaw,float rawPitch,long nanos){
         if(!Float.isFinite(rawYaw)||!Float.isFinite(rawPitch))return;
         if(!ready){ready=true;lastYaw=rawYaw;originPitch=rawPitch;timestamp=nanos;return;}

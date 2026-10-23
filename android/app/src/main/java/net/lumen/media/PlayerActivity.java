@@ -58,7 +58,9 @@ public final class PlayerActivity extends Activity {
     private final Runnable refreshSurfaces=()->{if(player!=null&&!vrEnabled)player.updateVideoSurfaces();};
     private SeekBar seek;
     private TextView time;
-    private Button pause;
+    private Button pause,previousVideo,nextVideo;
+    private boolean navigationPending=false;
+    private int browsePosition=-1;
     private boolean software=false,dragging=false,ready=false,buffering=false;
     private long lastPosition=0;
     private android.media.AudioManager audio;
@@ -71,7 +73,8 @@ public final class PlayerActivity extends Activity {
     private JSONArray subtitles=new JSONArray();
     private String session;
     private long sequence=0,resumeMs=0,desiredWork=0,desiredFile=0;
-    private int generation=0,seekGuard=0;
+    private volatile int generation=0;
+    private int seekGuard=0;
     private boolean started=false,queueMode=false,ending=false;
     private final Runnable heartbeat=new Runnable(){@Override public void run(){updateProgress();tick(false,false);handler.postDelayed(this,1000);}};
 
@@ -95,7 +98,7 @@ public final class PlayerActivity extends Activity {
             .setOnAudioFocusChangeListener(change->{if(change<0 && player!=null){player.pause();tick(false,false);showControls(true);}},handler).build();
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         setPlayerImmersive(true);applyOrientation();
-        queueMode=getIntent().getBooleanExtra("queue",false);
+        queueMode=getIntent().getBooleanExtra("queue",false);browsePosition=getIntent().getIntExtra("browse_position",-1);
         desiredWork=getIntent().getLongExtra("work_id",0);desiredFile=getIntent().getLongExtra("file_id",0);
     }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
@@ -158,9 +161,11 @@ public final class PlayerActivity extends Activity {
             public void onStopTrackingTouch(SeekBar bar){dragging=false;seekTo(durationMs()*bar.getProgress()/10000);scheduleHide();}
         });
         LinearLayout playback=new LinearLayout(this);
+        previousVideo=addButton(playback,"",()->stepVideo(-1));MediaStyle.icon(previousVideo,"previous",false);previousVideo.setCompoundDrawablePadding(0);previousVideo.setContentDescription("上个视频");previousVideo.setTooltipText("上个视频 / 上一集");
         addButton(playback,"−10 秒",()->performAction(ControllerBindings.Action.BACKWARD));
         pause=addButton(playback,"播放",()->performAction(ControllerBindings.Action.TOGGLE));
         addButton(playback,"+10 秒",()->performAction(ControllerBindings.Action.FORWARD));
+        nextVideo=addButton(playback,"",()->stepVideo(1));MediaStyle.icon(nextVideo,"next",false);nextVideo.setCompoundDrawablePadding(0);nextVideo.setContentDescription("下个视频");nextVideo.setTooltipText("下个视频 / 下一集");
         addButton(playback,"全屏",()->{setPlayerImmersive(!immersive);showControls(true);});bottomBar.addView(playback);
         vrBar=new LinearLayout(this);
         addButton(vrBar,"回正",()->performAction(ControllerBindings.Action.RECENTER));
@@ -243,10 +248,10 @@ public final class PlayerActivity extends Activity {
         root.requestApplyInsets();
     }
     private void playbackSettings(){
-        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下一集","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上一集"},(d,index)->{
+        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频"},(d,index)->{
             switch(index){case 0:tracks(false);break;case 1:tracks(true);break;case 2:decoder();break;case 3:orientationSettings();break;
-                case 4:vrSettings();break;case 5:controller.settings();break;case 6:nextEpisode(false);break;case 7:nextWork(false);break;
-                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepEpisode(-1,false);break;}
+                case 4:vrSettings();break;case 5:controller.settings();break;case 6:stepVideo(1);break;case 7:nextWork(false);break;
+                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepVideo(-1);break;}
         }).setNegativeButton("关闭",null).show();
     }
     private void orientationSettings(){
@@ -280,8 +285,8 @@ public final class PlayerActivity extends Activity {
             case PAUSE:if(player!=null){player.pause();tick(false,false);updateProgress();}break;
             case FORWARD:if(player!=null)seekTo(PlaybackPolicy.seek(positionMs(),durationMs(),10000));break;
             case BACKWARD:if(player!=null)seekTo(PlaybackPolicy.seek(positionMs(),durationMs(),-10000));break;
-            case NEXT_EPISODE:stepEpisode(1,false);break;
-            case PREVIOUS_EPISODE:stepEpisode(-1,false);break;
+            case NEXT_EPISODE:stepVideo(1);break;
+            case PREVIOUS_EPISODE:stepVideo(-1);break;
             case PROJECTION:if(vrEnabled){vrFish=!vrFish;vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);projection.setText(vrFish?"鱼眼":"标准");
                 getSharedPreferences("playback",0).edit().putBoolean("vr_fish",vrFish).apply();saveVrPreferences();Toast.makeText(this,vrFish?"鱼眼模式":"标准模式",Toast.LENGTH_SHORT).show();}break;
             case ZOOM_IN:case ZOOM_OUT:if(vrEnabled){vrVideo.setFov(vrVideo.getFov()+(action==ControllerBindings.Action.ZOOM_IN?-5:5));saveFov(vrVideo.getFov());}break;
@@ -305,23 +310,24 @@ public final class PlayerActivity extends Activity {
         flushPreferences();
         pauseAfterStyleChange=false;
         desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;software=getSharedPreferences("playback",0).getBoolean("software",false);
-        final int ticket=++generation;
+        final int ticket=++generation;setNavigationPending(true);
         network.execute(()->{
             try {
                 JSONObject data=api.get("/api/works/"+workId);long selected=fileId>0?fileId:data.optLong("resume_file_id");
-                JSONArray files=data.getJSONArray("files");JSONObject chosen=null;
+                JSONArray files=data.getJSONArray("files");if(fileId<0&&files.length()>0)selected=files.getJSONObject(files.length()-1).getLong("id");JSONObject chosen=null;
                 for(int i=0;i<files.length();i++)if(files.getJSONObject(i).getLong("id")==selected)chosen=files.getJSONObject(i);
+                if(chosen==null&&fileId==0&&files.length()>0){chosen=files.getJSONObject(0);selected=chosen.getLong("id");}
                 if(chosen==null)throw new Exception("媒体没有可播放的视频");
                 JSONObject selectedFile=chosen;JSONArray captions=api.get("/api/files/"+selected+"/subtitles").getJSONArray("items");
                 JSONObject savedPreferences=readPreferences(selected);
                 runOnUiThread(()->{
                     if(isDestroyed()||ticket!=generation)return;
-                    work=data;setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;filePreferences=savedPreferences;applyFilePreferences();applyOrientation();showControls(true);subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
+                    boolean sameWork=work!=null&&work.optLong("id")==data.optLong("id");setNavigationPending(false);work=data;if(!sameWork)setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;filePreferences=savedPreferences;applyFilePreferences();applyOrientation();showControls(true);subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
                     if(getIntent().hasExtra("start_position")){resumeMs=Math.max(0,Math.min((long)(getIntent().getDoubleExtra("start_position",0)*1000),durationFromFile()));getIntent().removeExtra("start_position");}
                     title.setText(work.optString("title")+(work.optString("kind").equals("series")?" · S"+file.optInt("season")+" E"+file.optInt("episode"):""));
                     if(started)startPlayback();
                 });
-            }catch(Exception exception){runOnUiThread(()->{if(ticket==generation&&started)error(exception);});}
+            }catch(Exception exception){runOnUiThread(()->{if(ticket==generation){setNavigationPending(false);if(started)error(exception);}});}
         });
     }
     private void startPlayback() {
@@ -431,12 +437,12 @@ public final class PlayerActivity extends Activity {
         if(!player.isPlaying()&&!controlsVisible)showControls(true);
     }
     private void restartDecoder(boolean useSoftware){
-        generation++;stopPlayback(false);software=useSoftware;startPlayback();
+        generation++;setNavigationPending(false);stopPlayback(false);software=useSoftware;startPlayback();
     }
     private void setVrImmersive(boolean enabled){applyOrientation();showControls(!enabled);}
     private void setVrEnabled(boolean enabled){
         if(vrEnabled==enabled)return;
-        generation++;stopPlayback(false);
+        generation++;setNavigationPending(false);stopPlayback(false);
         if(vrEnabled)vrVideo.onPause();
         vrEnabled=enabled;
         video.setVisibility(enabled?View.GONE:View.VISIBLE);vrVideo.setVisibility(enabled?View.VISIBLE:View.GONE);
@@ -590,30 +596,53 @@ public final class PlayerActivity extends Activity {
         return stepEpisode(1,automatic);
     }
     private boolean stepEpisode(int direction,boolean automatic) {
-        if(work==null||file==null||!work.optString("kind").equals("series")) {
-            if(!automatic)Toast.makeText(this,"当前不是电视剧",Toast.LENGTH_SHORT).show();return false;
-        }
+        if(work==null||file==null)return false;
         JSONArray files=work.optJSONArray("files");
         if(files==null)return false;
         for(int i=0;i<files.length();i++)if(files.optJSONObject(i).optLong("id")==file.optLong("id")) {
             int next=i+direction;if(next<0||next>=files.length())break;
             long nextId=files.optJSONObject(next).optLong("id");stopPlayback(false);load(work.optLong("id"),nextId);return true;
         }
-        if(!automatic)Toast.makeText(this,direction<0?"已经是第一集":"已经是最后一集",Toast.LENGTH_SHORT).show();return false;
+        if(!automatic)Toast.makeText(this,direction<0?"已经是第一个视频":"已经是最后一个视频",Toast.LENGTH_SHORT).show();return false;
+    }
+    private void setNavigationPending(boolean value){
+        navigationPending=value;if(previousVideo!=null)previousVideo.setEnabled(!value);if(nextVideo!=null)nextVideo.setEnabled(!value);
+    }
+    private void stepVideo(int direction){
+        if(navigationPending||work==null||file==null)return;
+        if(stepEpisode(direction,true))return;
+        if(queueMode){stepQueue(direction,false);return;}
+        if(work.optString("kind").equals("series")){Toast.makeText(this,direction<0?"已经是第一集":"已经是最后一集",Toast.LENGTH_SHORT).show();return;}
+        final long current=work.optLong("id");final int ticket=generation,hint=browsePosition;
+        String supplied=getIntent().getStringExtra("browse_path");
+        final String path=supplied!=null?supplied:"/api/works?kind="+Uri.encode(work.optString("kind"));
+        setNavigationPending(true);status.setText(direction<0?"正在查找上个视频…":"正在查找下个视频…");
+        network.execute(()->{try{
+            VideoNavigator.Target target=VideoNavigator.adjacent(api,current,direction,path,hint,()->Thread.currentThread().isInterrupted()||ticket!=generation);
+            runOnUiThread(()->{if(isDestroyed()||ticket!=generation)return;setNavigationPending(false);
+                if(target==null){status.setText("当前列表没有更多视频");Toast.makeText(this,direction<0?"已经是第一个视频":"已经是最后一个视频",Toast.LENGTH_SHORT).show();return;}
+                browsePosition=target.position;stopPlayback(false);load(target.id,direction<0?-1:0);
+            });
+        }catch(Exception error){runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){setNavigationPending(false);status.setText("切换失败："+error.getMessage());Toast.makeText(this,"无法读取相邻视频，请检查连接后重试",Toast.LENGTH_SHORT).show();}});}});
+    }
+    private void stepQueue(int direction,boolean automatic){
+        try{
+            android.content.SharedPreferences prefs=getSharedPreferences("queue",0);JSONArray ids=new JSONArray(prefs.getString("ids","[]"));int current=-1;
+            for(int i=0;i<ids.length();i++)if(ids.optLong(i)==work.optLong("id")){current=i;break;}
+            int next=current+direction;
+            if(current<0||next<0||next>=ids.length()){if(automatic)finish();else Toast.makeText(this,direction<0?"已经是队列第一个视频":"本轮队列已结束",Toast.LENGTH_SHORT).show();return;}
+            prefs.edit().putInt("index",next).apply();stopPlayback(false);load(ids.getLong(next),direction<0?-1:0);
+        }catch(Exception exception){error(exception);}
     }
     private void nextWork(boolean automatic) {
         if(!queueMode) {
             if(automatic)finish();else Toast.makeText(this,"请从媒体库菜单创建随机队列",Toast.LENGTH_SHORT).show();return;
         }
-        try {
-            android.content.SharedPreferences prefs=getSharedPreferences("queue",0);JSONArray ids=new JSONArray(prefs.getString("ids","[]"));int next=prefs.getInt("index",0)+1;
-            if(next>=ids.length()){Toast.makeText(this,"本轮随机队列已结束",Toast.LENGTH_LONG).show();finish();return;}
-            prefs.edit().putInt("index",next).apply();stopPlayback(false);load(ids.getLong(next),0);
-        }catch(Exception exception){error(exception);}
+        stepQueue(1,automatic);
     }
     @Override protected void onStart(){super.onStart();started=true;if(controller!=null)controller.active(true);if(vrEnabled&&vrVideo!=null)vrVideo.onResume();if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
     @Override protected void onPause(){if(controller!=null)controller.active(false);if(player!=null){player.pause();tick(false,false);}super.onPause();}
     @Override protected void onResume(){super.onResume();if(controller!=null)controller.active(true);if(root!=null){setPlayerImmersive(immersive);showControls(true);}}
-    @Override protected void onStop(){flushPreferences();started=false;generation++;stopPlayback(false);if(vrEnabled&&vrVideo!=null)vrVideo.onPause();super.onStop();}
+    @Override protected void onStop(){flushPreferences();started=false;generation++;setNavigationPending(false);stopPlayback(false);if(vrEnabled&&vrVideo!=null)vrVideo.onPause();super.onStop();}
     @Override protected void onDestroy(){if(controller!=null)controller.release();handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
 }

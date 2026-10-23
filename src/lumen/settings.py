@@ -134,6 +134,8 @@ class Settings(QDialog):
         lan_form.addRow('服务', self.lan_enabled)
         remote=QCheckBox('允许已连接手机遥控电脑播放（选片、音量、音轨和字幕）');remote.setChecked(self.library.setting('remote_enabled',False))
         remote.toggled.connect(lambda enabled:self.library.set_setting('remote_enabled',enabled));lan_form.addRow('手机遥控',remote)
+        power=QCheckBox('允许手机请求电脑关机（15 秒可取消，不强制关闭程序）');power.setChecked(self.library.setting('remote_shutdown_enabled',False));power.setEnabled(remote.isChecked())
+        remote.toggled.connect(power.setEnabled);power.toggled.connect(lambda enabled:self.library.set_setting('remote_shutdown_enabled',enabled));lan_form.addRow('远程关机',power)
         lan_form.addRow('端口', self.lan_port)
         lan_form.addRow('访问密钥', self.lan_key)
         key_actions = QHBoxLayout()

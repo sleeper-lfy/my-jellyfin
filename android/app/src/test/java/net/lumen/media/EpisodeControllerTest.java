@@ -45,5 +45,61 @@ public class EpisodeControllerTest {
             call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.PREVIOUS_EPISODE);assertEquals(1L,read(activity,"desiredFile"));
         }
     }
+    private JSONObject vrWork(long id,long... ids)throws Exception{
+        JSONArray files=new JSONArray();for(long file:ids)files.put(new JSONObject().put("id",file).put("duration",30).put("position",0));
+        return new JSONObject().put("id",id).put("kind","vr").put("title","VR "+id).put("files",files).put("resume_file_id",ids[0]);
+    }
+    private void build(PlayerActivity activity,MockWebServer server,JSONObject work)throws Exception{
+        call(activity,"buildPlayerUi",new Class<?>[]{android.content.SharedPreferences.class},activity.getSharedPreferences("playback",0));
+        write(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));write(activity,"work",work);write(activity,"file",work.getJSONArray("files").getJSONObject(0));write(activity,"vrEnabled",true);
+    }
+    @Test public void visibleButtonsAndBluetoothSwitchVrFilesAndThenAdjacentVrWorks()throws Exception{
+        JSONObject first=vrWork(30,301,302),second=vrWork(20,201),third=vrWork(10,101);
+        JSONArray catalog=new JSONArray().put(new JSONObject().put("id",30)).put(new JSONObject().put("id",20)).put(new JSONObject().put("id",10));
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){String path=request.getPath();
+                assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));
+                if(path.startsWith("/api/works?")){assertTrue(path.contains("kind=vr"));int offset=Integer.parseInt(request.getRequestUrl().queryParameter("offset")),limit=Integer.parseInt(request.getRequestUrl().queryParameter("limit"));JSONArray items=new JSONArray();for(int i=offset;i<Math.min(catalog.length(),offset+limit);i++)items.put(catalog.optJSONObject(i));return new MockResponse().setBody("{\"total\":3,\"items\":"+items+"}");}
+                return new MockResponse().setBody(path.equals("/api/works/30")?first.toString():path.equals("/api/works/20")?second.toString():path.equals("/api/works/10")?third.toString():path.endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();
+            PlayerActivity activity=lifecycle.get();build(activity,server,first);
+            android.widget.Button next=(android.widget.Button)read(activity,"nextVideo"),previous=(android.widget.Button)read(activity,"previousVideo");
+            assertEquals("下个视频",next.getContentDescription());assertEquals("上个视频",previous.getContentDescription());assertEquals(android.view.View.VISIBLE,next.getVisibility());
+            next.performClick();assertFalse(next.isEnabled());waitFile(activity,302);assertTrue(next.isEnabled());
+            next.performClick();waitFile(activity,201);assertTrue((boolean)read(activity,"vrEnabled"));
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.NEXT_EPISODE);waitFile(activity,101);assertTrue((boolean)read(activity,"vrEnabled"));
+            previous.performClick();waitFile(activity,201);previous.performClick();waitFile(activity,302);
+        }
+    }
+    @Test public void manuallyEnabledVrRemainsEnabledWhenChangingEpisodesInSameSeries()throws Exception{
+        JSONObject work=vrWork(30,301,302).put("kind","series");
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){return new MockResponse().setBody(request.getPath().equals("/api/works/30")?work.toString():request.getPath().endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();
+            PlayerActivity activity=lifecycle.get();build(activity,server,work);
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.NEXT_EPISODE);waitFile(activity,302);assertTrue((boolean)read(activity,"vrEnabled"));
+        }
+    }
+    @Test public void randomVrQueueSupportsPreviousAndNextAndDoesNotWrap()throws Exception{
+        JSONObject first=vrWork(30,301),second=vrWork(20,201);
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){String path=request.getPath();return new MockResponse().setBody(path.equals("/api/works/30")?first.toString():path.equals("/api/works/20")?second.toString():path.endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();
+            PlayerActivity activity=lifecycle.get();build(activity,server,first);write(activity,"queueMode",true);
+            activity.getSharedPreferences("queue",0).edit().putString("ids","[30,20]").putInt("index",0).apply();
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.NEXT_EPISODE);waitFile(activity,201);
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.NEXT_EPISODE);assertEquals(201L,((JSONObject)read(activity,"file")).getLong("id"));
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.PREVIOUS_EPISODE);waitFile(activity,301);
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.PREVIOUS_EPISODE);assertEquals(301L,((JSONObject)read(activity,"file")).getLong("id"));
+        }
+    }
+    @Test public void lookupFailureKeepsCurrentVideoAndAllowsRetry()throws Exception{
+        JSONObject current=vrWork(20,201);
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.enqueue(new MockResponse().setResponseCode(500));server.enqueue(new MockResponse().setBody("{\"total\":1,\"items\":[{\"id\":20}]}"));server.start();
+            PlayerActivity activity=lifecycle.get();build(activity,server,current);android.widget.Button next=(android.widget.Button)read(activity,"nextVideo");next.performClick();
+            long deadline=System.currentTimeMillis()+5000;while(!next.isEnabled()&&System.currentTimeMillis()<deadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
+            assertTrue(next.isEnabled());assertEquals(201L,((JSONObject)read(activity,"file")).getLong("id"));next.performClick();
+            deadline=System.currentTimeMillis()+5000;while(!next.isEnabled()&&System.currentTimeMillis()<deadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
+            assertTrue(next.isEnabled());assertEquals(201L,((JSONObject)read(activity,"file")).getLong("id"));
+        }
+    }
     private void waitFile(PlayerActivity activity,long id)throws Exception{long deadline=System.currentTimeMillis()+5000;while(System.currentTimeMillis()<deadline){shadowOf(Looper.getMainLooper()).idle();Object file=read(activity,"file");if(file!=null&&((JSONObject)file).optLong("id")==id)return;Thread.sleep(15);}fail("Adjacent episode did not load");}
 }
