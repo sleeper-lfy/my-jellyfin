@@ -1,1 +1,1 @@
-{"runs": [39909482369, 39909863176], "release": "v0.4.2"}
+{"runs": [39909482369], "release": "v0.4.2", "full_log_patterns": ["Verify Android integrity", "Publish both installers"]}

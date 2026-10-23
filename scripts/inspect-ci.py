@@ -20,7 +20,10 @@ for run in configuration['runs']:
             for item in archive.infolist():
                 if item.file_size>20*1024*1024:continue
                 lines=archive.read(item).decode(errors='replace').splitlines()
-                errors=[index for index,line in enumerate(lines) if re.search(r'##\[error\]|FAILED|ERROR|FAILURES|What went wrong|Caused by:|AssertionError|Exception:|Published both verified installers',line)]
+                if any(pattern in item.filename for pattern in configuration.get('full_log_patterns',[])):
+                    matches[item.filename]=redact('\n'.join(lines))[-24000:]
+                    continue
+                errors=[index for index,line in enumerate(lines) if re.search(r'##\[error\]|FAILED|ERROR|FAILURES|What went wrong|Caused by:|AssertionError|Exception:|Traceback|CalledProcessError|gh:|Published both verified installers',line)]
                 selected=set()
                 for index in errors:
                     selected.update(range(max(0,index-2),min(len(lines),index+9)))
