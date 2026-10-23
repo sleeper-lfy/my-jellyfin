@@ -60,6 +60,8 @@ def test_plugin_stills_cache_gallery_and_authenticated_lan(qapp,library,image_si
     window=MainWindow(library.directory);window.open_details(work_id)
     assert window.detail_page.still_gallery.count()==1
     window.detail_page.show_still(window.detail_page.still_gallery.item(0))
+    from PySide6.QtCore import QEventLoop,QTimer
+    wait=QEventLoop();QTimer.singleShot(250,wait.quit);wait.exec();qapp.processEvents()
     assert not window.detail_page.expanded_still.pixmap().isNull()
     window.close()
 

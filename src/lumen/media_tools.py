@@ -29,11 +29,11 @@ def preferences(library, file_id, changes=None):
                 raise ValueError('字幕参数超出范围')
         if 'vr' in changes:
             vr = changes['vr']
-            if not isinstance(vr,dict) or not vr.keys() <= {'fish','headset','swap','tracking','swipe_seek','fov','yaw','pitch'}:
+            if not isinstance(vr,dict) or not vr.keys() <= {'fish','headset','swap','tracking','swipe_seek','fov','yaw','pitch','tracking_sensitivity','tracking_smoothing','tracking_invert_pitch'}:
                 raise ValueError('无效 VR 参数')
             for key,number in vr.items():
-                if key in {'fov','yaw','pitch'}:
-                    low, high = {'fov':(50,110),'yaw':(-180,180),'pitch':(-85,85)}[key]
+                if key in {'fov','yaw','pitch','tracking_sensitivity','tracking_smoothing'}:
+                    low, high = {'fov':(50,110),'yaw':(-180,180),'pitch':(-85,85),'tracking_sensitivity':(.25,1.5),'tracking_smoothing':(0,150)}[key]
                     if type(number) not in (int,float) or not math.isfinite(number) or not low <= number <= high: raise ValueError('VR 参数超出范围')
                 elif type(number) is not bool: raise ValueError('VR 开关须为布尔值')
             changes = {**changes, 'vr':{**value.get('vr',{}),**vr}}

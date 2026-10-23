@@ -117,6 +117,7 @@ public final class MainActivity extends Activity {
             }catch(Exception e){status.setText(e.getMessage());}
         });MediaStyle.button(connect,true,false,false);panel.addView(connect);
         panel.addView(text("地址使用电脑的局域网 IPv4，不能填手机自己的 localhost。服务关闭或电脑休眠时，客户端无法播放。",13,MUTED));
+        panel.addView(button("检查客户端更新",()->startActivity(new Intent(this,UpdateActivity.class))));
     }
     private void header(String title, boolean back) {
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(8),dp(6));
@@ -124,8 +125,8 @@ public final class MainActivity extends Activity {
         TextView brand=text(title,24,Color.WHITE);row.addView(brand,new LinearLayout.LayoutParams(0,dp(52),1));
         if(!back){Button collection=button("",()->{kind="";query="";favorites=true;recommended=false;tagFilter="";actorFilter="";yearFilter="";showLibrary();});MediaStyle.icon(collection,"heart",favorites);collection.setContentDescription("收藏");row.addView(collection,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         Button more=button("",()->{});MediaStyle.icon(more,"more",false);more.setContentDescription("更多操作");more.setOnClickListener(view->{
-            PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("随机播放");menu.getMenu().add("观影统计");menu.getMenu().add("电脑遥控");menu.getMenu().add("切换连接");
-            menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "随机播放":shuffle();break;case "观影统计":showStats();break;case "电脑遥控":startActivity(new Intent(this,RemoteActivity.class));break;default:showConnection();}return true;});menu.show();
+            PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("随机播放");menu.getMenu().add("观影统计");menu.getMenu().add("电脑遥控");menu.getMenu().add("检查更新");menu.getMenu().add("切换连接");
+            menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "随机播放":shuffle();break;case "观影统计":showStats();break;case "电脑遥控":startActivity(new Intent(this,RemoteActivity.class));break;case "检查更新":startActivity(new Intent(this,UpdateActivity.class));break;default:showConnection();}return true;});menu.show();
         });row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(row);
     }
     private void showLibrary() {

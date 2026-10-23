@@ -355,7 +355,7 @@ def test_fullscreen_restores_window_and_clears_shell_state_on_exit_and_close(qap
     assert flags & Qt.WindowType.WindowType_Mask == Qt.WindowType.Window
     for _ in range(2):
         player.toggle_fullscreen();qapp.processEvents()
-        assert player.isFullScreen() and player.windowFlags() & Qt.WindowType.FramelessWindowHint
+        assert player.isFullScreen() and player.windowFlags()==flags
         assert not player.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
         assert calls[-1][1] is True
         player.toggle_fullscreen();qapp.processEvents()

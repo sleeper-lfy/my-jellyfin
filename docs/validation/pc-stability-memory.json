@@ -1,0 +1,47 @@
+{
+  "fixture": "90 synthetic movie records, 90 generated 1000x1500 posters; six identical home/library navigation, scrolling and refresh cycles; Linux offscreen UI, no video playback",
+  "baseline": "b7692cb",
+  "before": {
+    "rss_bytes": [
+      147689472,
+      147980288,
+      148070400,
+      148201472,
+      148385792,
+      148467712
+    ],
+    "list_widgets": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "image_bytes": 40015296,
+    "image_entries": 55,
+    "pending": 0
+  },
+  "after": {
+    "rss_bytes": [
+      119562240,
+      124977152,
+      125001728,
+      125026304,
+      125030400,
+      125030400
+    ],
+    "list_widgets": [
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
+    ],
+    "image_bytes": 19464192,
+    "image_entries": 85,
+    "pending": 0
+  },
+  "rss_reduction_percent": 15.8
+}

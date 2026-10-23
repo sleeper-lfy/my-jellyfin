@@ -18,7 +18,9 @@ def test_preferences_merge_and_reject_invalid_values(library,video_factory):
     saved=preferences(library,file['id'])
     assert saved['vr']=={'fish':True,'fov':75,'yaw':12,'headset':True}
     assert saved['subtitle_delay']==1.2 and saved['subtitle_size']==28
-    for changes in ({'subtitle_delay':float('nan')},{'subtitle_size':True},{'vr':{'fov':0}},{'vr':{'fish':'yes'}},{'vr':{'pitch':100}},{'script':'bad'}):
+    saved=preferences(library,file['id'],{'vr':{'tracking_sensitivity':.5,'tracking_smoothing':60,'tracking_invert_pitch':True}})
+    assert saved['vr']['tracking_sensitivity']==.5 and saved['vr']['fish'] is True
+    for changes in ({'subtitle_delay':float('nan')},{'subtitle_size':True},{'vr':{'fov':0}},{'vr':{'fish':'yes'}},{'vr':{'pitch':100}},{'script':'bad'},{'vr':{'tracking_sensitivity':0}},{'vr':{'tracking_smoothing':200}},{'vr':{'tracking_invert_pitch':1}}):
         with pytest.raises(ValueError):preferences(library,file['id'],changes)
     reopened=Library(library.directory,initialize=False)
     assert preferences(reopened,file['id'])==saved;reopened.close()

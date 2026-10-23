@@ -32,6 +32,8 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 增加目录增量监控、双端播放诊断和字幕调节、带截图的时间点书签、Android 每视频 VR 设置记忆、手机遥控电脑、媒体库体检及可暂停 / 取消 / 重试的后台队列。使用入口、当前限制及实际页面截图见 [媒体管理与播放工具](docs/media-tools.md)。[0.4.3 两端安装包已打包到 target](target/README.md)，本次未发布 Release；历史 0.4.2 安装包不包含这些更新。
 
+0.4.3 之后的源码修复包括导入布局抖动、全屏时重建播放器、重复导入与弹窗、书签入口和时间点、内存占用，以及 Android GitHub 更新、VR 陀螺仪串轴与蓝牙切集。此批修改尚未打包，说明和截图见 [稳定性与更新修复](docs/pc-stability-and-updates.md)。
+
 ## 下载
 
 优先查看 [target 安装包目录](target/README.md)：当前为 0.4.3，Android 提供完整 APK，Windows 提供 EXE 校验分片及合并脚本；[本次 Actions](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39930617864) 的 `Lumen-windows-x64` Artifact 提供完整 EXE。打包与发布分别按明确请求执行，[Releases](https://github.com/sleeper-lfy/my-jellyfin/releases) 中仍为历史 0.4.2。

@@ -142,6 +142,9 @@ public final class PlayerActivity extends Activity {
         Button back=button("返回",this::finish);topBar.addView(back,new LinearLayout.LayoutParams(dp(64),dp(48)));
         title=label("正在载入…",16);title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);
         topBar.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        Button bookmarks=button("书签",()->{});bookmarks.setContentDescription("时间点书签");
+        bookmarks.setOnClickListener(view->{PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("添加当前时间点");menu.getMenu().add("查看 / 跳转书签");for(int i=0;i<menu.getMenu().size();i++)menu.getMenu().getItem(i).setEnabled(file!=null);menu.setOnMenuItemClickListener(item->{if(item.getTitle().toString().startsWith("添加"))addBookmark();else showBookmarks();return true;});menu.show();});
+        topBar.addView(bookmarks,new LinearLayout.LayoutParams(dp(64),dp(48)));
         topBar.addView(button("设置",this::playbackSettings),new LinearLayout.LayoutParams(dp(64),dp(48)));
         overlay.addView(topBar,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
         bottomBar=new LinearLayout(this);bottomBar.setOrientation(LinearLayout.VERTICAL);bottomBar.setBackground(shade(false));
@@ -240,10 +243,10 @@ public final class PlayerActivity extends Activity {
         root.requestApplyInsets();
     }
     private void playbackSettings(){
-        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下一集","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断"},(d,index)->{
+        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下一集","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上一集"},(d,index)->{
             switch(index){case 0:tracks(false);break;case 1:tracks(true);break;case 2:decoder();break;case 3:orientationSettings();break;
                 case 4:vrSettings();break;case 5:controller.settings();break;case 6:nextEpisode(false);break;case 7:nextWork(false);break;
-                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;}
+                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepEpisode(-1,false);break;}
         }).setNegativeButton("关闭",null).show();
     }
     private void orientationSettings(){
@@ -277,6 +280,8 @@ public final class PlayerActivity extends Activity {
             case PAUSE:if(player!=null){player.pause();tick(false,false);updateProgress();}break;
             case FORWARD:if(player!=null)seekTo(PlaybackPolicy.seek(positionMs(),durationMs(),10000));break;
             case BACKWARD:if(player!=null)seekTo(PlaybackPolicy.seek(positionMs(),durationMs(),-10000));break;
+            case NEXT_EPISODE:stepEpisode(1,false);break;
+            case PREVIOUS_EPISODE:stepEpisode(-1,false);break;
             case PROJECTION:if(vrEnabled){vrFish=!vrFish;vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);projection.setText(vrFish?"鱼眼":"标准");
                 getSharedPreferences("playback",0).edit().putBoolean("vr_fish",vrFish).apply();saveVrPreferences();Toast.makeText(this,vrFish?"鱼眼模式":"标准模式",Toast.LENGTH_SHORT).show();}break;
             case ZOOM_IN:case ZOOM_OUT:if(vrEnabled){vrVideo.setFov(vrVideo.getFov()+(action==ControllerBindings.Action.ZOOM_IN?-5:5));saveFov(vrVideo.getFov());}break;
@@ -450,6 +455,14 @@ public final class PlayerActivity extends Activity {
         CheckBox headset=new CheckBox(this);headset.setText("双眼观看（关闭为单屏左眼预览）");headset.setChecked(vrHeadset);choices.addView(headset);
         CheckBox swap=new CheckBox(this);swap.setText("交换左右眼");swap.setChecked(vrSwap);choices.addView(swap);
         CheckBox tracking=new CheckBox(this);tracking.setText(vrVideo.hasTracking()?"陀螺仪转向":"此设备无旋转传感器，使用触摸转向");tracking.setChecked(vrTracking&&vrVideo.hasTracking());tracking.setEnabled(vrVideo.hasTracking());choices.addView(tracking);
+        CheckBox invertPitch=new CheckBox(this);invertPitch.setText("反转陀螺仪上下方向");invertPitch.setChecked(vrVideo.getTrackingInvertPitch());choices.addView(invertPitch);
+        TextView sensitivityLabel=new TextView(this);choices.addView(sensitivityLabel);
+        SeekBar sensitivity=new SeekBar(this);sensitivity.setContentDescription("陀螺仪灵敏度");sensitivity.setMax(125);sensitivity.setProgress(Math.round(vrVideo.getTrackingSensitivity()*100)-25);choices.addView(sensitivity);
+        TextView smoothingLabel=new TextView(this);choices.addView(smoothingLabel);
+        SeekBar smoothing=new SeekBar(this);smoothing.setContentDescription("陀螺仪平滑");smoothing.setMax(150);smoothing.setProgress(vrVideo.getTrackingSmoothing());choices.addView(smoothing);
+        Runnable updateTrackingLabels=()->{sensitivityLabel.setText("陀螺仪灵敏度："+(sensitivity.getProgress()+25)+"%（头显建议 100%）");smoothingLabel.setText("平滑时间："+smoothing.getProgress()+" ms（默认 40，越高越稳、延迟越大）");};updateTrackingLabels.run();
+        SeekBar.OnSeekBarChangeListener trackingChange=new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar bar){}public void onProgressChanged(SeekBar bar,int value,boolean user){updateTrackingLabels.run();}public void onStopTrackingTouch(SeekBar bar){}};
+        sensitivity.setOnSeekBarChangeListener(trackingChange);smoothing.setOnSeekBarChangeListener(trackingChange);
         CheckBox swipeMode=new CheckBox(this);swipeMode.setText("单指横滑调进度（关闭后拖动转向）");swipeMode.setChecked(vrSwipeSeek);choices.addView(swipeMode);
         Button center=new Button(this);center.setText("回正朝向");center.setOnClickListener(v->vrVideo.recenter());choices.addView(center);
         Button reset=new Button(this);reset.setText("恢复初始位置及默认缩放");choices.addView(reset);
@@ -467,6 +480,8 @@ public final class PlayerActivity extends Activity {
             vrVideo.setSwipeSeeking(vrSwipeSeek);
             getSharedPreferences("playback",0).edit().putBoolean("vr_fish",vrFish).putBoolean("vr_headset",vrHeadset)
                 .putBoolean("vr_swap",vrSwap).putBoolean("vr_tracking",vrTracking).putBoolean("vr_swipe_seek",vrSwipeSeek).putInt("vr_fov",fov.getProgress()+50).apply();
+            getSharedPreferences("playback",0).edit().putFloat("vr_tracking_sensitivity",(sensitivity.getProgress()+25)/100f).putInt("vr_tracking_smoothing",smoothing.getProgress()).putBoolean("vr_tracking_invert_pitch",invertPitch.isChecked()).apply();
+            vrVideo.setTrackingParameters((sensitivity.getProgress()+25)/100f,smoothing.getProgress(),invertPitch.isChecked());
             vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);vrVideo.setFov(fov.getProgress()+50);projection.setText(vrFish?"鱼眼":"标准");
             setVrEnabled(enabled.isChecked());setVrImmersive(vrEnabled&&vrHeadset);
             saveVrPreferences();
@@ -476,7 +491,11 @@ public final class PlayerActivity extends Activity {
     private String preferenceKey(long id){return api.connection.base+"#"+id;}
     private JSONObject readPreferences(long id){
         JSONObject local=new JSONObject();try{local=new JSONObject(getSharedPreferences("media-preferences",0).getString(preferenceKey(id),"{}"));}catch(Exception ignored){}
-        try{JSONObject remote=api.get("/api/files/"+id+"/preferences");if(remote.length()>0)local=remote;}catch(Exception ignored){/* Per-file local settings also work with older servers. */}
+        try{JSONObject remote=api.get("/api/files/"+id+"/preferences");if(remote.length()>0){
+            JSONObject oldVr=local.optJSONObject("vr"),remoteVr=remote.optJSONObject("vr");
+            if(oldVr!=null){if(remoteVr==null){remoteVr=new JSONObject();remote.put("vr",remoteVr);}for(String key:new String[]{"tracking_sensitivity","tracking_smoothing","tracking_invert_pitch"})if(!remoteVr.has(key)&&oldVr.has(key))remoteVr.put(key,oldVr.get(key));}
+            local=remote;
+        }}catch(Exception ignored){/* Per-file local settings also work with older servers. */}
         return local;
     }
     private double bounded(JSONObject value,String key,double fallback,double low,double high){double number=value.optDouble(key,fallback);return Double.isFinite(number)?Math.max(low,Math.min(high,number)):fallback;}
@@ -485,12 +504,13 @@ public final class PlayerActivity extends Activity {
         vrFish=vr.optBoolean("fish",defaults.getBoolean("vr_fish",false));vrHeadset=vr.optBoolean("headset",defaults.getBoolean("vr_headset",false));vrSwap=vr.optBoolean("swap",defaults.getBoolean("vr_swap",false));
         vrTracking=vr.optBoolean("tracking",defaults.getBoolean("vr_tracking",true));vrSwipeSeek=vr.optBoolean("swipe_seek",defaults.getBoolean("vr_swipe_seek",true));
         vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);vrVideo.setSwipeSeeking(vrSwipeSeek);vrVideo.setFov((float)bounded(vr,"fov",defaults.getInt("vr_fov",90),50,110));
+        vrVideo.setTrackingParameters((float)bounded(vr,"tracking_sensitivity",defaults.getFloat("vr_tracking_sensitivity",vrHeadset?1f:.75f),.25,1.5),(int)bounded(vr,"tracking_smoothing",defaults.getInt("vr_tracking_smoothing",40),0,150),vr.optBoolean("tracking_invert_pitch",defaults.getBoolean("vr_tracking_invert_pitch",false)));
         vrVideo.setViewAngles((float)bounded(vr,"yaw",0,-180,180),(float)bounded(vr,"pitch",0,-85,85));projection.setText(vrFish?"鱼眼":"标准");setVrImmersive(vrEnabled&&vrHeadset);
     }
     private void saveVrPreferences(){
         if(file==null)return;
         try{filePreferences.put("vr",new JSONObject().put("fish",vrFish).put("headset",vrHeadset).put("swap",vrSwap).put("tracking",vrTracking).put("swipe_seek",vrSwipeSeek)
-            .put("fov",vrVideo.getFov()).put("yaw",vrVideo.getViewYaw()).put("pitch",vrVideo.getViewPitch()));changedPreferences();}catch(Exception error){featureError(error);}
+            .put("fov",vrVideo.getFov()).put("yaw",vrVideo.getViewYaw()).put("pitch",vrVideo.getViewPitch()).put("tracking_sensitivity",vrVideo.getTrackingSensitivity()).put("tracking_smoothing",vrVideo.getTrackingSmoothing()).put("tracking_invert_pitch",vrVideo.getTrackingInvertPitch()));changedPreferences();}catch(Exception error){featureError(error);}
     }
     private void changedPreferences(){
         if(file==null)return;preferencesDirty=true;getSharedPreferences("media-preferences",0).edit().putString(preferenceKey(file.optLong("id")),filePreferences.toString()).apply();
@@ -523,9 +543,10 @@ public final class PlayerActivity extends Activity {
         if(file==null||player==null)return;long id=file.optLong("id"),moment=positionMs();LinearLayout fields=new LinearLayout(this);fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),0,dp(20),0);
         EditText name=new EditText(this);name.setHint("名称（可留空）");name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(120)});fields.addView(name);
         EditText note=new EditText(this);note.setHint("备注（可留空）");note.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2000)});fields.addView(note);
-        new AlertDialog.Builder(this).setTitle("添加书签 · "+clock(moment)).setView(fields).setPositiveButton("保存",(d,w)->network.execute(()->{
-            try{api.post("/api/files/"+id+"/bookmarks",new JSONObject().put("position",moment/1000.0).put("title",name.getText().toString()).put("note",note.getText().toString()));runOnUiThread(()->{if(!isDestroyed())Toast.makeText(this,"书签已保存，截图在电脑后台生成",Toast.LENGTH_SHORT).show();});}catch(Exception error){featureError(error);}
-        })).setNegativeButton("取消",null).show();
+        new AlertDialog.Builder(this).setTitle("添加书签 · "+clock(moment)).setView(fields).setPositiveButton("保存",(d,w)->{
+            String title=name.getText().toString(),description=note.getText().toString();
+            network.execute(()->{try{api.post("/api/files/"+id+"/bookmarks",new JSONObject().put("position",moment/1000.0).put("title",title).put("note",description));runOnUiThread(()->{if(!isDestroyed())Toast.makeText(this,"书签已保存，截图在电脑后台生成",Toast.LENGTH_SHORT).show();});}catch(Exception error){featureError(error);}});
+        }).setNegativeButton("取消",null).show();
     }
     private void showBookmarks(){
         if(file==null)return;long id=file.optLong("id");network.execute(()->{try{JSONArray items=api.get("/api/files/"+id+"/bookmarks").getJSONArray("items");runOnUiThread(()->{
@@ -566,14 +587,19 @@ public final class PlayerActivity extends Activity {
         }).setNegativeButton("取消",null).show();
     }
     private boolean nextEpisode(boolean automatic) {
+        return stepEpisode(1,automatic);
+    }
+    private boolean stepEpisode(int direction,boolean automatic) {
         if(work==null||file==null||!work.optString("kind").equals("series")) {
             if(!automatic)Toast.makeText(this,"当前不是电视剧",Toast.LENGTH_SHORT).show();return false;
         }
         JSONArray files=work.optJSONArray("files");
-        for(int i=0;i<files.length()-1;i++)if(files.optJSONObject(i).optLong("id")==file.optLong("id")) {
-            long nextId=files.optJSONObject(i+1).optLong("id");stopPlayback(false);load(work.optLong("id"),nextId);return true;
+        if(files==null)return false;
+        for(int i=0;i<files.length();i++)if(files.optJSONObject(i).optLong("id")==file.optLong("id")) {
+            int next=i+direction;if(next<0||next>=files.length())break;
+            long nextId=files.optJSONObject(next).optLong("id");stopPlayback(false);load(work.optLong("id"),nextId);return true;
         }
-        if(!automatic)Toast.makeText(this,"已经是最后一集",Toast.LENGTH_SHORT).show();return false;
+        if(!automatic)Toast.makeText(this,direction<0?"已经是第一集":"已经是最后一集",Toast.LENGTH_SHORT).show();return false;
     }
     private void nextWork(boolean automatic) {
         if(!queueMode) {

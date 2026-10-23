@@ -8,6 +8,9 @@ public class ControllerBindingsTest {
         assertEquals(TOGGLE,bindings.resolve("remote",85));
         assertEquals(BACKWARD,bindings.resolve("remote",21));
         assertEquals(FORWARD,bindings.resolve("remote",22));
+        assertEquals(NEXT_EPISODE,bindings.resolve("remote",87));
+        assertEquals(PREVIOUS_EPISODE,bindings.resolve("remote",88));
+        assertFalse(NEXT_EPISODE.repeatable);assertFalse(PREVIOUS_EPISODE.repeatable);
         assertEquals(ZOOM_IN,bindings.resolve("pad",19));
         assertEquals(ZOOM_OUT,bindings.resolve("pad",20));
         assertEquals(PROJECTION,bindings.resolve("pad",99));

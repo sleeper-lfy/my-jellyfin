@@ -44,10 +44,11 @@ public class MediaToolsTest {
         try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
             server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));assertEquals("/api/files/7/preferences",request.getPath());body.set(request.getBody().readUtf8());return new MockResponse().setBody("{}");}});server.start();
             PlayerActivity activity=lifecycle.get();build(activity,server);
-            JSONObject first=new JSONObject().put("vr",new JSONObject().put("fish",true).put("fov",65).put("yaw",20).put("pitch",10).put("swap",true));field(activity,"filePreferences",first);call(activity,"applyFilePreferences");
+            JSONObject first=new JSONObject().put("vr",new JSONObject().put("fish",true).put("fov",65).put("yaw",20).put("pitch",10).put("swap",true).put("tracking_sensitivity",.5).put("tracking_smoothing",60).put("tracking_invert_pitch",true));field(activity,"filePreferences",first);call(activity,"applyFilePreferences");
             VrVideoView view=(VrVideoView)read(activity,"vrVideo");assertEquals(65,view.getFov(),.01);assertEquals(20,view.getViewYaw(),.01);
             view.setFov(73);call(activity,"saveFov",new Class<?>[]{float.class},73f);call(activity,"flushPreferences");waitMain(()->body.get()!=null);
             JSONObject saved=new JSONObject(body.get());assertEquals(73,saved.getJSONObject("vr").getInt("fov"));assertTrue(saved.getJSONObject("vr").getBoolean("fish"));assertEquals(20,saved.getJSONObject("vr").getInt("yaw"));
+            assertEquals(.5,saved.getJSONObject("vr").getDouble("tracking_sensitivity"),.001);assertEquals(60,saved.getJSONObject("vr").getInt("tracking_smoothing"));assertTrue(saved.getJSONObject("vr").getBoolean("tracking_invert_pitch"));
             field(activity,"file",new JSONObject().put("id",8));field(activity,"filePreferences",new JSONObject().put("vr",new JSONObject().put("fish",false).put("fov",100)));call(activity,"applyFilePreferences");assertEquals(100,view.getFov(),.01);assertEquals(0,view.getViewYaw(),.01);
             field(activity,"file",new JSONObject().put("id",7));field(activity,"filePreferences",saved);call(activity,"applyFilePreferences");assertEquals(73,view.getFov(),.01);assertEquals(20,view.getViewYaw(),.01);assertTrue((boolean)read(activity,"vrFish"));
         }

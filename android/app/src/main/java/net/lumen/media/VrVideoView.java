@@ -44,10 +44,10 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     private volatile int videoWidth=1920, videoHeight=1080;
     private volatile boolean fish=false, headset=false, swap=false, tracking=true;
     private volatile float yaw=0, pitch=0, sensorYaw=0, sensorPitch=0, fov=90;
-    private boolean baseline=false, resumed=false;
-    private int lastRotation=-1;
-    private float originYaw, originPitch, touchX, touchY;
-    private final float[] rotationMatrix=new float[9], remapped=new float[9], orientation=new float[3];
+    private boolean resumed=false;
+    private final VrMotionFilter motion=new VrMotionFilter();
+    private float touchX, touchY;
+    private final float[] rotationMatrix=new float[9];
 
     public VrVideoView(Context context, Listener listener) {
         super(context); this.listener=listener;
@@ -68,6 +68,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     public SurfaceTexture videoTexture() { return surfaceReady?texture:null; }
     public boolean hasTracking() { return rotation != null; }
     public void configure(boolean fisheye, boolean stereoDisplay, boolean swapEyes, boolean headTracking) {
+        if(tracking!=headTracking){motion.reset();sensorYaw=sensorPitch=0;}
         fish=fisheye; headset=stereoDisplay; swap=swapEyes; tracking=headTracking;
         updateSensor(); requestRender();
     }
@@ -76,7 +77,11 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     public float getViewYaw(){return yaw;}
     public float getViewPitch(){return pitch;}
     public void setViewAngles(float horizontal,float vertical){yaw=VrProjection.wrap(horizontal);pitch=VrProjection.clampPitch(vertical);requestRender();}
-    public void recenter() { yaw=pitch=sensorYaw=sensorPitch=0;baseline=false;requestRender(); }
+    public void setTrackingParameters(float sensitivity,int smoothingMs,boolean invertPitch){motion.configure(sensitivity,smoothingMs,invertPitch);}
+    public float getTrackingSensitivity(){return motion.sensitivity();}
+    public int getTrackingSmoothing(){return motion.smoothingMs();}
+    public boolean getTrackingInvertPitch(){return motion.inverted();}
+    public void recenter() { yaw=pitch=sensorYaw=sensorPitch=0;motion.reset();requestRender(); }
     public int[] setVideoSize(int w,int h) {
         if(w<=0||h<=0)return new int[]{videoWidth,videoHeight};
         double scale=Math.min(1.0,(double)maxTextureSize/Math.max(w,h));
@@ -85,7 +90,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
         queueEvent(()->{if(texture!=null)texture.setDefaultBufferSize(targetWidth,targetHeight);});
         return new int[]{targetWidth,targetHeight};
     }
-    @Override public void onResume() { super.onResume();resumed=true;baseline=false;updateSensor(); }
+    @Override public void onResume() { super.onResume();resumed=true;sensorYaw=sensorPitch=0;motion.reset();updateSensor(); }
     @Override public void onPause() { resumed=false;sensors.unregisterListener(this);super.onPause(); }
     private void updateSensor() {
         sensors.unregisterListener(this);
@@ -170,17 +175,10 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     }
     @Override public boolean performClick(){super.performClick();listener.tap();return true;}
     @Override public void onSensorChanged(SensorEvent event) {
+        if(!tracking||!resumed)return;
         SensorManager.getRotationMatrixFromVector(rotationMatrix,event.values);
-        int displayRotation=getDisplay()==null?Surface.ROTATION_0:getDisplay().getRotation();
-        if(displayRotation!=lastRotation){baseline=false;lastRotation=displayRotation;}
-        int x=SensorManager.AXIS_X,y=SensorManager.AXIS_Z;
-        if(displayRotation==Surface.ROTATION_90){x=SensorManager.AXIS_Z;y=SensorManager.AXIS_MINUS_X;}
-        else if(displayRotation==Surface.ROTATION_180){x=SensorManager.AXIS_MINUS_X;y=SensorManager.AXIS_MINUS_Z;}
-        else if(displayRotation==Surface.ROTATION_270){x=SensorManager.AXIS_MINUS_Z;y=SensorManager.AXIS_X;}
-        SensorManager.remapCoordinateSystem(rotationMatrix,x,y,remapped);SensorManager.getOrientation(remapped,orientation);
-        float azimuth=(float)Math.toDegrees(orientation[0]),elevation=(float)Math.toDegrees(orientation[1]);
-        if(!baseline){originYaw=azimuth;originPitch=elevation;baseline=true;}
-        sensorYaw=VrProjection.wrap(azimuth-originYaw);sensorPitch=VrProjection.clampPitch(elevation-originPitch);requestRender();
+        float azimuth=VrMotionFilter.heading(rotationMatrix),elevation=VrMotionFilter.elevation(rotationMatrix);
+        motion.update(azimuth,elevation,event.timestamp);sensorYaw=motion.yaw();sensorPitch=motion.pitch();requestRender();
     }
     @Override public void onAccuracyChanged(Sensor sensor,int accuracy) {}
     public void release() {

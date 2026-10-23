@@ -1,11 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:label="Lumen" android:theme="@style/AppTheme"
         android:icon="@mipmap/ic_lumen" android:roundIcon="@mipmap/ic_lumen" android:usesCleartextTraffic="true" android:supportsRtl="true">
         <activity android:name=".PrivateBrowserActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity android:name=".PlayerActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity android:name=".RemoteActivity" android:exported="false" />
+        <activity android:name=".UpdateActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <provider android:name=".UpdatePackageProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>

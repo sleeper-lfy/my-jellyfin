@@ -2,7 +2,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from .presentation import rating_text
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -14,6 +14,7 @@ class Player(QDialog):
     queueNext = Signal()
     queuePrevious = Signal()
     refreshed = Signal()
+    bookmarksChanged = Signal()
 
     def __init__(self, library, parent=None):
         # A normal top-level window lets the Windows shell recognize fullscreen;
@@ -158,6 +159,10 @@ class Player(QDialog):
         volume.valueChanged.connect(lambda v: self.audio.setVolume(v / 100))
         row.addWidget(volume)
         settings = QPushButton('⚙')
+        from .components import icon
+        self.bookmark_control=QPushButton(icon('bookmark'),'书签');self.bookmark_control.setAccessibleName('时间点书签');self.bookmark_control.setToolTip('添加当前时间点 / 查看书签（Ctrl+B 添加）')
+        bookmark_menu=QMenu(self.bookmark_control);bookmark_menu.addAction('添加当前时间点…',self.add_bookmark);bookmark_menu.addAction('查看 / 跳转书签…',self.show_bookmarks);self.bookmark_control.setMenu(bookmark_menu);row.addWidget(self.bookmark_control)
+        self.bookmark_shortcut=QShortcut(QKeySequence('Ctrl+B'),self,activated=self.add_bookmark)
         settings.setToolTip('音轨和字幕设置')
         settings.setAccessibleName('音轨和字幕设置')
         settings.clicked.connect(self.show_settings)
@@ -297,6 +302,7 @@ class Player(QDialog):
         self.ends_at.setVisible(width >= 1000)
         self.rating.setVisible(width >= 760)
         self.volume.setVisible(width >= 640)
+        self.bookmark_control.setText('书签' if width>=760 else '')
         self.previous_control.setVisible(width >= 540)
         self.next_control.setVisible(width >= 540)
         self.overlay.layout().invalidate()
@@ -362,7 +368,7 @@ class Player(QDialog):
             self.idle.stop()
 
     def hide_controls(self):
-        if self.auto_hide.isChecked() and self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not self.track_dialog.isVisible() and not self.timeline.isSliderDown() and not self.footer.underMouse():
+        if self.auto_hide.isChecked() and self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not any(dialog.isVisible() for dialog in self.findChildren(QDialog)) and not self.timeline.isSliderDown() and not self.footer.underMouse():
             self.header.hide()
             self.footer.hide()
             self.overlay.setCursor(Qt.CursorShape.BlankCursor)
@@ -574,39 +580,73 @@ class Player(QDialog):
         self.subtitle_preferences=preferences(self.library,self.file['id'],{'subtitle_delay':self.subtitle_delay.value(),'subtitle_size':self.subtitle_size.value(),'subtitle_position':self.subtitle_position.value()})
         self.apply_subtitle_preferences()
 
-    def add_bookmark(self):
-        if not self.file:return
-        name,ok=QInputDialog.getText(self,'添加时间点书签','书签名称（可留空）')
-        if not ok:return
-        note,ok=QInputDialog.getMultiLineText(self,'书签备注','备注（可留空）')
-        if not ok:return
-        from .media_tools import add_bookmark,capture_bookmark
-        item=add_bookmark(self.library,self.file['id'],self.media.position()/1000,name,note)
-        parent=self.parentWidget()
-        if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,item['id'],p.cancelled))
+    def add_bookmark(self,*,file=None,position=None,parent=None):
+        file=file or self.file
+        if not file:return
+        existing=getattr(self,'_bookmark_dialog',None)
+        if existing is not None and existing.isVisible():existing.raise_();existing.activateWindow();return existing
+        active=self.file is not None and self.file['id']==file['id'] and self.isVisible()
+        # Capture the position before the user starts typing, not after saving.
+        moment=position if position is not None else self.media.position()/1000 if active else file.get('position',0)
+        maximum=(self.media.duration()/1000 if active else file.get('duration',0)) or 864000
+        dialog=QDialog(parent or self);self._bookmark_dialog=dialog;dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.setWindowTitle('添加时间点书签');dialog.resize(500,340)
+        layout=QVBoxLayout(dialog);form=QFormLayout();layout.addLayout(form)
+        time=QDoubleSpinBox();time.setObjectName('bookmarkTime');time.setRange(0,maximum);time.setDecimals(1);time.setSuffix(' 秒');time.setValue(min(maximum,max(0,moment)))
+        name=QLineEdit();name.setObjectName('bookmarkName');name.setMaxLength(120);name.setPlaceholderText('可留空，默认使用时间点')
+        note=QPlainTextEdit();note.setObjectName('bookmarkNote');note.setPlaceholderText('备注（最多 2000 字）');note.setMaximumHeight(100)
+        filename=QLabel(Path(file['path']).name);filename.setWordWrap(True)
+        form.addRow('视频',filename);form.addRow('时间点',time);form.addRow('名称',name);form.addRow('备注',note)
+        screenshot=QCheckBox('后台生成此时间点截图');screenshot.setChecked(True);layout.addWidget(screenshot)
+        message=QLabel('时间点已固定，可继续播放；也可以手动调整秒数。');message.setWordWrap(True);layout.addWidget(message)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.rejected.connect(dialog.reject)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText('保存');buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
+        def save():
+            from .media_tools import add_bookmark,capture_bookmark
+            try:item=add_bookmark(self.library,file['id'],time.value(),name.text(),note.toPlainText())
+            except (ValueError,RuntimeError) as error:message.setText(str(error));return
+            capture=screenshot.isChecked();dialog.accept();self.bookmarksChanged.emit()
+            owner=self.parentWidget()
+            if capture and hasattr(owner,'run_job'):owner.run_job('书签截图',lambda lib,p:capture_bookmark(lib,item['id'],p.cancelled),lambda _:self.bookmarksChanged.emit())
+        buttons.accepted.connect(save);dialog.finished.connect(lambda _:setattr(self,'_bookmark_dialog',None));dialog.show();name.setFocus();return dialog
 
     def show_bookmarks(self):
         if not self.file:return
         from .media_tools import bookmarks,delete_bookmark
-        dialog=QDialog(self);dialog.setWindowTitle('时间点书签');dialog.resize(600,450)
+        existing=getattr(self,'_bookmarks_dialog',None)
+        if existing is not None and existing.isVisible():existing.raise_();return existing
+        file_id=self.file['id']
+        dialog=QDialog(self);self._bookmarks_dialog=dialog;dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.setWindowTitle('时间点书签');dialog.resize(600,450)
         layout=QVBoxLayout(dialog);items=QListWidget();items.setIconSize(QSize(144,81));layout.addWidget(items)
+        empty=QLabel('还没有书签。点击“添加当前时间点”保存位置与截图。');empty.setWordWrap(True);layout.addWidget(empty)
         def reload():
             items.clear()
-            for entry in bookmarks(self.library,self.file['id']):
+            for entry in bookmarks(self.library,file_id):
                 row=QListWidgetItem(f"{int(entry['position'])//60:02}:{int(entry['position'])%60:02} · {entry['title']}\n{entry['note']}")
                 row.setData(Qt.ItemDataRole.UserRole,entry)
                 if entry['image']:row.setIcon(QIcon(entry['image']))
                 items.addItem(row)
+            empty.setVisible(items.count()==0)
+            if items.count():items.setCurrentRow(0)
         def jump():
-            if items.currentItem():self.timeline.setValue(int(items.currentItem().data(Qt.ItemDataRole.UserRole)['position']*1000));self.seek();dialog.accept()
+            if not items.currentItem():return
+            position=items.currentItem().data(Qt.ItemDataRole.UserRole)['position']
+            if not self.file or self.file['id']!=file_id:
+                file=dict(self.library.db.execute('SELECT * FROM files WHERE id=?',(file_id,)).fetchone());self.open_file({**file,'position':position,'completed':0})
+            else:self.timeline.setValue(int(position*1000));self.seek()
+            dialog.accept()
         def remove():
-            if items.currentItem():delete_bookmark(self.library,items.currentItem().data(Qt.ItemDataRole.UserRole)['id']);reload()
+            if items.currentItem():delete_bookmark(self.library,items.currentItem().data(Qt.ItemDataRole.UserRole)['id']);self.bookmarksChanged.emit()
         def capture():
             if not items.currentItem():return
             from .media_tools import capture_bookmark
             identifier=items.currentItem().data(Qt.ItemDataRole.UserRole)['id'];parent=self.parentWidget()
-            if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,identifier,p.cancelled),lambda _:reload())
-        items.itemDoubleClicked.connect(lambda _:jump());layout.addWidget(QPushButton('跳转到选中书签',clicked=jump));layout.addWidget(QPushButton('生成 / 更新选中截图',clicked=capture));layout.addWidget(QPushButton('删除选中书签',clicked=remove));reload();dialog.show()
+            if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,identifier,p.cancelled),lambda _:self.bookmarksChanged.emit())
+        layout.addWidget(QPushButton('添加当前时间点…',clicked=lambda:self.add_bookmark(file=dict(self.library.db.execute('SELECT * FROM files WHERE id=?',(file_id,)).fetchone()),parent=dialog)))
+        items.itemDoubleClicked.connect(lambda _:jump());layout.addWidget(QPushButton('跳转到选中书签',clicked=jump));layout.addWidget(QPushButton('生成 / 更新选中截图',clicked=capture));layout.addWidget(QPushButton('删除选中书签',clicked=remove))
+        self.bookmarksChanged.connect(reload)
+        def closed(_):
+            self.bookmarksChanged.disconnect(reload);self._bookmarks_dialog=None
+        dialog.finished.connect(closed);reload();dialog.show();return dialog
 
     def diagnostics(self):
         value={'backend':'libmpv' if self.mpv_backend else 'Qt Multimedia','position_seconds':self.media.position()/1000,
@@ -623,7 +663,7 @@ class Player(QDialog):
 
     def show_diagnostics(self):
         import json
-        dialog=QDialog(self);dialog.setWindowTitle('播放诊断');dialog.resize(650,500)
+        dialog=QDialog(self);dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.setWindowTitle('播放诊断');dialog.resize(650,500)
         layout=QVBoxLayout(dialog);text=QPlainTextEdit();text.setReadOnly(True);layout.addWidget(text)
         update=lambda:text.setPlainText(json.dumps(self.diagnostics(),ensure_ascii=False,indent=2,default=str))
         layout.addWidget(QPushButton('复制诊断（不含路径和访问密钥）',clicked=lambda:QApplication.clipboard().setText(text.toPlainText())))
@@ -631,12 +671,12 @@ class Player(QDialog):
 
     def toggle_fullscreen(self):
         entering = not self.isFullScreen()
-        if self.mpv_backend:
-            self.media.detach_window()
+        canvas_id=int(self.canvas.winId()) if self.mpv_backend else None
         if entering:
             self._windowed_geometry = self.saveGeometry()
             self._windowed_flags = self.windowFlags()
-            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+            # Qt removes native decorations in fullscreen itself. Changing flags
+            # hides/recreates the window and used to force a decoder restart.
             self.showFullScreen()
         else:
             set_fullscreen_window(self.winId(), False)
@@ -645,7 +685,9 @@ class Player(QDialog):
         self.activateWindow()
         if entering:
             self.apply_native_fullscreen()
-        if self.mpv_backend:
+        if self.mpv_backend and int(self.canvas.winId())!=canvas_id:
+            # Recover only on platforms which actually replaced the native host.
+            self.media.detach_window()
             self.media.attach_window(int(self.canvas.winId()))
         self.show_controls()
 
@@ -657,8 +699,7 @@ class Player(QDialog):
             self.sync_overlay()
 
     def restore_windowed(self, show=True):
-        if self._windowed_flags is not None:
-            self.setWindowFlags(self._windowed_flags)
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowFullScreen)
         if self._windowed_geometry is not None:
             self.restoreGeometry(self._windowed_geometry)
         else:
@@ -695,7 +736,7 @@ class Player(QDialog):
         if self.isFullScreen():
             set_fullscreen_window(self.winId(), False)
             self.restore_windowed(show=False)
-        self.track_dialog.close()
+        for dialog in self.findChildren(QDialog):dialog.close()
         self.idle.stop()
         self.pointer_timer.stop()
         super().closeEvent(event)

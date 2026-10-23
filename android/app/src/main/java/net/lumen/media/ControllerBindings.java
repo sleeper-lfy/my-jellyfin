@@ -8,6 +8,7 @@ public final class ControllerBindings {
     public enum Action {
         TOGGLE("播放 / 暂停",false), PLAY("播放",false), PAUSE("暂停",false),
         FORWARD("快进 10 秒",true), BACKWARD("回退 10 秒",true),
+        NEXT_EPISODE("下一集",false), PREVIOUS_EPISODE("上一集",false),
         PROJECTION("标准 / 鱼眼切换",false), ZOOM_IN("拉近",true), ZOOM_OUT("拉远",true),
         RECENTER("回正朝向",false), RESET_VIEW("恢复初始视角与缩放",false), CONTROLS("显示 / 隐藏控制栏",false),
         NONE("不执行操作",false);
@@ -22,7 +23,8 @@ public final class ControllerBindings {
     public ControllerBindings(){
         bind(Action.TOGGLE,23,66,62,79,85,96); // DPAD center, enter, space, headset hook, play/pause, A
         bind(Action.PLAY,126);bind(Action.PAUSE,127,86);
-        bind(Action.FORWARD,22,90,87,103,STICK_RIGHT,RIGHT_RIGHT);bind(Action.BACKWARD,21,89,88,102,STICK_LEFT,RIGHT_LEFT);
+        bind(Action.FORWARD,22,90,103,STICK_RIGHT,RIGHT_RIGHT);bind(Action.BACKWARD,21,89,102,STICK_LEFT,RIGHT_LEFT);
+        bind(Action.NEXT_EPISODE,87);bind(Action.PREVIOUS_EPISODE,88);
         bind(Action.ZOOM_IN,19,105,STICK_UP,RIGHT_UP,TRIGGER_RIGHT);bind(Action.ZOOM_OUT,20,104,STICK_DOWN,RIGHT_DOWN,TRIGGER_LEFT);
         bind(Action.PROJECTION,99);bind(Action.RECENTER,100);bind(Action.CONTROLS,97);bind(Action.RESET_VIEW,108);
     }

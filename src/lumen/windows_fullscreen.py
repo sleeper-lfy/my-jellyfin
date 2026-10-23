@@ -72,10 +72,16 @@ def set_fullscreen_window(window_id, enabled):
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                                   ctypes.c_int, ctypes.c_int, wintypes.UINT]
     user32.SetWindowPos.restype = wintypes.BOOL
+    user32.GetWindowRect.argtypes = [wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
+    user32.GetWindowRect.restype = wintypes.BOOL
     info = MonitorInfo()
     info.size = ctypes.sizeof(info)
     monitor = user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
     if monitor and user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
         rect = info.monitor
+        current=wintypes.RECT()
+        if user32.GetWindowRect(hwnd,ctypes.byref(current)) and (current.left,current.top,current.right,current.bottom)==(rect.left,rect.top,rect.right,rect.bottom):return
+        # Qt already removed the frame. FRAMECHANGED needlessly invalidates the
+        # surface on each queued fullscreen event and can expose a black frame.
         user32.SetWindowPos(hwnd, None, rect.left, rect.top, rect.right - rect.left,
-                            rect.bottom - rect.top, 0x0020 | 0x0200)  # FRAMECHANGED | NOOWNERZORDER
+                            rect.bottom - rect.top, 0x0010 | 0x0200)  # NOACTIVATE | NOOWNERZORDER

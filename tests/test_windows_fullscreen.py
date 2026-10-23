@@ -56,6 +56,7 @@ def test_fullscreen_covers_physical_secondary_monitor_and_never_hides_global_tas
         info.work = wintypes.RECT(-3440, -200, 0, 1176)
         return True
     api = SimpleNamespace(MonitorFromWindow=Function(lambda *_: 10), GetMonitorInfoW=Function(monitor_info),
+                          GetWindowRect=Function(lambda *_: False),
                           SetWindowPos=Function(lambda *args: positions.append(args) or True))
     monkeypatch.setattr(ctypes, 'WinDLL', lambda *_, **__: api, raising=False)
     native.set_fullscreen_window(0x123456789, True)
@@ -65,4 +66,9 @@ def test_fullscreen_covers_physical_secondary_monitor_and_never_hides_global_tas
     hwnd, z_order, x, y, width, height, flags = positions[0]
     assert hwnd.value == 0x123456789 and z_order is None  # HWND_TOP, never HWND_TOPMOST.
     assert (x, y, width, height) == (-3440, -200, 3440, 1440)
-    assert flags == 0x220
+    assert flags == 0x210
+    def already_full(_,output):
+        output._obj.left=-3440;output._obj.top=-200;output._obj.right=0;output._obj.bottom=1240;return True
+    api.GetWindowRect=Function(already_full)
+    native.set_fullscreen_window(0x123456789,True)
+    assert len(positions)==1  # Repeated Qt state events must not invalidate the native surface.

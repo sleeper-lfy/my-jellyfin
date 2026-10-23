@@ -58,82 +58,59 @@ class MediaTile(QPushButton):
 class HomePage(QScrollArea):
     def __init__(self,window):
         super().__init__()
+        from .ui import label,button,PosterList,PosterDelegate
         self.window=window
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.content=QWidget()
-        self.layout=QVBoxLayout(self.content)
-        self.layout.setContentsMargins(0,0,12,0)
-        self.layout.setSpacing(12)
-        self.setWidget(self.content)
-        self.rows=[]
-
-    def refresh(self,works=None,recommendations=None):
-        from .ui import clear,label,button,PosterList,PosterDelegate
-        clear(self.layout)
-        self.rows=[]
-        if works is None:works=self.window.library.query()
+        self.content=QWidget();self.layout=QVBoxLayout(self.content)
+        self.layout.setContentsMargins(0,0,12,0);self.layout.setSpacing(12)
+        self.setWidget(self.content);self.rows=[];self.tiles={};self.sections={}
         self.layout.addWidget(label('我的媒体','sectionTitle'))
-        tiles=QHBoxLayout()
-        tiles.setSpacing(16)
+        tiles=QHBoxLayout();tiles.setSpacing(16)
         for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('other','其他视频')]:
-            items=[w for w in works if w['kind']==kind]
-            cover=None
-            for work in items[:24]:
-                record=self.window.card_data(work,True)
-                cover=record.get('_cover') or record.get('thumbnail')
-                if cover:break
-            tiles.addWidget(MediaTile(title,f'{len(items)} 部作品',cover,lambda checked=False,kind=kind:self.window.navigate(kind)))
+            tile=MediaTile(title,'0 部作品',None,lambda checked=False,kind=kind:window.navigate(kind))
+            self.tiles[kind]=tile;tiles.addWidget(tile)
         self.layout.addLayout(tiles)
         links=QHBoxLayout()
         for title,section in [('影片发现  ›','discover'),('观影统计  ›','stats')]:
-            control=button(title,lambda checked=False,section=section:self.window.navigate(section))
-            control.setObjectName('headerButton')
-            links.addWidget(control)
-        links.addStretch()
-        self.layout.addLayout(links)
-        continuing=[w for w in works if any(f['position']>0 and not f['completed'] for f in w['files'])]
-        if recommendations is None:recommendations=self.window.library.recommendations()
-        sections=[('继续观看',continuing,True),('最新电影',[w for w in works if w['kind']=='movie'],False),
-                  ('最新电视剧',[w for w in works if w['kind']=='series'],False),('最新VR电影',[w for w in works if w['kind']=='vr'],False),('为你推荐',recommendations,False)]
-        for title,items,landscape in sections:
-            if not items:
-                continue
-            self.layout.addWidget(label(title,'sectionTitle'))
-            cards=PosterList(self.window.play_work)
-            cards.favoriteRequested.connect(self.window.toggle_favorite)
-            cards.watchlistRequested.connect(lambda work_id:self.window.toggle_card_personal(work_id,'watchlist'))
-            cards.setObjectName('posters')
-            cards.setViewMode(QListWidget.ViewMode.IconMode)
-            cards.setFlow(QListWidget.Flow.LeftToRight)
-            cards.setWrapping(False)
-            cards.setResizeMode(QListWidget.ResizeMode.Adjust)
-            cards.setMovement(QListWidget.Movement.Static)
-            cards.setMouseTracking(True)
-            cards.setItemDelegate(PosterDelegate(cards))
-            cards.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            cards.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            landscape = landscape or self.window.view_mode.currentData() == 'thumbnail'
-            cards.setFixedHeight(262 if landscape else 374)
-            cards.setSpacing(2)
+            control=button(title,lambda checked=False,section=section:window.navigate(section));control.setObjectName('headerButton');links.addWidget(control)
+        links.addStretch();self.layout.addLayout(links)
+        for title in ['继续观看','最新电影','最新电视剧','最新VR电影','为你推荐']:
+            heading=label(title,'sectionTitle');self.layout.addWidget(heading)
+            cards=PosterList(window.play_work)
+            cards.favoriteRequested.connect(window.toggle_favorite)
+            cards.watchlistRequested.connect(lambda work_id:window.toggle_card_personal(work_id,'watchlist'))
+            cards.setObjectName('posters');cards.setViewMode(QListWidget.ViewMode.IconMode);cards.setFlow(QListWidget.Flow.LeftToRight)
+            cards.setWrapping(False);cards.setResizeMode(QListWidget.ResizeMode.Adjust);cards.setMovement(QListWidget.Movement.Static)
+            cards.setMouseTracking(True);cards.setItemDelegate(PosterDelegate(cards));cards.setSpacing(2)
+            cards.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+            cards.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded);cards.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            cards.itemClicked.connect(window.open_item);self.layout.addWidget(cards);self.sections[title]=(heading,cards)
+        self.empty=QWidget();empty_layout=QVBoxLayout(self.empty)
+        message=label('开始建立你的媒体库\n添加电影、电视剧或视频文件夹，封面和观看记录将在这里显示。')
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter);message.setMinimumHeight(210);message.setStyleSheet('color: #aaaaaa; font-size: 16px;')
+        empty_layout.addWidget(message);row=QHBoxLayout();row.addStretch();row.addWidget(button('添加媒体文件夹',window.import_dialog,True));row.addStretch();empty_layout.addLayout(row)
+        self.layout.addWidget(self.empty);self.layout.addStretch()
+
+    def refresh(self,works=None,recommendations=None):
+        from .ui import update_poster_items
+        if works is None:works=self.window.library.query()
+        position=self.verticalScrollBar().value()
+        for kind,tile in self.tiles.items():
+            items=[work for work in works if work['kind']==kind];cover=None
             for work in items[:24]:
-                record=self.window.card_data(work, landscape)
-                item=QListWidgetItem()
-                item.setData(Qt.ItemDataRole.UserRole,record)
-                item.setToolTip(work['title']+'\n'+'\n'.join(work.get('reasons',[])))
-                cards.addItem(item)
-            cards.itemClicked.connect(self.window.open_item)
-            self.rows.append(cards)
-            self.layout.addWidget(cards)
-        if not works:
-            message=label('开始建立你的媒体库\n添加电影、电视剧或视频文件夹，封面和观看记录将在这里显示。')
-            message.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            message.setMinimumHeight(210)
-            message.setStyleSheet('color: #aaaaaa; font-size: 16px;')
-            self.layout.addWidget(message)
-            row=QHBoxLayout()
-            row.addStretch()
-            row.addWidget(button('添加媒体文件夹',self.window.import_dialog,True))
-            row.addStretch()
-            self.layout.addLayout(row)
-        self.layout.addStretch()
+                record=self.window.card_data(work,True);cover=record.get('_cover') or record.get('thumbnail')
+                if cover:break
+            tile.subtitle=f'{len(items)} 部作品';tile.cover_path=cover;tile.update()
+        continuing=[work for work in works if any(file['position']>0 and not file['completed'] for file in work['files'])]
+        if recommendations is None:recommendations=self.window.library.recommendations()
+        sections=[('继续观看',continuing,True),('最新电影',[work for work in works if work['kind']=='movie'],False),
+                  ('最新电视剧',[work for work in works if work['kind']=='series'],False),('最新VR电影',[work for work in works if work['kind']=='vr'],False),('为你推荐',recommendations,False)]
+        self.rows=[]
+        for title,items,landscape in sections:
+            heading,cards=self.sections[title];landscape=landscape or self.window.view_mode.currentData()=='thumbnail'
+            cards.setFixedHeight(262 if landscape else 374)
+            update_poster_items(cards,[self.window.card_data(work,landscape) for work in items[:24]])
+            heading.setVisible(bool(items));cards.setVisible(bool(items))
+            if items:self.rows.append(cards)
+        self.empty.setVisible(not works);self.layout.activate();self.verticalScrollBar().setValue(position)

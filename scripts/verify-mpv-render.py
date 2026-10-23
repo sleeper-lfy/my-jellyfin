@@ -26,9 +26,12 @@ with tempfile.TemporaryDirectory(prefix='lumen-mpv-gl-') as directory:
     player.enhance.setChecked(True);spin(250)
     player.subtitle_delay.setValue(.3);player.subtitle_size.setValue(26);player.subtitle_position.setValue(85)
     assert player.diagnostics()['backend']=='libmpv'
-    windowed_geometry=player.geometry();windowed_flags=player.windowFlags()
+    windowed_geometry=player.geometry();windowed_flags=player.windowFlags();engine=player.media.engine
+    native_handles=(int(player.winId()),int(player.canvas.winId()));position=player.media.position()
     player.toggle_fullscreen();spin(250);player.show_controls();spin(100)
-    assert player.isFullScreen() and player.windowFlags() & Qt.WindowType.FramelessWindowHint
+    assert player.isFullScreen() and player.windowFlags()==windowed_flags
+    assert player.media.engine is engine and native_handles==(int(player.winId()),int(player.canvas.winId())), 'Fullscreen recreated native video / decoder'
+    assert player.media.position()>=position, 'Fullscreen reset playback position'
     assert not player.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
     assert player.overlay.geometry()==player.rect()
     assert abs(player.media.engine.sub_delay-.3)<.01 and player.media.engine.sub_font_size==26
@@ -49,6 +52,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-mpv-gl-') as directory:
     bottom=image.pixelColor(image.width()//2,image.height()*2//3)
     assert top.red()>150 and top.blue()<80 and bottom.blue()>150 and bottom.red()<80, 'Video orientation is incorrect'
     player.toggle_fullscreen();spin(200)
+    assert player.media.engine is engine and native_handles==(int(player.winId()),int(player.canvas.winId()))
     assert not player.isFullScreen() and player.windowFlags()==windowed_flags
     assert player.geometry()==windowed_geometry
     player.media.pause();spin(200);player.media.setPosition(4000);spin(250)

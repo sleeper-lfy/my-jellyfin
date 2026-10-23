@@ -3,7 +3,24 @@ from functools import lru_cache
 from PySide6.QtCore import Qt,QSize,QRect,QPoint,QByteArray
 from PySide6.QtGui import QIcon,QPixmap,QPainter
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QPushButton,QLayout,QSizePolicy
+from PySide6.QtWidgets import QPushButton,QLayout,QSizePolicy,QLabel
+from PySide6.QtGui import QPalette
+
+
+class ElidedLabel(QLabel):
+    """Single-line status text never changes the surrounding layout."""
+    def __init__(self,text='',parent=None):
+        super().__init__(text,parent)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+        self.setMinimumWidth(0)
+        self.setFixedHeight(28)
+    def setText(self,text):
+        super().setText(text);self.setToolTip(text)
+    def paintEvent(self,event):
+        painter=QPainter(self);painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
+        text=self.fontMetrics().elidedText(self.text().replace('\n',' '),Qt.TextElideMode.ElideMiddle,self.contentsRect().width())
+        painter.drawText(self.contentsRect(),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,text)
 
 PATHS={
     'heart':'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z',

@@ -19,7 +19,7 @@ from .files import plan_move, execute_move
 from .player import Player
 from .presentation import rating_text
 from .theme import STYLE
-from .components import ActionButton,FlowLayout,chip,icon
+from .components import ActionButton,FlowLayout,chip,icon,ElidedLabel
 
 KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'other': '其他'}
 
@@ -44,9 +44,46 @@ def clear(layout):
     while layout.count():
         item = layout.takeAt(0)
         if item.widget():
+            item.widget().hide()
             item.widget().deleteLater()
         elif item.layout():
             clear(item.layout())
+
+
+def update_poster_items(cards,records,preserve=True):
+    """Reconcile existing rows without a blank model or lost scroll/selection."""
+    def key(record):return ('work',record['id']) if 'id' in record else ('actor',record.get('name'))
+    bar=cards.verticalScrollBar() if cards.isWrapping() else cards.horizontalScrollBar()
+    position=bar.value();current=cards.currentItem();selected=key(current.data(Qt.ItemDataRole.UserRole)) if current else None
+    existing={key(cards.item(i).data(Qt.ItemDataRole.UserRole)):cards.item(i) for i in range(cards.count())}
+    anchor=None;offset=0
+    if preserve and position:
+        for i in range(cards.count()):
+            item=cards.item(i);rect=cards.visualItemRect(item)
+            if rect.intersects(cards.viewport().rect()):
+                anchor=key(item.data(Qt.ItemDataRole.UserRole));offset=rect.top() if cards.isWrapping() else rect.left();break
+    updates=cards.updatesEnabled()
+    if updates:cards.setUpdatesEnabled(False)
+    blocked=bar.blockSignals(True)
+    try:
+        for index,record in enumerate(records):
+            identifier=key(record);item=existing.get(identifier)
+            if item is None:item=QListWidgetItem();cards.insertItem(index,item)
+            elif cards.row(item)!=index:cards.insertItem(index,cards.takeItem(cards.row(item)))
+            if item.data(Qt.ItemDataRole.UserRole)!=record:item.setData(Qt.ItemDataRole.UserRole,record)
+            item.setToolTip((record.get('title') or record.get('name',''))+'\n'+'\n'.join(record.get('reasons',[])))
+        while cards.count()>len(records):cards.takeItem(cards.count()-1)
+        cards.doItemsLayout()
+        wanted=existing.get(selected) if preserve else None
+        if wanted is not None and cards.row(wanted)>=0:cards.setCurrentItem(wanted)
+        elif not preserve:cards.setCurrentRow(-1)
+        bar.setValue(position if preserve else 0)
+        item=existing.get(anchor)
+        if item is not None and cards.row(item)>=0:
+            rect=cards.visualItemRect(item);bar.setValue(bar.value()+(rect.top() if cards.isWrapping() else rect.left())-offset)
+    finally:
+        bar.blockSignals(blocked)
+        if updates:cards.setUpdatesEnabled(True)
 
 
 class Job(QThread):
@@ -73,12 +110,17 @@ class Job(QThread):
                 self.budget.acquire(self.cancelled);acquired=True
             library=Library(self.directory)
             library.parent_task_id=getattr(self,'task_identifier',None)
+            last_report=[0,None];latest=[None]
             def report(done, total, message):
                 if self.cancelled():raise ImportCancelled('任务已停止')
-                self.progress.emit(done, total, message)
+                latest[0]=(done,total,message)
+                if time.monotonic()-last_report[0]>=.1 or total>0 and done>=total:
+                    self.progress.emit(done,total,message);last_report[:]=[time.monotonic(),latest[0]]
             report.cancelled = self.cancelled
             if self.cancelled():raise ImportCancelled('任务已停止')
-            self.done.emit(self.function(library, report))
+            result=self.function(library, report)
+            if latest[0] is not None and latest[0]!=last_report[1]:self.progress.emit(*latest[0])
+            self.done.emit(result)
         except ImportCancelled:
             self.done.emit({"cancelled":True})
         except Exception as exc:
@@ -165,10 +207,10 @@ class PosterDelegate(QStyledItemDelegate):
         painter.fillRect(image_rect, QColor('#252525'))
         cover = data.get('_cover') or data.get('thumbnail') or data.get('photo_cache')
         from .images import image_cache
-        pixmap=image_cache().request(cover,image_rect.size()*2)
+        ratio=self.parent().devicePixelRatioF();pixmap=image_cache().request(cover,image_rect.size()*ratio)
         if not pixmap.isNull():
-            image = pixmap.scaled(image_rect.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            painter.drawPixmap(image_rect.x()+(image_rect.width()-image.width())//2, image_rect.y()+(image_rect.height()-image.height())//2, image)
+            image = pixmap.scaled(image_rect.size()*ratio, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation);image.setDevicePixelRatio(ratio)
+            painter.drawPixmap(round(image_rect.x()+(image_rect.width()-image.width()/ratio)/2),round(image_rect.y()+(image_rect.height()-image.height()/ratio)/2),image)
         else:
             painter.setPen(QColor('#777777'))
             painter.setFont(QFont('Segoe UI', 16))
@@ -506,7 +548,9 @@ class Details(QWidget):
         self.files_heading=label('视频文件 / 季与集 · 双击播放', 'subtitle')
         outer.addWidget(self.files_heading)
         outer.addWidget(self.files)
-        self.bookmark_heading=label('时间点书签 · 双击跳转','subtitle');outer.addWidget(self.bookmark_heading)
+        bookmark_row=QHBoxLayout();self.bookmark_heading=label('时间点书签 · 双击跳转','subtitle');bookmark_row.addWidget(self.bookmark_heading,1)
+        self.add_bookmark_action=ActionButton('添加时间点书签','bookmark',self.add_bookmark);self.add_bookmark_action.setVisible(bool(w['files']));bookmark_row.addWidget(self.add_bookmark_action);outer.addLayout(bookmark_row)
+        self.bookmark_empty=label('还没有时间点书签，可在此添加，或播放时点击“书签”。','subtitle');self.bookmark_empty.setWordWrap(True);outer.addWidget(self.bookmark_empty)
         self.bookmark_list=QListWidget();self.bookmark_list.setIconSize(QSize(144,81));self.bookmark_list.setMaximumHeight(260);outer.addWidget(self.bookmark_list)
         self.bookmark_list.itemDoubleClicked.connect(lambda row:window.play_file(row.data(Qt.ItemDataRole.UserRole)));self.refresh_bookmarks()
         self.files.setFixedHeight(min(200,max(56,len(w['files'])*44+12)))
@@ -541,6 +585,7 @@ class Details(QWidget):
         self.still_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.still_gallery.setFixedHeight(218)
         self.still_gallery.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.still_gallery.horizontalScrollBar().valueChanged.connect(self.render_artwork)
         outer.insertWidget(4,self.still_gallery)
         self.still_gallery.itemClicked.connect(self.show_still)
         self.set_stills(still_paths(w))
@@ -597,7 +642,12 @@ class Details(QWidget):
             if entry['image']:row.setIcon(QIcon(entry['image']))
             self.bookmark_list.addItem(row)
         self.bookmark_list.setFixedHeight(min(260,max(110,len(entries)*104+8)))
-        self.bookmark_heading.setVisible(bool(entries));self.bookmark_list.setVisible(bool(entries))
+        self.bookmark_heading.setVisible(bool(self.work['files']));self.bookmark_list.setVisible(bool(entries));self.bookmark_empty.setVisible(bool(self.work['files']) and not entries)
+
+    def add_bookmark(self):
+        if not self.work['files']:return
+        item=self.files.currentItem();file=item.data(Qt.ItemDataRole.UserRole) if item else self.work['files'][0]
+        self.window.player.add_bookmark(file=file,parent=self)
 
     def render_artwork(self):
         from .images import image_cache
@@ -607,10 +657,17 @@ class Details(QWidget):
         for path in self.backdrop_paths:
             image=cache.request(path,QSize(1400,800))
             if not image.isNull() and image.width()>image.height():self.backdrop=image;break
+        visible=self.still_gallery.viewport().rect();near=visible.adjusted(-visible.width(),0,visible.width(),0)
         for index in range(self.still_gallery.count()):
             item=self.still_gallery.item(index)
-            image=cache.request(item.data(Qt.ItemDataRole.UserRole),QSize(576,324))
+            if not self.still_gallery.visualItemRect(item).intersects(near):
+                if not item.icon().isNull():item.setIcon(QIcon())
+                continue
+            image=cache.request(item.data(Qt.ItemDataRole.UserRole),self.still_gallery.iconSize()*self.devicePixelRatioF())
             if not image.isNull():item.setIcon(QIcon(image))
+        if getattr(self,'expanded_still_path',None):
+            image=cache.request(self.expanded_still_path,QSize(min(1400,max(320,self.width()-68)),720))
+            if not image.isNull():self.expanded_still.setPixmap(image.scaled(min(1400,max(320,self.width()-68)),720,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
         self.update()
 
     def open_source(self, url):
@@ -629,7 +686,7 @@ class Details(QWidget):
         visible=bool(self.still_gallery.count())
         self.gallery_heading.setVisible(visible)
         self.still_gallery.setVisible(visible)
-        if hasattr(self,'expanded_still'):self.expanded_still.hide()
+        if hasattr(self,'expanded_still'):self.expanded_still.hide();self.expanded_still.clear();self.expanded_still_path=None
         if hasattr(self,'poster_path'):self.render_artwork()
 
     def select_episode(self, item):
@@ -645,8 +702,8 @@ class Details(QWidget):
             self.expanded_still=QLabel()
             self.expanded_still.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.layout().insertWidget(self.layout().indexOf(self.still_gallery)+1,self.expanded_still)
-        image=QPixmap(item.data(Qt.ItemDataRole.UserRole))
-        self.expanded_still.setPixmap(image.scaled(max(320,self.width()-68),720,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+        self.expanded_still_path=item.data(Qt.ItemDataRole.UserRole)
+        self.expanded_still.setText('正在加载剧照…');self.render_artwork()
         self.expanded_still.show()
         if self.window.details_scroll is not None:
             QTimer.singleShot(0,lambda:self.window.details_scroll.ensureWidgetVisible(self.expanded_still) if self.window.detail_page is self else None)
@@ -907,6 +964,7 @@ class MainWindow(QMainWindow):
         self.player.queueNext.connect(lambda: self.step_playback(1))
         self.player.queuePrevious.connect(lambda: self.step_playback(-1))
         self.player.refreshed.connect(self.playback_refreshed)
+        self.player.bookmarksChanged.connect(lambda:self.detail_page.refresh_bookmarks() if self.detail_page else None)
         from .remote import DesktopRemote
         self.remote=DesktopRemote(self)
         self.root = QWidget()
@@ -1038,6 +1096,7 @@ class MainWindow(QMainWindow):
         self.cards.setSpacing(4)
         self.cards.setMouseTracking(True)
         self.cards.setUniformItemSizes(True)
+        self.cards.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.cards.setItemDelegate(PosterDelegate(self.cards))
         self.cards.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.cards.itemClicked.connect(self.open_item)
@@ -1057,16 +1116,21 @@ class MainWindow(QMainWindow):
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
         main.addWidget(self.empty, 1)
-        self.job_progress = QProgressBar()
-        self.job_progress.setMaximumHeight(18)
+        self.job_area=QWidget();self.job_area.setFixedHeight(40)
+        job_row=QHBoxLayout(self.job_area);job_row.setContentsMargins(42,0,42,0);job_row.setSpacing(12)
+        self.job_progress = QProgressBar();self.job_progress.setFixedHeight(8);self.job_progress.setTextVisible(False);self.job_progress.setMinimumWidth(0)
         self.job_progress.hide()
-        root.addWidget(self.job_progress)
+        job_row.addWidget(self.job_progress,1)
+        self.job_counter=ElidedLabel();self.job_counter.setFixedWidth(100);self.job_counter.hide();job_row.addWidget(self.job_counter)
         self.cancel_job = button('停止处理队列',self.stop_jobs)
+        self.cancel_job.setFixedWidth(150);self.cancel_job.setStyleSheet('padding: 3px 10px; min-height: 22px;')
         self.cancel_job.hide()
-        root.addWidget(self.cancel_job)
-        self.status = label('就绪', 'subtitle')
-        self.status.setWordWrap(True)
-        self.status.setContentsMargins(42, 4, 42, 8)
+        job_row.addWidget(self.cancel_job)
+        for control in (self.job_progress,self.job_counter,self.cancel_job):
+            policy=control.sizePolicy();policy.setRetainSizeWhenHidden(True);control.setSizePolicy(policy)
+        root.addWidget(self.job_area)
+        self.status = ElidedLabel('就绪');self.status.setObjectName('subtitle')
+        self.status.setContentsMargins(42,0,42,0)
         root.addWidget(self.status)
         self.navigate('home')
         config = self.library.setting('lan', {})
@@ -1187,7 +1251,10 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def card_data(self, data, landscape=False):
-        record = dict(data)
+        record = {key:data[key] for key in ('id','kind','title','name','year','thumbnail','photo_cache','average','count','rated','favorite','watchlist','rating','_subtitle','reasons') if key in data}
+        if 'work_ids' in data:record['work_ids']=[]
+        record['files']=[{key:file[key] for key in ('id','work_id','path','digest','duration','position','completed','season','episode') if key in file} for file in data.get('files',[])]
+        record['sources']=[{'rating':source.get('rating')} for source in data.get('sources',[])]
         record['_landscape'] = bool(data.get('kind')) and (landscape or self.view_mode.currentData() == 'thumbnail')
         if record['_landscape']:
             for file in data.get('files', []):
@@ -1207,18 +1274,24 @@ class MainWindow(QMainWindow):
         if _data is None:
             self._browse_epoch+=1
             count=self.library.db.execute('SELECT COUNT(*) FROM works').fetchone()[0]
-            if count>=250:
+            if count>=250 or self.jobs or self.library.db.execute('SELECT COUNT(*) FROM files').fetchone()[0]>=1000:
                 self._browse_pending=(self._browse_epoch,request)
                 self.subtitle.setText('正在后台读取媒体库…')
                 if not self.jobs:self.status.setText('正在后台读取媒体库，页面仍可操作…')
-                self.cards.setEnabled(False);self.home_page.setEnabled(False)
                 self._start_browse_read()
                 return
             self._browse_pending=None
             from .browse import load_view
             _data=load_view(self.library,request)
-        self.cards.setEnabled(True);self.home_page.setEnabled(True)
+        updates=self.browse_page.updatesEnabled()
+        if updates:self.browse_page.setUpdatesEnabled(False)
+        try:self.render_browse_data(_data)
+        finally:
+            if updates:self.browse_page.setUpdatesEnabled(True)
+
+    def render_browse_data(self,_data):
         actresses = self.section == 'movie' and self.subtab == 1
+        home=self.section=='home' and self.subtab==0
         for index in range(4):
             self.toolbar.itemAt(index).widget().setVisible((self.section == 'discover') if index == 3 else index!=2 and self.section not in {'discover','stats'})
         self.view_mode.setVisible(not actresses and self.section != 'stats')
@@ -1228,20 +1301,19 @@ class MainWindow(QMainWindow):
         self.category_filter.setVisible(self.section == 'discover')
         self.tree.setVisible(self.section == 'other')
         self.stats_scroll.setVisible(self.section == 'stats')
-        self.splitter.setVisible(self.section != 'stats')
-        self.home_page.hide()
-        self.subtitle.show()
-        if self.section == 'home' and self.subtab == 0:
+        self.home_page.setVisible(home)
+        self.subtitle.setVisible(not home)
+        if home:
             self.splitter.hide()
             self.empty.hide()
             self.subtitle.hide()
             for index in range(4):
                 self.toolbar.itemAt(index).widget().hide()
             self.home_page.refresh(_data['home'],_data['recommendations'])
-            self.home_page.show()
             self.current_items = _data['recommendations']
             return
         if self.section == 'stats':
+            self.splitter.hide()
             self.render_stats(_data['stats'],_data.get('report'),_data.get('history'))
             self.empty.hide()
             return
@@ -1276,10 +1348,12 @@ class MainWindow(QMainWindow):
                 items = [w for w in items if any(f['position'] > 0 and not f['completed'] for f in w['files'])]
             elif self.section == 'home' and self.subtab == 3:
                 items = [w for w in items if w['watchlist']]
+        view_key=json.dumps([self.section,self.subtab,self.effective_filters(),self.actor_min.currentData(),self.actor_sort.currentData(),self.view_mode.currentData()],sort_keys=True,ensure_ascii=False)
+        preserve=view_key==getattr(self,'_rendered_view_key',None);self._rendered_view_key=view_key
         self.current_items = items
-        self.cards.clear()
-        self.display_count = 0
-        self.append_cards()
+        count=min(len(items),max(60,self.display_count) if preserve else 60)
+        update_poster_items(self.cards,[self.card_data(item) for item in items[:count]],preserve)
+        self.display_count=self.cards.count()
         self.subtitle.setText(f"{len(items)} {'位女演员' if actresses else '部作品'}  ·  " + ('个人评分的算术平均 · 未评分不计入' if actresses else '点击查看详情 · 右键快速播放'))
         self.empty.setText('这里还没有内容\n\n拖入真实视频文件夹，或点击“导入文件夹”开始。\n影片发现需先在设置中安装并配置插件。' if not items else '')
         self.empty.setVisible(not items)
@@ -1439,10 +1513,12 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def render_filter_chips(self):
-        clear(self.filter_flow)
         filters=self.effective_filters()
         if 'kinds' not in self.filters:filters.pop('kinds',None)
         tokens=filter_tokens(filters)
+        signature=json.dumps([tokens,self.section=='stats'],ensure_ascii=False,sort_keys=True)
+        if signature==getattr(self,'_filter_chip_signature',None):return
+        self._filter_chip_signature=signature;clear(self.filter_flow)
         for key,value,text in tokens:self.filter_flow.addWidget(chip(text,lambda checked=False,key=key,value=value:self.remove_filter(key,value),True))
         if tokens:self.filter_flow.addWidget(ActionButton('清空筛选','close',self.clear_filters))
         self.filter_chips.setVisible(bool(tokens) and self.section!='stats')
@@ -1525,19 +1601,25 @@ class MainWindow(QMainWindow):
         self.run_job('本地 NFO 图片补充',update,complete)
 
     def import_dialog(self):
-        path = QFileDialog.getExistingDirectory(self, '导入文件夹 · 原文件保留')
-        if path:
-            self.import_path(path)
+        self.import_path()
 
-    def import_path(self, path):
-        default = list(KINDS).index(self.section) if self.section in KINDS else 0
-        title, ok = QInputDialog.getItem(self, '导入媒体', '选择媒体类型', list(KINDS.values()), default, False)
-        if not ok:
-            return
-        kind = next(k for k,v in KINDS.items() if v == title)
+    def import_path(self, path=None):
+        if self._closing:return
+        from .import_ui import ImportDialog
+        dialog=getattr(self,'import_form',None)
+        if dialog is None:dialog=self.import_form=ImportDialog(self)
+        if path:dialog.path.setText(str(path))
+        if not dialog.isVisible():
+            dialog.kind.setCurrentIndex(max(0,dialog.kind.findData(self.section if self.section in KINDS else 'movie')))
+            dialog.show()
+        if dialog.browser is not None and dialog.browser.isVisible():dialog.browser.raise_();dialog.browser.activateWindow();return
+        dialog.raise_();dialog.activateWindow()
+
+    def start_import(self,path,kind):
+        origin=(self.section,self.subtab)
         def complete(result):
             self.status.setText(f"导入 {result['imported']} · NFO 更新 {result.get('nfo_updated',0)} · 重复 {result['duplicates']} · 失败 {len(result['errors'])} · 警告 {len(result['warnings'])}")
-            self.navigate(kind)
+            if self.detail_page is None and (self.section,self.subtab)==origin and self.section!=kind:self.navigate(kind)
             if kind != 'other':
                 self.auto_scrape_import(path, kind)
         self.run_job('快速导入 · 时长与缺失图片稍后补充', lambda lib, p: lib.import_folder(path, kind, p, fast=True, cancelled=p.cancelled), complete)
@@ -1620,7 +1702,7 @@ class MainWindow(QMainWindow):
             return
         identifier=_identifier or uuid.uuid4().hex
         self._job_functions[identifier]=(title,function,callback,quiet)
-        if len(self._job_functions)>300:self._job_functions.pop(next(iter(self._job_functions)))
+        if len(self._job_functions)>32:self._job_functions.pop(next(iter(self._job_functions)))
         if self.jobs_paused or len(self.jobs)>=self.library.setting('background_concurrency',1):
             if len(self.job_queue)>=100:
                 self.status.setText('后台队列已满，请等待部分任务完成');return
@@ -1631,7 +1713,7 @@ class MainWindow(QMainWindow):
         if not quiet:self.task_journal.record(identifier,'background','running',{'title':title})
         if not quiet:self.status.setText(title + '…')
         self.job_progress.setRange(0, 0)
-        if not quiet:self.job_progress.show()
+        if not quiet:self.job_progress.show();self.job_counter.show();self.job_counter.setText('准备中')
         self.cancel_job.setEnabled(True)
         self.cancel_job.setVisible(not quiet)
         job = Job(self.library.directory, function, self)
@@ -1642,7 +1724,7 @@ class MainWindow(QMainWindow):
         started=time.monotonic();last_saved=[0];last_counter=[started,0]
         def show_progress(done, total, message):
             if job not in self.jobs:return
-            self.job_progress.show();self.cancel_job.show()
+            self.job_progress.show();self.job_counter.show();self.cancel_job.show()
             if total>2147483647:
                 self.job_progress.setRange(0,10000)
                 self.job_progress.setValue(min(10000,int(done*10000//total)))
@@ -1651,6 +1733,7 @@ class MainWindow(QMainWindow):
                 self.job_progress.setRange(0,total)
                 self.job_progress.setValue(done if total else 0)
                 self.job_progress.setFormat('%v / %m · %p%')
+            self.job_counter.setText(f'{done} / {total}' if total else '扫描中')
             self.status.setText(title + ' · ' + message)
             if not quiet and time.monotonic()-last_saved[0]>=1:
                 current=time.monotonic();elapsed=max(.001,current-last_counter[0]);speed=max(0,done-last_counter[1])/elapsed;last_counter[:]=[current,done]
@@ -1666,10 +1749,9 @@ class MainWindow(QMainWindow):
         job.done.connect(lambda value: outcome.update(value=value))
         job.failed.connect(lambda error: outcome.update(error=error))
         def finished():
-            self.job_progress.hide()
-            self.cancel_job.hide()
             self.jobs.remove(job)
             self.job_progress.setVisible(bool(self.jobs));self.cancel_job.setVisible(bool(self.jobs))
+            self.job_counter.setVisible(bool(self.jobs))
             job.deleteLater()
             if self._closing:
                 if not self.jobs and self._browse_job is None:
@@ -1688,6 +1770,7 @@ class MainWindow(QMainWindow):
             elif isinstance(outcome.get('value'), dict) and outcome['value'].get('cancelled'):
                 self.status.setText('任务已停止，已完成内容保留')
             else:
+                self._job_functions.pop(identifier,None)
                 if not quiet or outcome.get('value',{}).get('imported') or outcome.get('value',{}).get('updated'):self.status.setText(title + '完成')
                 elif outcome.get('value',{}).get('offline'):self.status.setText('监控目录离线，已保留原有媒体资料')
                 if callback:
@@ -1997,6 +2080,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._closing = True
+        if getattr(self,'import_form',None):self.import_form.reject()
         self.watch_scheduler.stop();self.remote.timer.stop();self.remote.clear()
         for title,function,callback,identifier,quiet in self.job_queue:
             if not quiet:self.task_journal.record(identifier,'background','cancelled',{'title':title},error='应用关闭，未执行队列任务')
