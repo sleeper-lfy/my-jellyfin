@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int BG=Color.rgb(16,16,16), BLUE=Color.rgb(0,164,220), MUTED=Color.rgb(160,160,160);
+    private final android.os.Handler downloadUpdates=new android.os.Handler(android.os.Looper.getMainLooper());
     private final ExecutorService network=Executors.newFixedThreadPool(4);
     private final LruCache<String,Bitmap> pictures=new LruCache<String,Bitmap>(24*1024) {
         @Override protected int sizeOf(String key,Bitmap image){return image.getByteCount()/1024;}
@@ -52,7 +53,7 @@ public final class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if(detailId>0) {detailId=0;showLibrary();}else super.onBackPressed();
     }
-    @Override protected void onDestroy() {network.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy() {downloadUpdates.removeCallbacksAndMessages(null);network.shutdownNow();super.onDestroy();}
     private int dp(float value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private TextView text(String value,int size,int color) {
         TextView view=new TextView(this);view.setText(value);view.setTextSize(size);view.setTextColor(color);view.setPadding(0,dp(6),0,dp(6));return view;
@@ -231,7 +232,7 @@ public final class MainActivity extends Activity {
         JSONArray files=work.getJSONArray("files");page.addView(text(work.optString("kind").equals("series")?"季与集":"视频文件",21,Color.WHITE));
         for(int i=0;i<files.length();i++) {
             JSONObject file=files.getJSONObject(i);long id=file.getLong("id");String name=file.optString("name");
-            if(work.optString("kind").equals("series"))name=String.format(java.util.Locale.ROOT,"S%02d E%02d  ·  ",file.optInt("season"),file.optInt("episode"))+name;
+            if(work.optString("kind").equals("series")&&!file.isNull("season")&&!file.isNull("episode"))name=String.format(java.util.Locale.ROOT,"S%02d E%02d  ·  ",file.optInt("season"),file.optInt("episode"))+name;
             page.addView(button(name+"  ·  "+(int)(file.optDouble("duration")/60)+" 分钟",()->startPlayer(id,false)));
             if(!file.optString("overview").isEmpty())page.addView(text(file.optString("overview"),14,MUTED));
             JSONArray episodeStills=file.optJSONArray("stills");
@@ -257,14 +258,35 @@ public final class MainActivity extends Activity {
             gallery.addView(images);page.addView(gallery);page.addView(expanded,new LinearLayout.LayoutParams(-1,dp(300)));
         }
         JSONArray downloads=work.optJSONArray("download_url");
-        if(downloads!=null&&downloads.length()>0)page.addView(text("下载资源",21,Color.WHITE));
-        if(downloads!=null)for(int i=0;i<downloads.length();i++){
-            JSONObject entry=downloads.optJSONObject(i);if(entry==null)continue;String url=entry.optString("url");
-            page.addView(button(entry.optString("description","下载"),()->{
-                try{if(url.startsWith("https://")||url.startsWith("http://"))DirectDownload.start(this,url);
-                    else startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}
-                catch(android.content.ActivityNotFoundException error){Toast.makeText(this,"请安装支持该链接的下载器",Toast.LENGTH_LONG).show();}
+        if(downloads!=null&&downloads.length()>0){
+            page.addView(text("下载资源",21,Color.WHITE));
+            TextView directory=text("保存到电脑："+work.optString("download_directory","分类默认目录"),13,MUTED);page.addView(directory);
+            page.addView(button("更改本片在电脑上的下载目录",()->{
+                EditText input=new EditText(this);input.setSingleLine(true);input.setText(work.optString("download_directory"));
+                new AlertDialog.Builder(this).setTitle("电脑端保存目录").setMessage("填写电脑上的完整路径；留空恢复分类默认目录。").setView(input)
+                    .setPositiveButton("保存",(dialog,which)->request(()->api.post("/api/works/"+work.optLong("id")+"/download-directory",new JSONObject().put("directory",input.getText().toString().trim())),result->{
+                        work.put("download_directory",result.getString("directory"));directory.setText("保存到电脑："+result.getString("directory"));
+                    })).setNegativeButton("取消",null).show();
             }));
+            TextView status=text("HTTP 下载完成后自动加入当前影视资料；磁力由电脑端配置的外部下载器处理。",13,MUTED);page.addView(status);
+            for(int i=0;i<downloads.length();i++){
+                JSONObject entry=downloads.optJSONObject(i);if(entry==null)continue;final int index=i;
+                page.addView(button(entry.optString("description","下载"),()->request(
+                    ()->api.post("/api/works/"+work.optLong("id")+"/downloads",new JSONObject().put("index",index)),result->{
+                        String task=result.getString("task_id");status.setText("已加入电脑端下载队列…");
+                        getSharedPreferences("download-tasks",0).edit().putString(Long.toString(work.optLong("id")),task).apply();
+                        pollDownload(task,work.optLong("id"),status,generation);
+                    })));
+            }
+            page.addView(button("外部下载完成，检查文件并入库",()->request(
+                ()->api.post("/api/works/"+work.optLong("id")+"/import-downloads",new JSONObject().put("check",true)),result->{
+                    String taskId=result.getString("task_id");
+                    getSharedPreferences("download-tasks",0).edit().putString(Long.toString(work.optLong("id")),taskId).apply();
+                    pollDownload(taskId,work.optLong("id"),status,generation);
+                })));
+
+            String task=getSharedPreferences("download-tasks",0).getString(Long.toString(work.optLong("id")),"");
+            if(!task.isEmpty())pollDownload(task,work.optLong("id"),status,generation);
         }
         JSONArray sources=work.optJSONArray("sources");
         if(sources!=null&&sources.length()>0)page.addView(text("信息来源",21,Color.WHITE));
@@ -272,6 +294,24 @@ public final class MainActivity extends Activity {
             JSONObject source=sources.getJSONObject(i);String url=source.optString("url");
             page.addView(button(source.optString("site")+"  ↗",()->{PrivateBrowserActivity.open(this,url);}));
         }
+    }
+    private void pollDownload(String task,long workId,TextView status,int ticket){
+        if(isDestroyed()||generation!=ticket||detailId!=workId)return;
+        request(()->api.get("/api/downloads/"+task),state->{
+            String phase=state.optString("status");JSONObject payload=state.optJSONObject("payload"),result=state.optJSONObject("result");
+            if(phase.equals("done")){
+                getSharedPreferences("download-tasks",0).edit().remove(Long.toString(workId)).apply();
+                JSONArray errors=result==null?null:result.optJSONArray("errors");
+                message(errors!=null&&errors.length()>0?"检查完成，部分文件尚未入库，请确认下载器已完成下载":"下载文件已加入影视库");openDetail(workId);return;
+            }
+            if(phase.equals("external")){
+                String directory=result==null?"":result.optString("directory");
+                status.setText("已交给电脑端下载器，目录："+directory+(result!=null&&!result.optBoolean("directory_sent")?"\n"+result.optString("message"):"")+"\n外部下载完成后，点击下方检查入库。");return;
+            }
+            if(phase.equals("failed")||phase.equals("partial")||phase.equals("cancelled")){status.setText("下载未完成："+state.optString("error","请检查电脑端任务"));return;}
+            status.setText(phase.equals("queued")?"等待电脑端下载…":phase.equals("importing")?"视频已保存，正在补充影视资料…":payload==null?"电脑端正在下载…":payload.optString("message","电脑端正在下载…"));
+            downloadUpdates.postDelayed(()->pollDownload(task,workId,status,ticket),1000);
+        });
     }
     private void personal(String field,Object value) {
         long id=detailId;

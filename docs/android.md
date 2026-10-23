@@ -54,6 +54,10 @@ Windows 使用 `gradlew.bat`。输出 `android/app/build/outputs/apk/debug/app-d
 | GET `/api/recommendations` | 推荐列表 |
 | GET `/api/stats` | 共用观看统计 |
 | POST `/api/works/{id}/personal` | rating、favorite、watchlist、disliked |
+| POST `/api/works/{id}/downloads` | 按资源下标在电脑排队下载，完成后自动关联影视信息 |
+| POST `/api/works/{id}/download-directory` | 保存该作品的电脑下载目录；留空恢复分类默认 |
+| GET `/api/downloads/{task_id}` | 电脑端下载 / 入库进度 |
+| POST `/api/works/{id}/import-downloads` | 检查已完成的外部下载并关联当前影视信息 |
 | POST `/api/queue` | 对全部筛选结果洗牌，电视剧作为整体 |
 | POST `/api/playback/start` | file_id，返回 session_id |
 | POST `/api/playback/{id}/tick` | seq、position、playing、seeking、rate |
@@ -79,4 +83,4 @@ python -m lumen --serve --data-dir /path/to/Lumen --port 8097
 
 ## 无痕打开网页
 
-Android 0.4.1 的信息来源链接默认进入应用内无痕浏览页；关闭后清理 WebView 的缓存与页面历史，不启用 Cookie、DOM 存储、网页数据库或表单保存，也不把链接交给普通浏览器窗口。部分需要 Cookie／登录的网站可能无法正常使用。HTTP／HTTPS 下载链接由系统下载器处理；Android 10+ 保存到公共 Download 目录，Android 8/9 保存到应用外部下载目录，可从完成通知打开。磁力链接继续交给系统关联的下载器。
+Android 0.4.1 的信息来源链接默认进入应用内无痕浏览页；关闭后清理 WebView 的缓存与页面历史，不启用 Cookie、DOM 存储、网页数据库或表单保存，也不把链接交给普通浏览器窗口。部分需要 Cookie／登录的网站可能无法正常使用。当前源码的下载资源按钮交给电脑服务端处理，使用电脑上的分类默认目录；HTTP 完成后自动加入当前影视库。磁力由电脑端配置的外部下载器处理，完成后可在手机点击检查入库。详见 [下载与影视入库](downloads.md)。

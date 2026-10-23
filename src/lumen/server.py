@@ -90,10 +90,13 @@ class LanServer:
         self.thread = None
         self.discovery = None
         self.discovery_port = discovery_port
+        self.downloads = None
 
     def start(self):
         if self.http:
             return
+        from .downloads import DownloadQueue
+        self.downloads = DownloadQueue(self.directory)
         service = self
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -155,6 +158,11 @@ class LanServer:
                                 items = [item for item in library.recommendations() if item['id'] in selected]
                             offset = max(0,int(query.get('offset',['0'])[0])); limit=max(1,min(100,int(query.get('limit',['40'])[0])))
                             return self.send_json(200,{'total':len(items),'items':[public_work(w) for w in items[offset:offset+limit]],'offset':offset,'limit':limit})
+                        match = re.fullmatch(r'/api/downloads/([a-f0-9]{32})',path)
+                        if match:
+                            row=library.db.execute('SELECT * FROM tasks WHERE id=? AND kind=?',(match[1],'download-library')).fetchone()
+                            if not row: raise ApiError(404,'下载任务不存在')
+                            return self.send_json(200,{key:json.loads(row[key]) if key in {'payload','result'} else row[key] for key in row.keys()})
                         if path == '/api/stats':
                             return self.send_json(200,library.stats())
                         match = re.fullmatch(r'/api/works/(\d+)/stills/(\d+)',path)
@@ -175,6 +183,9 @@ class LanServer:
                                 return self.send_file(target,'image/jpeg')
                             result=public_work(work,True)
                             result['resume_file_id']=library.resume_file(work['id'])['id'] if work['files'] else None
+                            if work['kind'] in {'movie','series','vr'}:
+                                from .downloads import download_folder
+                                result['download_directory']=str(download_folder(library,work['id']))
                             return self.send_json(200,result)
                         match = re.fullmatch(r'/api/files/(\d+)/stills/(\d+)',path)
                         if match:
@@ -197,6 +208,16 @@ class LanServer:
                                 return self.send_file(subtitles[index],types[subtitles[index].suffix.lower()])
                             return self.send_json(200,{'items':[{'name':p.name,'mime':types[p.suffix.lower()],'url':f'/api/files/{file["id"]}/subtitles/{i}'} for i,p in enumerate(subtitles)]})
                     else:
+                        match=re.fullmatch(r'/api/works/(\d+)/(downloads|download-directory|import-downloads)',path)
+                        if match:
+                            work_id=int(match[1]);library.work(work_id)
+                            if match[2]=='download-directory':
+                                from .downloads import set_download_folder
+                                directory=body.get('directory','')
+                                if not isinstance(directory,str): raise ApiError(400,'目录须为文本')
+                                return self.send_json(200,{'directory':set_download_folder(library,work_id,directory)})
+                            task_id=service.downloads.submit(work_id,body.get('index'),action='import' if match[2]=='import-downloads' else 'download')
+                            return self.send_json(202,{'task_id':task_id})
                         if path == '/api/queue':
                             filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year'}})
                             ids=[w['id'] for w in library.query(filters)]
@@ -340,6 +361,9 @@ class LanServer:
             return {'ok':True}
 
     def stop(self):
+        if self.downloads:
+            self.downloads.stop()
+            self.downloads = None
         if self.discovery:
             self.discovery.stop()
             self.discovery = None

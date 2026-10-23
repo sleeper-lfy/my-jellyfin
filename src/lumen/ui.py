@@ -385,7 +385,7 @@ class Details(QWidget):
         outer.addLayout(personal)
         self.files = QListWidget()
         for f in w['files']:
-            title = (f"S{f['season']:02} E{f['episode']:02}  ·  " if w['kind'] == 'series' else '') + (f.get('title') or Path(f['path']).name)
+            title = ((f"S{f['season']:02} E{f['episode']:02}  ·  " if f['season'] is not None and f['episode'] is not None else '待补充季集  ·  ') if w['kind'] == 'series' else '') + (f.get('title') or Path(f['path']).name)
             duration_text = f"{f['duration']/60:.1f} 分钟" if f['duration'] > 0 else "时长待补充"
             item = QListWidgetItem(f"{title}   ·   {duration_text}   ·   上次 {f['position']/60:.1f} 分钟")
             item.setToolTip(f['path'])
@@ -440,6 +440,17 @@ class Details(QWidget):
             '剧照尚未缓存，可点击“刷新剧照与下载资源”重试。' if requested else '暂无剧照，可从来源加载详情，或导入本地 NFO / extrafanart。')
         self.resources_heading=label('下载资源','sectionTitle')
         outer.addWidget(self.resources_heading)
+        from .downloads import download_folder
+        self.download_directory_label=label('保存位置：'+str(download_folder(self.library,self.work_id)) if w['kind'] != 'other' else '其他分类不使用插件下载')
+        self.download_directory_label.setWordWrap(True)
+        outer.addWidget(self.download_directory_label)
+        directory_actions=QHBoxLayout()
+        directory_actions.addWidget(button('更改本片下载目录…',self.choose_download_folder))
+        directory_actions.addWidget(button('恢复分类默认目录',self.reset_download_folder))
+        directory_actions.addWidget(button('检查下载文件并入库',self.import_downloads))
+        outer.addLayout(directory_actions)
+        self.download_directory_label.setVisible(w['kind'] != 'other')
+        for index in range(directory_actions.count()):directory_actions.itemAt(index).widget().setVisible(w['kind'] != 'other')
         self.resource_buttons=[]
         for entry in w['metadata'].get('download_url',[]):
             method=entry.get('method',w['metadata'].get('download_method'))
@@ -515,22 +526,51 @@ class Details(QWidget):
         if self.window.details_scroll is not None:
             QTimer.singleShot(0,lambda:self.window.details_scroll.ensureWidgetVisible(self.expanded_still) if self.window.detail_page is self else None)
 
+    def choose_download_folder(self):
+        from .downloads import download_folder,set_download_folder
+        path=QFileDialog.getExistingDirectory(self,'选择此作品的下载目录',str(download_folder(self.library,self.work_id)))
+        if path:
+            directory=set_download_folder(self.library,self.work_id,path)
+            self.download_directory_label.setText('保存位置：'+directory)
+
+    def reset_download_folder(self):
+        from .downloads import set_download_folder
+        self.download_directory_label.setText('保存位置：'+set_download_folder(self.library,self.work_id,''))
+
+    def import_downloads(self):
+        from .downloads import import_download_folder
+        work_id=self.work_id
+        def complete(result):
+            self.window.reload_details(work_id)
+            self.window.status.setText(f"下载入库：新增 {result['imported']} · 已入库 {result['duplicates']} · 待检查 {len(result['errors'])}")
+            if result['errors']:
+                QMessageBox.information(self.window,'部分下载尚未入库','请确认外部下载器已完成下载后重试。\n'+'\n'.join(item['path']+'：'+item['reason'] for item in result['errors'][:5]))
+        self.window.run_job('检查下载文件并入库',lambda lib,p:import_download_folder(lib,work_id,p,p.cancelled),complete)
+
     def start_download(self, entry):
-        from .downloads import download_direct
+        from .downloads import download_to_library,launch_magnet
         work=self.window.library.work(self.work_id)
+        try:index=work['metadata'].get('download_url',[]).index(entry)
+        except ValueError:
+            QMessageBox.information(self,'资源已变化','请刷新详情后重试。');return
         method=entry.get('method',work['metadata'].get('download_method'))
+        work_id=self.work_id
         if method=='magnet':
-            if not QDesktopServices.openUrl(QUrl(entry['url'])):
-                QMessageBox.information(self,'未找到磁力下载器','请先安装迅雷或其他磁力下载器，并关联 magnet 链接。')
-            return
-        from urllib.parse import urlparse,unquote
-        from .files import safe_name
-        name=safe_name(Path(unquote(urlparse(entry['url']).path)).name or work['title']+'.mp4')
-        target,_=QFileDialog.getSaveFileName(self,'保存下载文件',name)
-        if not target:return
-        plugin=work['metadata'].get('download_plugin')
-        self.window.run_job('直接下载',lambda lib,p:download_direct(lib,plugin,entry['url'],target,p,p.cancelled,overwrite=True),
-                            lambda result:self.window.status.setText('下载完成：'+result['path']))
+            def launched(result):
+                message='已交给 '+result['client']+'，保存位置：'+result['directory']
+                if not result['directory_sent']:
+                    QApplication.clipboard().setText(result['directory'])
+                    message+='\n'+result['message']+' 已复制目录路径。'
+                message+='\n外部下载完成后，点击“检查下载文件并入库”。'
+                if self.window.detail_page is not None and self.window.detail_page.work_id==work_id:
+                    self.window.detail_page.gallery_status.setText(message)
+                self.window.status.setText('磁力下载任务已交给外部工具')
+            self.window.run_job('启动磁力下载器',lambda lib,p:launch_magnet(lib,work_id,index),launched)
+        else:
+            def complete(result):
+                self.window.reload_details(work_id)
+                self.window.status.setText('下载完成并已关联影视资料：'+result['path'])
+            self.window.run_job('直接下载并入库',lambda lib,p:download_to_library(lib,work_id,index,p,p.cancelled),complete)
 
     def accept(self):
         if self.window.detail_page is self:
@@ -1354,7 +1394,7 @@ class MainWindow(QMainWindow):
         self.job_progress.setRange(0, 0)
         self.job_progress.show()
         self.cancel_job.setEnabled(True)
-        self.cancel_job.setVisible(title.startswith(('直接下载','快速导入','后台补充','本地 NFO')))
+        self.cancel_job.setVisible(title.startswith(('直接下载','快速导入','后台补充','本地 NFO','检查下载')))
         job = Job(self.library.directory, function, self)
         self.jobs.append(job)
         last_refresh = [time.monotonic()]
@@ -1658,6 +1698,7 @@ class MainWindow(QMainWindow):
         from .settings import Settings
         Settings(self).exec()
         self.refresh()
+        if self.detail_page is not None:self.reload_details(self.detail_page.work_id)
 
     def closeEvent(self, event):
         self._closing = True

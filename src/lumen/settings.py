@@ -87,6 +87,32 @@ class Settings(QDialog):
         partition_layout.addRow(notice)
         partition_layout.addRow(button('保存分区规则', self.save_partitions, True))
         tabs.addTab(partitions, '导入 / 分区规则')
+        downloads = QWidget()
+        download_form = QFormLayout(downloads)
+        from .downloads import default_download_root
+        download_config = self.library.setting('downloads', {})
+        self.download_paths = {}
+        for kind in ['movie','series','vr']:
+            field = QLineEdit(str(default_download_root(self.library,kind)))
+            row = QHBoxLayout();row.addWidget(field)
+            row.addWidget(button('浏览',lambda checked=False,field=field:self.choose_folder(field)))
+            download_form.addRow(KINDS[kind]+'默认目录',row);self.download_paths[kind]=field
+        self.magnet_client=QComboBox()
+        for title,value in [('自动（优先 qBittorrent）','auto'),('qBittorrent（传入保存目录）','qbittorrent'),('系统关联下载器（目录需在下载器选择）','system'),('自定义支持目录参数的下载器','custom')]:self.magnet_client.addItem(title,value)
+        self.magnet_client.setCurrentIndex(max(0,self.magnet_client.findData(download_config.get('magnet_client','auto'))))
+        download_form.addRow('磁力下载工具',self.magnet_client)
+        self.magnet_executable=QLineEdit(download_config.get('magnet_executable',''))
+        self.magnet_executable.setPlaceholderText('留空自动寻找 qBittorrent；自定义工具须指定程序路径')
+        executable_row=QHBoxLayout();executable_row.addWidget(self.magnet_executable)
+        def choose_executable():
+            path,_=QFileDialog.getOpenFileName(self,'选择下载器程序',self.magnet_executable.text())
+            if path:self.magnet_executable.setText(path)
+        executable_row.addWidget(button('选择程序',choose_executable));download_form.addRow('下载器程序',executable_row)
+        self.magnet_arguments=QLineEdit(json.dumps(download_config.get('magnet_arguments',['--save-path={directory}','{url}']),ensure_ascii=False))
+        download_form.addRow('自定义参数（JSON 数组）',self.magnet_arguments)
+        download_notice=label('每部作品保存到所属分类的默认目录下，可在详情中单独更改。HTTP 直链完成后自动入库并保留当前影视资料。\nqBittorrent 可接收保存目录；系统 magnet 通用协议无法保证迅雷等工具的保存位置，需在下载器内选择。外部下载完成后点击详情中的“检查下载文件并入库”。')
+        download_notice.setWordWrap(True);download_form.addRow(download_notice)
+        download_form.addRow(button('保存下载设置',self.save_downloads,True));tabs.addTab(downloads,'下载')
         lan = QWidget()
         lan_form = QFormLayout(lan)
         from .server import ensure_token,local_addresses
@@ -116,7 +142,7 @@ class Settings(QDialog):
         refresh_addresses()
         self.lan_port.valueChanged.connect(refresh_addresses)
         lan_form.addRow('电脑地址', addresses)
-        explanation = label('手机与电脑连接同一局域网，在 Android 客户端输入电脑地址和访问密钥。\n如 Windows 防火墙提示，请仅允许专用网络。服务仅在程序打开时运行；视频原格式直传，不进行转码。')
+        explanation = label('手机与电脑连接同一局域网，在 Android 客户端发现或输入电脑地址，并填写访问密钥。\n自动发现需要允许专用网络的 UDP 8098，视频连接使用上方 TCP 端口。\n如 Windows 防火墙提示，请仅允许专用网络。服务仅在程序打开时运行；视频原格式直传，不进行转码。')
         explanation.setWordWrap(True)
         lan_form.addRow(explanation)
         def save_lan():
@@ -129,6 +155,20 @@ class Settings(QDialog):
         tabs.addTab(lan,'局域网 / Android')
         outer.addWidget(button('关闭', self.accept))
         self.reload()
+
+    def save_downloads(self):
+        try:
+            values={kind:field.text().strip() for kind,field in self.download_paths.items()}
+            if any(not value or not Path(value).expanduser().is_absolute() for value in values.values()):raise ValueError('请选择完整的默认下载目录')
+            arguments=json.loads(self.magnet_arguments.text())
+            if not isinstance(arguments,list) or any(not isinstance(arg,str) for arg in arguments):raise ValueError('下载器参数须为 JSON 字符串数组')
+            if self.magnet_client.currentData()=='custom' and not self.magnet_executable.text().strip():raise ValueError('请选择自定义下载器程序')
+            if self.magnet_client.currentData()=='custom' and (not any('{url}' in arg for arg in arguments) or not any('{directory}' in arg for arg in arguments)):
+                raise ValueError('自定义参数必须同时包含 {url} 和 {directory}')
+            self.library.set_setting('downloads',{**values,'magnet_client':self.magnet_client.currentData(),
+                'magnet_executable':self.magnet_executable.text().strip(),'magnet_arguments':arguments})
+            QMessageBox.information(self,'下载设置','默认目录和下载器已保存。')
+        except (ValueError,TypeError) as error:QMessageBox.warning(self,'未保存下载设置',str(error))
 
     def choose_folder(self, field):
         path = QFileDialog.getExistingDirectory(self, '选择目标目录')

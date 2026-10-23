@@ -115,3 +115,13 @@ Android `assembleDebug`、`lintDebug` 和 `testDebugUnitTest` 全部成功；5 �
 
 
 本轮界面截图使用独立测试库与示例封面，不包含用户媒体：[PC 筛选下拉输入框](screenshots/next-desktop-filters.png)、[刮削候选封面与标题](screenshots/next-scrape-candidates.png)。
+
+
+## 源码更新：默认下载目录与下载后入库（未打包）
+
+插件字段、剧照缓存和资源展示此前已经实现；补齐了后续下载链路。电影、电视剧和 VR 分别保存默认目录，单片目录覆盖跨次启动保留。HTTP 视频下载完毕直接关联所选作品，保留标题、演员、海报、剧照及个人数据，补充可迁移的 NFO 和本地图片；已有文件不覆盖。qBittorrent 传入 `--save-path`，其他支持目录参数的外部工具可自定义；系统 magnet 模式明确说明目录不能自动传入。外部下载完成后可检查当前作品目录并入库。
+
+Android 通过鉴权后台队列让电脑下载并显示进度，可更改电脑端目录和检查外部下载。源码、功能验证与文档提交，不打包，不发布 Release。使用说明见 [下载与入库](downloads.md)。
+
+
+本轮验证：Python 全量 148 项通过、1 项原生播放环境检查跳过；Android 26 项单元 / 界面测试通过，lint 通过；GitHub Actions 工作流语法检查通过。使用真实 FFmpeg 视频和本地 HTTP 服务验证了电影 / 电视剧直链下载、入库、NFO 与图片保存、进度接口、取消与失败处理、重复保护及目录快照；qBittorrent 以官方命令行定义核对参数并验证了进程参数传递。未执行真实迅雷 / qBittorrent 下载或 Android 真机验收。本轮没有生成新 EXE / APK，没有上传 Release。

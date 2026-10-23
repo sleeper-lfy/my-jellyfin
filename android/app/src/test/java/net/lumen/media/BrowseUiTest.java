@@ -78,4 +78,34 @@ public class BrowseUiTest {
             assertTrue(((String)path.invoke(activity)).endsWith("&tag=&actor=&year="));
         }
     }
+    private View findText(View view,String wanted){
+        if(view instanceof android.widget.TextView&&((android.widget.TextView)view).getText().toString().equals(wanted))return view;
+        if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){
+            View found=findText(((ViewGroup)view).getChildAt(i),wanted);if(found!=null)return found;
+        }
+        return null;
+    }
+    @Test public void downloadClickUsesServerQueueAndSavedDirectoryInsteadOfDownloadingOnPhone()throws Exception{
+        java.util.concurrent.atomic.AtomicReference<RecordedRequest> submitted=new java.util.concurrent.atomic.AtomicReference<>();
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));
+                if(request.getMethod().equals("POST")&&request.getPath().equals("/api/works/42/downloads")){
+                    submitted.set(request);return new MockResponse().setResponseCode(202).setBody("{\"task_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}");
+                }
+                return new MockResponse().setBody("{\"status\":\"running\",\"payload\":{\"message\":\"Downloading on server\"}}");
+            }});server.start();MainActivity activity=lifecycle.get();
+            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Chosen movie\",\"kind\":\"movie\",\"year\":2024,\"file_count\":0,\"files\":[],\"download_directory\":\"D:/Media/Movies/Chosen movie\",\"download_url\":[{\"url\":\"https://example.org/video.mp4\",\"method\":\"direct\",\"description\":\"Download sample\"}]}");
+            Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
+            View root=activity.findViewById(android.R.id.content);
+            assertNotNull(findText(root,"保存到电脑：D:/Media/Movies/Chosen movie"));
+            View download=findText(root,"Download sample");assertNotNull(download);download.performClick();
+            long deadline=System.currentTimeMillis()+6000;
+            while(activity.getSharedPreferences("download-tasks",0).getString("42","").isEmpty()&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
+            assertNotNull(submitted.get());assertEquals("{\"index\":0}",submitted.get().getBody().readUtf8());
+            assertEquals("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",activity.getSharedPreferences("download-tasks",0).getString("42",""));
+        }
+    }
+
 }

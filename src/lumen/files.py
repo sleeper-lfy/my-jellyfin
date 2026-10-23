@@ -22,7 +22,7 @@ def plan_move(library, work_id, destination):
         source = Path(f['path'])
         folder = root / safe_name(work['title'] + (f" ({work['year']})" if work['year'] else ''))
         if work['kind'] == 'series':
-            folder /= f"Season {f['season']:02}"
+            folder /= f"Season {f['season']:02}" if f['season'] is not None else '未分季'
         if work['kind'] == 'other':
             folder = root / Path(f['root']).name / source.relative_to(f['root']).parent
         related = [p for p in source.parent.iterdir() if p.is_file() and p.suffix.lower() in SIDECARS and

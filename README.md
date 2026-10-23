@@ -14,6 +14,8 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 推送只触发源码验证，不打包、不发布 Release。明确请求打包后手动运行工作流并勾选 `package`，需要发布时再勾选 `publish`；Artifacts 只出现在已选择打包且成功的运行中。`target` 和 Releases 中的历史安装包不会随源码提交自动更新。下载 Actions 产物通常需要登录 GitHub。Android 为开发测试签名，云构建与此前本地 APK 的签名可能不同；若覆盖安装提示签名冲突，需卸载旧版后安装并重新填写连接信息。
 
+下载资源的默认目录、HTTP 下载后自动入库及外部磁力工具设置见 [下载与影视入库](docs/downloads.md)。
+
 ## Windows 安装与启动
 
 提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。安装包需等待 Windows 工作流验证成功后发布；以下为源码启动方式。

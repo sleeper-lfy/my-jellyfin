@@ -130,11 +130,11 @@ def tool(name):
     return str(bundled) if bundled.is_file() else shutil.which(name)
 
 
-def probe(path, cancelled=None):
+def probe(path, cancelled=None, *, local_only=False):
     executable = tool('ffprobe')
     if not executable:
         raise RuntimeError('未找到 ffprobe，请在设置说明中配置 FFmpeg PATH')
-    result = media_process([executable, '-v', 'error', '-show_format', '-show_streams', '-of', 'json', str(path)], 45, cancelled)
+    result = media_process([executable, '-v', 'error', *(['-protocol_whitelist','file,pipe,crypto,data'] if local_only else []), '-show_format', '-show_streams', '-of', 'json', str(path)], 45, cancelled)
     info = json.loads(result.stdout)
     if not any(s.get('codec_type') == 'video' for s in info.get('streams', [])):
         raise ValueError('文件不含视频流')

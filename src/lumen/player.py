@@ -392,7 +392,7 @@ class Player(QDialog):
         self.file = file
         work = self.library.work(file['work_id'])
         self.title.setToolTip(work['title'])
-        self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' else ''))
+        self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' and file['season'] is not None and file['episode'] is not None else ''))
         self.rating.setText(rating_text(work))
         self.update_like(work)
         self.show_controls()
