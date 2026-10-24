@@ -148,11 +148,10 @@ class Player(QDialog):
         personal_row=QHBoxLayout()
         self.personal_rating=QPushButton();self.personal_rating.setObjectName('playerRating');self.personal_rating.setAccessibleName('我的评分');self.personal_rating.clicked.connect(self.choose_personal_rating)
         personal_row.addWidget(self.personal_rating)
-        self.like=QPushButton();self.like.setObjectName('playerFavorite');self.like.setCheckable(True);self.like.setAccessibleName('收藏');self.like.clicked.connect(self.toggle_like);personal_row.addWidget(self.like)
-        self.positive=QPushButton();self.positive.setObjectName('playerLiked');self.positive.setCheckable(True);self.positive.setAccessibleName('喜欢');self.positive.clicked.connect(lambda:self.save_personal({'liked':self.positive.isChecked()}));personal_row.addWidget(self.positive)
+        self.like=QPushButton();self.like.setObjectName('playerFavorite');self.like.setCheckable(True);self.like.setAccessibleName('喜欢 / 收藏');self.like.clicked.connect(self.toggle_like);personal_row.addWidget(self.like)
         self.negative=QPushButton();self.negative.setObjectName('playerDisliked');self.negative.setCheckable(True);self.negative.setAccessibleName('不喜欢');self.negative.clicked.connect(lambda:self.save_personal({'disliked':self.negative.isChecked()}));personal_row.addWidget(self.negative)
         personal_row.addStretch();bottom.insertLayout(0,personal_row)
-        for action_button in [self.personal_rating,self.like,self.positive,self.negative]:action_button.setEnabled(False)
+        for action_button in [self.personal_rating,self.like,self.negative]:action_button.setEnabled(False)
         self.mute = control(QStyle.StandardPixmap.SP_MediaVolume, '静音 / 恢复音量', self.toggle_mute)
         volume = self.volume = QSlider(Qt.Orientation.Horizontal)
         volume.setRange(0, 100)
@@ -391,11 +390,11 @@ class Player(QDialog):
 
     def update_like(self, work):
         from .components import icon
-        for control,key,name,color in [(self.like,'favorite','heart','#f4779b'),(self.positive,'liked','check','#65d3ed'),(self.negative,'disliked','ban','#ef8b87')]:
+        for control,key,name,color in [(self.like,'favorite','heart','#f4779b'),(self.negative,'disliked','ban','#ef8b87')]:
             active=bool(work.get(key));control.setChecked(active);control.setEnabled(True)
-            text={'favorite':('已收藏','收藏'),'liked':('已喜欢','喜欢'),'disliked':('不喜欢','不喜欢')}[key][0 if active else 1]
+            text={'favorite':('喜欢／收藏','喜欢／收藏'),'liked':('已喜欢','喜欢'),'disliked':('不喜欢','不喜欢')}[key][0 if active else 1]
             control.setText(text);control.setIcon(icon(name,color if active else '#dddddd',active and name=='heart'))
-            control.setToolTip(('取消' if active else '确认')+{'favorite':'收藏','liked':'喜欢','disliked':'不喜欢'}[key]);control.setStyleSheet('color: '+(color if active else '#eeeeee'))
+            control.setToolTip(('取消' if active else '确认')+{'favorite':'喜欢 / 收藏','liked':'喜欢','disliked':'不喜欢'}[key]);control.setStyleSheet('color: '+(color if active else '#eeeeee'))
         self.personal_rating.setEnabled(True);self.personal_rating.setText(f"我的 {work['rating']} 分" if work.get('rating') is not None else '评分')
         self.personal_rating.setIcon(icon('star','#e7c567',work.get('rating') is not None))
         source=next((s for s in work.get('sources',[]) if s.get('rating') is not None),None)
@@ -441,7 +440,7 @@ class Player(QDialog):
         self.finish()
         if not Path(file['path']).is_file():
             self.file=None
-            for action_button in [self.personal_rating,self.like,self.positive,self.negative]:action_button.setEnabled(False)
+            for action_button in [self.personal_rating,self.like,self.negative]:action_button.setEnabled(False)
             self.title.setText('视频文件离线');self.caption.clear();self.caption.hide()
             self.set_error('文件不存在，请检查磁盘或重新导入：' + file['path'])
             self.show()

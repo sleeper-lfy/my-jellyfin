@@ -184,7 +184,7 @@ def test_playback_personal_api_returns_canonical_exclusive_flags(lan,library):
     client,_,_,_=lan;work=library.query()[0]['id'];path=f'/api/works/{work}/personal'
     assert client.post(path,json={'favorite':True,'liked':True,'rating':10}).json()['personal']['liked']==1
     state=client.post(path,json={'disliked':True}).json()['personal']
-    assert state['disliked']==1 and state['liked']==0 and state['favorite']==1 and state['rating']==10
+    assert state['disliked']==1 and state['liked']==0 and state['favorite']==0 and state['rating']==10
     assert client.post(path,json={'liked':True,'disliked':True}).status_code==400
     assert client.post(path,json={'liked':'true'}).status_code==400
     assert client.post(path,json={'rating':None}).json()['personal']['rating'] is None

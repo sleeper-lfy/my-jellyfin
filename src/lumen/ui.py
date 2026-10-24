@@ -524,7 +524,6 @@ class Details(QWidget):
         self.management_menu.addAction('加入播放队列',lambda:window.library.edit_queue([*window.library.setting('queue',{'ids':[]})['ids'],work_id]))
         self.management_menu.addAction('仅移出媒体库…',lambda:window.remove_catalog_work(work_id))
         if w['kind']!='other':self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
-        self.liked_action=self.management_menu.addAction('喜欢');self.liked_action.setCheckable(True);self.liked_action.setChecked(bool(w.get('liked')));self.liked_action.triggered.connect(lambda value:self.personal(liked=value))
         self.dislike_action=self.management_menu.addAction(icon('ban'),'不感兴趣');self.dislike_action.setCheckable(True);self.dislike_action.setChecked(bool(w['disliked']));self.dislike_action.triggered.connect(lambda value:self.personal(disliked=value))
         more.setMenu(self.management_menu);actions.addWidget(more);actions.addStretch();info.addLayout(actions)
         def links(values,field):
@@ -838,7 +837,7 @@ class Details(QWidget):
         self.favorite_action.setChecked(bool(self.work['favorite']));self.favorite_action.setText('已收藏' if self.work['favorite'] else '收藏')
         self.watchlist_action.setChecked(bool(self.work['watchlist']));self.watchlist_action.setText('已想看' if self.work['watchlist'] else '想看')
         self.rating_action.setText(f"{self.work['rating']} 分" if self.work['rating'] else '评分')
-        self.liked_action.setChecked(bool(self.work.get('liked')));self.dislike_action.setChecked(bool(self.work['disliked']))
+        self.dislike_action.setChecked(bool(self.work['disliked']))
 
     def personal(self, **fields):
         try:self.library.update_personal(self.work_id,**fields)

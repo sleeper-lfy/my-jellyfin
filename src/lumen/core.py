@@ -209,6 +209,10 @@ class Library(CatalogActions):
         ''')
         if 'liked' not in {row['name'] for row in self.db.execute('PRAGMA table_info(works)')}:
             self.db.execute('ALTER TABLE works ADD COLUMN liked INTEGER NOT NULL DEFAULT 0 CHECK(liked IN (0,1))')
+        if not self.setting('personal_unified_v1',False):
+            with self.db:
+                self.db.execute('UPDATE works SET favorite=CASE WHEN disliked THEN 0 ELSE MAX(favorite,liked) END,liked=CASE WHEN disliked THEN 0 ELSE MAX(favorite,liked) END')
+                self.db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',('personal_unified_v1','true'))
         self.db.commit()
 
     def close(self):
@@ -228,6 +232,7 @@ class Library(CatalogActions):
             raise ValueError('媒体不存在')
         item = dict(row)
         item['metadata'] = actor_defaults(json.loads(item['metadata']), item['kind'])
+        item['liked'] = item['favorite']
         item['locked'] = json.loads(item['locked'])
         item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
         for file in item['files']:
@@ -243,10 +248,14 @@ class Library(CatalogActions):
             raise ValueError('无效个人字段')
         if 'rating' in fields and fields['rating'] is not None and (type(fields['rating']) is not int or not 1 <= fields['rating'] <= 10):
             raise ValueError('个人评分须为 1–10 整数或空')
-        if 'liked' in fields and type(fields['liked']) is not bool:raise ValueError('喜欢标记须为布尔值')
-        if fields.get('liked') and fields.get('disliked'):raise ValueError('喜欢与不喜欢不能同时选择')
-        if fields.get('liked'):fields['disliked']=False
-        elif fields.get('disliked'):fields['liked']=False
+        if 'liked' in fields:
+            if type(fields['liked']) is not bool:raise ValueError('喜欢标记须为布尔值')
+            if 'favorite' in fields and bool(fields['favorite'])!=fields['liked']:raise ValueError('喜欢与收藏是同一状态')
+            fields['favorite']=fields['liked']
+        if fields.get('favorite') and fields.get('disliked'):raise ValueError('喜欢 / 收藏与不喜欢不能同时选择')
+        if 'favorite' in fields:fields['liked']=bool(fields['favorite'])
+        if fields.get('favorite'):fields['disliked']=False
+        elif fields.get('disliked'):fields.update(favorite=False,liked=False)
         with self.db:
             self.db.execute('UPDATE works SET ' + ','.join(f'{key}=?' for key in fields) + ' WHERE id=?', (*fields.values(), work_id))
 
@@ -268,9 +277,9 @@ class Library(CatalogActions):
             self.db.execute('UPDATE sources SET work_id=? WHERE work_id=?', (target_id, source_id))
             self.db.execute('UPDATE works SET metadata=?,rating=?,favorite=?,watchlist=?,disliked=?,liked=?,discovered=?,thumbnail=? WHERE id=?',
                 (json.dumps(merged, ensure_ascii=False), target['rating'] if target['rating'] is not None else source['rating'],
-                 max(target['favorite'],source['favorite']),max(target['watchlist'],source['watchlist']),
-                 (target if target['liked'] or target['disliked'] else source)['disliked'],
-                 (target if target['liked'] or target['disliked'] else source)['liked'],
+                 (target if target['favorite'] or target['disliked'] else source)['favorite'],max(target['watchlist'],source['watchlist']),
+                 (target if target['favorite'] or target['disliked'] else source)['disliked'],
+                 (target if target['favorite'] or target['disliked'] else source)['favorite'],
                  min([d for d in [target['discovered'],source['discovered']] if d] or [None]),target['thumbnail'] or source['thumbnail'],target_id))
             self.db.execute('UPDATE name_keys SET work_id=? WHERE work_id=?', (target_id,source_id))
             self.db.execute('UPDATE external_ids SET work_id=? WHERE work_id=?', (target_id,source_id))
@@ -609,6 +618,7 @@ class Library(CatalogActions):
         for row in rows:
             item = dict(row)
             item['metadata'] = actor_defaults(json.loads(item['metadata']), item['kind'])
+            item['liked'] = item['favorite']
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
             for file in item['files']:
@@ -721,7 +731,7 @@ class Library(CatalogActions):
         weights = Counter()
         for w in all_items:
             rating = (w['rating'] - 5.5) * 3 if w['rating'] is not None else 0
-            strength = rating + w.get('liked',0) * 6 + w['favorite'] * 4 + w['watchlist'] * 2 - w['disliked'] * 20 + min(w['watched'] / 3600, 1)
+            strength = rating + w['favorite'] * 4 + w['watchlist'] * 2 - w['disliked'] * 20 + min(w['watched'] / 3600, 1)
             features = ['标签:' + t for t in w['metadata'].get('tags', [])]
             features += ['演员:' + a['name'] for a in w['metadata'].get('actors', []) if a.get('gender') == 'female']
             for feature in set(features):

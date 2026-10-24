@@ -62,7 +62,8 @@ class CatalogActions:
             for w in works:
                 if action in {'favorite','watchlist'}:
                     if type(value) is not bool:raise ValueError('标记须为布尔值')
-                    self.db.execute(f'UPDATE works SET {action}=? WHERE id=?',(value,w['id']))
+                    if action=='favorite':self.db.execute('UPDATE works SET favorite=?,liked=?,disliked=CASE WHEN ? THEN 0 ELSE disliked END WHERE id=?',(value,value,value,w['id']))
+                    else:self.db.execute('UPDATE works SET watchlist=? WHERE id=?',(value,w['id']))
                 elif action=='tags':
                     metadata=w['metadata'];metadata['tags']=list(dict.fromkeys([*metadata.get('tags',[]),*value]))
                     self.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata,ensure_ascii=False),w['id']))

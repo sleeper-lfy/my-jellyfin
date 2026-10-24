@@ -20,7 +20,8 @@ def restore_database(library, path):
         migrate_liked=actual.get('works')==legacy_works and legacy_works!=expected['works']
         if set(actual)-set(expected) or missing-{'bookmarks','playback_preferences'} or any(actual[name]!=expected[name] and not (name=='works' and migrate_liked) for name in actual):
             raise ValueError('备份格式或版本不兼容')
-        if missing or migrate_liked:
+        migrate_unified=not source.execute("SELECT 1 FROM settings WHERE key='personal_unified_v1'").fetchone()
+        if missing or migrate_liked or migrate_unified:
             # Migrate a copy; a user's original backup always remains unchanged.
             staging=tempfile.TemporaryDirectory(prefix='lumen-restore-')
             staged=Path(staging.name)/'library.sqlite'

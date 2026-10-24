@@ -59,7 +59,7 @@ public final class PlayerActivity extends Activity {
     private SeekBar seek;
     private TextView time;
     private Button pause,previousVideo,nextVideo;
-    private Button personalRating,personalFavorite,personalLiked,personalDisliked;
+    private Button personalRating,personalFavorite,personalDisliked;
     private boolean personalDialogOpen=false;
     private final java.util.Set<Long> personalPending=new java.util.HashSet<>();
     private boolean navigationPending=false;
@@ -163,8 +163,8 @@ public final class PlayerActivity extends Activity {
         bottomBar=new LinearLayout(this);bottomBar.setOrientation(LinearLayout.VERTICAL);bottomBar.setBackground(shade(false));
         LinearLayout personal=new LinearLayout(this);
         personalRating=button("评分",this::choosePersonalRating);personalRating.setContentDescription("我的评分");
-        personalFavorite=button("收藏",()->togglePersonal("favorite"));personalLiked=button("喜欢",()->togglePersonal("liked"));personalDisliked=button("不喜欢",()->togglePersonal("disliked"));
-        for(Button action:new Button[]{personalRating,personalFavorite,personalLiked,personalDisliked}){action.setTextSize(12);action.setPadding(dp(4),0,dp(4),0);action.setMinWidth(0);action.setMinimumWidth(0);action.setCompoundDrawablePadding(dp(2));action.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->centerPersonalAction(action));personal.addView(action,new LinearLayout.LayoutParams(0,dp(48),1));}bottomBar.addView(personal);refreshPersonal();
+        personalFavorite=button("喜欢／收藏",()->togglePersonal("favorite"));personalDisliked=button("不喜欢",()->togglePersonal("disliked"));
+        for(Button action:new Button[]{personalRating,personalFavorite,personalDisliked}){action.setTextSize(12);action.setPadding(dp(4),0,dp(4),0);action.setMinWidth(0);action.setMinimumWidth(0);action.setCompoundDrawablePadding(dp(2));action.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->centerPersonalAction(action));personal.addView(action,new LinearLayout.LayoutParams(0,dp(48),1));}bottomBar.addView(personal);refreshPersonal();
         status=label("正在连接视频…",12);status.setMaxLines(1);status.setEllipsize(TextUtils.TruncateAt.END);bottomBar.addView(status);
         time=label("0:00:00 / 0:00:00",12);bottomBar.addView(time);
         seek=new SeekBar(this);seek.setMax(10000);seek.setContentDescription("播放进度");
@@ -269,15 +269,14 @@ public final class PlayerActivity extends Activity {
         if(personalRating==null)return;
         boolean available=work!=null&&file!=null;
         boolean enabled=available&&!personalPending.contains(work.optLong("id"));
-        for(Button control:new Button[]{personalRating,personalFavorite,personalLiked,personalDisliked})control.setEnabled(enabled);
+        for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked})control.setEnabled(enabled);
         if(!available)return;
         personalRating.setText(work.isNull("rating")?"评分":work.optInt("rating")+" 分");MediaStyle.icon(personalRating,"star",!work.isNull("rating"));
-        personalFavorite.setText(work.optInt("favorite")==1?"已收藏":"收藏");MediaStyle.icon(personalFavorite,"heart",work.optInt("favorite")==1);
-        personalLiked.setText(work.optInt("liked")==1?"已喜欢":"喜欢");MediaStyle.icon(personalLiked,"check",work.optInt("liked")==1);
+        personalFavorite.setText("喜欢／收藏");MediaStyle.icon(personalFavorite,"heart",work.optInt("favorite")==1);
         personalDisliked.setText("不喜欢");MediaStyle.icon(personalDisliked,"ban",work.optInt("disliked")==1);
-        for(Button control:new Button[]{personalRating,personalFavorite,personalLiked,personalDisliked}){control.setCompoundDrawablePadding(dp(2));centerPersonalAction(control);}
-        personalFavorite.setSelected(work.optInt("favorite")==1);personalLiked.setSelected(work.optInt("liked")==1);personalDisliked.setSelected(work.optInt("disliked")==1);
-        personalFavorite.setContentDescription(work.optInt("favorite")==1?"取消收藏":"收藏");personalLiked.setContentDescription(work.optInt("liked")==1?"取消喜欢":"喜欢");personalDisliked.setContentDescription(work.optInt("disliked")==1?"取消不喜欢":"不喜欢");
+        for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked}){control.setCompoundDrawablePadding(dp(2));centerPersonalAction(control);}
+        personalFavorite.setSelected(work.optInt("favorite")==1);personalDisliked.setSelected(work.optInt("disliked")==1);
+        personalFavorite.setContentDescription(work.optInt("favorite")==1?"取消喜欢 / 收藏":"喜欢 / 收藏");personalDisliked.setContentDescription(work.optInt("disliked")==1?"取消不喜欢":"不喜欢");
     }
     private void togglePersonal(String field){
         if(work==null||file==null)return;
