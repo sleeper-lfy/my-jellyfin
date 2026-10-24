@@ -13,7 +13,7 @@ INPUTS=['src','android','assets','plugins','installer','requirements.lock','pypr
         'scripts/launcher.py','scripts/verify-package.py','scripts/verify-installer-windows.ps1']
 
 
-def validate(request,package,windows,android,run,version):
+def validate(request,package,windows,android,run,version,jobs=None):
     assert request['publish'] is True and request['tag']=='v'+version
     source=request['build_source_commit']
     assert len(source)==40 and all(c in '0123456789abcdef' for c in source)
@@ -21,7 +21,11 @@ def validate(request,package,windows,android,run,version):
     assert package['source_commit']==windows['source_commit']==android['source_commit']==source
     assert package['windows']==package['delivery']=='success'
     assert package['tests']['failures']==package['tests']['errors']==package['tests']['skipped']==0
-    assert run['head_sha']==package['workflow_commit'] and run['conclusion']=='success'
+    assert run['head_sha']==package['workflow_commit']
+    if run['conclusion']!='success':
+        assert run['conclusion']=='failure' and package.get('recovery',{}).get('original_run_id')==request['package_run_id']
+        assert any(job['name']=='windows' and job['conclusion']=='success' for job in (jobs or []))
+        assert any(job['name']=='deliver' and job['conclusion']=='failure' for job in (jobs or []))
     assert run['path'].split('@')[0]=='.github/workflows/package-current.yml'
     assert package['run_url'].endswith('/'+str(request['package_run_id']))
     return source
@@ -36,7 +40,8 @@ def main():
     package=json.loads((root/'target/package-status.json').read_text());windows=json.loads((root/'target/windows-installer.json').read_text());android=json.loads((root/'target/android-build.json').read_text())
     version=tomllib.loads((root/'pyproject.toml').read_text())['project']['version'];repository=os.environ['GH_REPO'];head=os.environ['GITHUB_SHA'];tag=request['tag'];run_id=int(request['package_run_id'])
     run=json.loads(gh('api',f'repos/{repository}/actions/runs/{run_id}'))
-    source=validate(request,package,windows,android,run,version)
+    jobs=json.loads(gh('api',f'repos/{repository}/actions/runs/{run_id}/jobs'))['jobs']
+    source=validate(request,package,windows,android,run,version,jobs)
     subprocess.run(['git','fetch','--depth=1','origin',source],check=True)
     subprocess.run(['git','diff','--exit-code',source,'--',*INPUTS],check=True)
     jobs=json.loads(gh('api',f'repos/{repository}/actions/runs/{run_id}/jobs'))['jobs']
