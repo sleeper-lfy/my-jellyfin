@@ -1,3 +1,9 @@
+# 0.4.6 打包构建（不发布 Release）
+
+按明确请求构建 Windows EXE 和 Android APK。新版 APK 已完成构建、54 项测试、lint、签名与版本检查，版本 0.4.6 / versionCode 9，可覆盖安装。Windows 正在验证构建；实际完成状态见 package-status.json 的 version / windows / delivery。本次不发布 Release，下面保留 0.4.5 历史说明，不能据此判断新 EXE 已完成。
+
+[0.4.6 安装包说明](../docs/releases/0.4.6.md)。
+
 # 可下载安装包 · Lumen 0.4.5
 
 [**v0.4.5 Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 已统一发布两端安装包及 SHA-256。
