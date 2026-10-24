@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
     private boolean returned=false;
     private JSONObject detail;
     private LinearLayout browseRoot;
+    private final java.util.Map<Long,JSONObject> browseRecords=new java.util.HashMap<>();
     private String sortField="added",watchFilter="",savedList="";
     private boolean sortDescending=true;
     private final java.util.Map<Long,Integer> browsePositions=new java.util.HashMap<>();
@@ -135,7 +136,7 @@ public final class MainActivity extends Activity {
         });row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(row);
     }
     private void showLibrary() {
-        generation++;browseRoot=null;detailId=0;renderedDetailId=0;detailScroll=null;offset=0;browsePositions.clear();base();header("Lumen",false);
+        generation++;browseRoot=null;detailId=0;renderedDetailId=0;detailScroll=null;offset=0;browsePositions.clear();browseRecords.clear();base();header("Lumen",false);
         LinearLayout searchRow=new LinearLayout(this);searchRow.setPadding(dp(16),0,dp(16),0);
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint("搜索媒体库");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         Runnable applySearch=()->{savedList="";query=search.getText().toString().trim();recommended=false;showLibrary();};
@@ -233,7 +234,7 @@ public final class MainActivity extends Activity {
             int width=(getResources().getDisplayMetrics().widthPixels-dp(32))/columns;
             width=(getResources().getDisplayMetrics().widthPixels-dp(32)-(columns-1)*dp(6))/columns;
             for(int i=0;i<items.length();i++) {
-                JSONObject work=items.getJSONObject(i);long id=work.getLong("id");browsePositions.put(id,offset+i);
+                JSONObject work=items.getJSONObject(i);long id=work.getLong("id");browseRecords.put(id,work);browsePositions.put(id,offset+i);
                 LinearLayout card=new LinearLayout(this);card.setTag("card:"+id);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(3),dp(6),dp(3),dp(12));
                 FrameLayout cover=new FrameLayout(this);cover.setBackground(MediaStyle.surface(this,0xff25252b,0,6));cover.setClipToOutline(true);
                 ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
@@ -403,6 +404,17 @@ public final class MainActivity extends Activity {
         });
     }
     private void returnLibrary(){
+        if(browseRoot!=null&&detail!=null){
+            long id=detail.optLong("id");JSONObject record=browseRecords.get(id);
+            if(record!=null){
+                try{for(String field:new String[]{"favorite","watchlist","rating","watch_state"})record.put(field,detail.opt(field));}catch(Exception ignored){}
+                Button favorite=browseRoot.findViewWithTag("mark:"+id+":favorite");
+                if(favorite!=null){markStyle(favorite,record,"favorite",record.optInt("favorite")==1,true);favorite.setEnabled(true);}
+                if((favorites&&record.optInt("favorite")==0)||(!watchFilter.isEmpty()&&!watchFilter.equals(record.optString("watch_state")))){
+                    View card=browseRoot.findViewWithTag("card:"+id);if(card!=null&&card.getParent() instanceof android.view.ViewGroup){((android.view.ViewGroup)card.getParent()).removeView(card);offset=Math.max(0,offset-1);int position=browsePositions.getOrDefault(id,-1);browsePositions.remove(id);for(Long key:new java.util.ArrayList<>(browsePositions.keySet()))if(browsePositions.get(key)>position)browsePositions.put(key,browsePositions.get(key)-1);}
+                }
+            }
+        }
         detailId=0;renderedDetailId=0;detailScroll=null;generation++;
         if(browseRoot!=null){root=browseRoot;setContentView(root);browseRoot=null;}else showLibrary();
     }

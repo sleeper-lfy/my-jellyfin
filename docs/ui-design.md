@@ -76,3 +76,5 @@ Windows 实机字体 / DPI，以及 Android 厂商系统、输入法、系统栏
 媒体库工具栏提供排序字段、升降序和多选；批量操作针对所选作品，不改变普通点击打开详情的行为。观看状态区分未开始 / 观看中 / 已完成，手动标记与真实统计分离。电视剧详情的季选择只过滤集列表。管理操作明确区分“仅移出媒体库”和“修复路径”，不提供含糊的删除按钮。
 
 PC 全屏剧照保留原比例并支持缩放 / 平移 / 切图；Android 作品和单集图片采用统一全屏图集。队列编辑及连播开关见 [0.4.7](releases/0.4.7.md)。
+
+[按季选集](screenshots/catalog-season-pc.png) · [队列编辑](screenshots/catalog-queue-pc.png)。这两张截图使用隔离示例数据，可通过 `QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/capture-catalog-preview.py` 复现。

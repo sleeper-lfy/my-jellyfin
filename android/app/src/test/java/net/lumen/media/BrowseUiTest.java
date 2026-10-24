@@ -117,10 +117,14 @@ public class BrowseUiTest {
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);assertTrue(((String)path.invoke(activity)).contains("sort=title"));
             assertEquals("title",activity.getSharedPreferences("catalog",0).getString("sort",""));
             Field root=MainActivity.class.getDeclaredField("root");root.setAccessible(true);Object original=root.get(activity);field(activity,"browseRoot",original);field(activity,"offset",60);
+            Field recordsField=MainActivity.class.getDeclaredField("browseRecords");recordsField.setAccessible(true);
+            @SuppressWarnings("unchecked") java.util.Map<Long,org.json.JSONObject> records=(java.util.Map<Long,org.json.JSONObject>)recordsField.get(activity);
+            org.json.JSONObject record=new org.json.JSONObject().put("id",42).put("favorite",0);records.put(42L,record);
             org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Seasons\",\"kind\":\"series\",\"files\":[{\"id\":1,\"name\":\"Episode 1\",\"season\":1,\"episode\":1},{\"id\":2,\"name\":\"Episode 2\",\"season\":2,\"episode\":1}]}");
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
             assertNotNull(findText(activity.findViewById(android.R.id.content),"季与集"));
-            activity.onBackPressed();assertSame(original,root.get(activity));Field offset=MainActivity.class.getDeclaredField("offset");offset.setAccessible(true);assertEquals(60,offset.getInt(activity));
+            work.put("favorite",1);
+            activity.onBackPressed();assertEquals(1,record.optInt("favorite"));assertSame(original,root.get(activity));Field offset=MainActivity.class.getDeclaredField("offset");offset.setAccessible(true);assertEquals(60,offset.getInt(activity));
         }
     }
 

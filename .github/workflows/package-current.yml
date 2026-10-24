@@ -7,7 +7,7 @@ permissions:
   contents: read
 concurrency:
   group: requested-installer-packaging
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
