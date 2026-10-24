@@ -2,7 +2,7 @@
   "version": "0.4.6",
   "version_code": 9,
   "min_sdk": 26,
-  "source_commit": "178a66a127b24aaecbc02857164335035d8c11e1",
+  "source_commit": "37dbbbb7c980baa87e285e5823592770ee28920b",
   "source_sha256": "6bda382e19b8cc09963fcaabfb86079ce189dc586e8e24838404f7bc86998804",
   "bytes": 100866478,
   "sha256": "fbeb045de5eeaa620b18d9df1d11c73913aee27279fb44f305b99ba358614dc8",
