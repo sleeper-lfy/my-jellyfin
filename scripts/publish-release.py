@@ -18,7 +18,8 @@ for archive in (windows, android):
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == checksum.read_text(encoding='utf-8-sig').split()[0].lower(), archive
     assert archive.stat().st_size > 1024 * 1024, archive
 notes = Path('.local/release-notes.md')
-notes.write_text(Path(f'docs/releases/{version}.md').read_text() + f'\n源码提交：`{revision}`\n', encoding='utf-8')
+provenance=f'\n发布标签提交：`{revision}`\n安装包构建源码：`{os.environ["BUILD_SOURCE_COMMIT"]}`（已核对应用及构建输入一致）。\n' if os.environ.get('BUILD_SOURCE_COMMIT') else f'\n源码提交：`{revision}`\n'
+notes.write_text(Path(f'docs/releases/{version}.md').read_text() + provenance, encoding='utf-8')
 assets = [str(p) for archive in (windows, android) for p in (archive, Path(str(archive) + '.sha256'))]
 view = subprocess.run(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish'], capture_output=True, text=True)
 if view.returncode:
