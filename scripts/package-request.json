@@ -1,7 +1,7 @@
 {
-  "version": "0.4.7",
-  "source_commit": "4e17fb742cb7bd095b4235cbcb9b3a34880d0c28",
+  "version": "0.4.8",
+  "source_commit": "7eff01c257ac0ac3a0dba2a34d953543ad6c0827",
   "package": true,
   "publish": false,
-  "request_id": "0.4.7-package-2"
+  "request_id": "0.4.8-package-1"
 }
