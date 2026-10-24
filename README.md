@@ -36,25 +36,25 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 保留导入、全屏、书签与内存优化、Android GitHub 更新、VR 灵敏度 / 平滑 / 反转、目录监控、播放诊断、字幕调节、截图书签、手机播放遥控和后台队列。[媒体工具](docs/media-tools.md) · [稳定性修复与截图](docs/pc-stability-and-updates.md)。
 
-### 后续源码更新（尚未打包）
+### 0.4.6 PC 更新
 
-电视剧改为按文件夹归集，缺少季集编号也可导入；修复任务与诊断窗口的大报告卡顿和点击剧照时的预览闪烁，并新增 PC GitHub 更新检测、后台下载及空闲时自动安装。入口、截图与验证范围见 [本轮 PC 修复](docs/pc-maintenance.md)。现有 0.4.5 Release 不包含这批修改。
+电视剧改为按文件夹归集，缺少季集编号也可导入；修复任务与诊断窗口的大报告卡顿和点击剧照时的预览闪烁，并新增 PC GitHub 更新检测、后台下载及空闲时自动安装。入口、截图与验证范围见 [本轮 PC 修复](docs/pc-maintenance.md)。这批修改已打包到 0.4.6 target / Actions；历史 0.4.5 Release 不包含这些更改。
 
 ## 下载
 
-[**Lumen 0.4.5 · Windows + Android Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 已提供两端安装包和 SHA-256：
+当前 **0.4.6 已打包到 [target](target/README.md)**，本次未发布 Release：
 
-- [Windows x64：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.5/Lumen-Setup-x64.exe)，完整安装包，Windows 10/11 x64。
-- [Android：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.5/Lumen-android-debug.apk)，Android 8.0+，0.4.5 / versionCode 8，与上一版签名一致，可覆盖安装。
-- [target 安装包备份](target/README.md)：完整 APK、Windows 校验分片及合并脚本。源码可通过 **Code → Download ZIP** 获取。
+- Windows 完整 EXE：[打包运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40058565831) → **Artifacts → Lumen-windows-x64**，解压后取 `installer/Lumen-Setup-x64.exe`；下载 Artifacts 通常需要登录 GitHub。
+- [Android 完整 APK](https://raw.githubusercontent.com/sleeper-lfy/my-jellyfin/main/target/Lumen-android-debug.apk)，Android 8.0+，0.4.6 / versionCode 9，与上一版签名一致，可覆盖安装。
+- [target 安装包目录](target/README.md) 保存同一 Windows 安装器的校验分片及合并脚本、完整 APK 和 SHA-256。源码可通过 **Code → Download ZIP** 获取。
 
-[0.4.5 更新说明](docs/releases/0.4.5.md) · [构建与发布验证](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39978714401)。普通推送只触发源码验证；仅明确请求时打包或发布。Android 使用开发测试签名，极早期签名不同的安装包可能无法覆盖安装。
+[0.4.6 安装包说明](docs/releases/0.4.6.md) · [本轮 PC 修复与截图](docs/pc-maintenance.md)。[v0.4.5 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 保留历史安装包。普通推送只触发源码验证；仅明确请求时打包或发布。PC 更新检测读取已发布的稳定 Release，本次 0.4.6 请从 target / Actions 获取。
 
 下载资源的默认目录、HTTP 下载后自动入库及外部磁力工具设置见 [下载与影视入库](docs/downloads.md)。
 
 ## Windows 安装与启动
 
-提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.5 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5)已通过 Windows 构建与安装验证并发布；以下为源码启动方式。
+提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.6 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
 
 需要 Windows 10/11 x64、Python 3.12、FFmpeg 与 FFprobe（两个程序加入 PATH）。可通过已安装的 Winget 获取 Python/FFmpeg，或从各项目官方渠道安装；保持包签名/校验验证。
 
@@ -101,7 +101,7 @@ py -3.12 -m venv .venv
 ./scripts/build-windows.ps1
 ```
 
-Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.5 已通过专用发布流程完成 Windows 安装器验证与双端交付。
+Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.6 已完成 Windows 安装器验证与双端打包交付，本次未发布 Release。
 
 Linux 云开发：
 

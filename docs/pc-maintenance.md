@@ -1,6 +1,6 @@
 # 电视剧目录、任务窗口、PC 更新与剧照修复
 
-本页修改纳入 0.4.6 打包构建；旧 0.4.5 EXE 不包含本页功能。实际交付状态见 [0.4.6 安装包说明](releases/0.4.6.md) 和 target/package-status.json。
+本页修改已打包到 0.4.6 target / Actions，未发布 Release；旧 0.4.5 EXE 不包含本页功能。下载见 [0.4.6 安装包说明](releases/0.4.6.md)，实际结果见 target/package-status.json。
 
 ## 按文件夹导入电视剧
 
