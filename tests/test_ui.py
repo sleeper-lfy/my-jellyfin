@@ -137,7 +137,7 @@ def test_cover_modes_ratings_and_player_like_persist(qapp,tmp_path,video_factory
     window.player.open_file(data['files'][0]);spin(qapp,300)
     QTest.mouseClick(window.player.like,Qt.MouseButton.LeftButton)
     assert window.library.work(data['id'])['favorite']==1
-    assert window.player.like.text()=='♥'
+    assert window.player.like.text()=='已收藏' and window.player.like.isChecked() and not window.player.like.icon().isNull()
     assert window.cards.item(0).data(Qt.ItemDataRole.UserRole)['favorite']==1
     window.player.show_settings();qapp.processEvents()
     assert window.player.track_dialog.isVisible()

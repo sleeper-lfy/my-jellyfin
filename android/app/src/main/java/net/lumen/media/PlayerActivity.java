@@ -59,6 +59,9 @@ public final class PlayerActivity extends Activity {
     private SeekBar seek;
     private TextView time;
     private Button pause,previousVideo,nextVideo;
+    private Button personalRating,personalFavorite,personalLiked,personalDisliked;
+    private boolean personalDialogOpen=false;
+    private final java.util.Set<Long> personalPending=new java.util.HashSet<>();
     private boolean navigationPending=false;
     private int browsePosition=-1;
     private boolean software=false,dragging=false,ready=false,buffering=false;
@@ -121,7 +124,14 @@ public final class PlayerActivity extends Activity {
             new int[]{0xEE000000,0xA0000000,0x00000000});
     }
     private void buildPlayerUi(android.content.SharedPreferences prefs){
-        root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);
+        root=new FrameLayout(this){
+            @Override protected void onMeasure(int widthSpec,int heightSpec){
+                boolean compact=View.MeasureSpec.getSize(heightSpec)<dp(340);
+                if(status!=null)status.setVisibility(compact?View.GONE:View.VISIBLE);
+                if(time!=null)time.setVisibility(compact?View.GONE:View.VISIBLE);
+                super.onMeasure(widthSpec,heightSpec);
+            }
+        };root.setBackgroundColor(Color.BLACK);
         video=new VLCVideoLayout(this);root.addView(video,new FrameLayout.LayoutParams(-1,-1));
         // A normal video surface does not need to receive touches; its sibling wakes the overlay.
         View touch=new View(this);root.addView(touch,new FrameLayout.LayoutParams(-1,-1));touch.setOnClickListener(v->showControls(!controlsVisible));
@@ -151,6 +161,10 @@ public final class PlayerActivity extends Activity {
         topBar.addView(button("设置",this::playbackSettings),new LinearLayout.LayoutParams(dp(64),dp(48)));
         overlay.addView(topBar,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
         bottomBar=new LinearLayout(this);bottomBar.setOrientation(LinearLayout.VERTICAL);bottomBar.setBackground(shade(false));
+        LinearLayout personal=new LinearLayout(this);
+        personalRating=button("评分",this::choosePersonalRating);personalRating.setContentDescription("我的评分");
+        personalFavorite=button("收藏",()->togglePersonal("favorite"));personalLiked=button("喜欢",()->togglePersonal("liked"));personalDisliked=button("不喜欢",()->togglePersonal("disliked"));
+        for(Button action:new Button[]{personalRating,personalFavorite,personalLiked,personalDisliked}){action.setTextSize(12);action.setPadding(dp(4),0,dp(4),0);action.setMinWidth(0);action.setMinimumWidth(0);action.setCompoundDrawablePadding(dp(2));action.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->centerPersonalAction(action));personal.addView(action,new LinearLayout.LayoutParams(0,dp(48),1));}bottomBar.addView(personal);refreshPersonal();
         status=label("正在连接视频…",12);status.setMaxLines(1);status.setEllipsize(TextUtils.TruncateAt.END);bottomBar.addView(status);
         time=label("0:00:00 / 0:00:00",12);bottomBar.addView(time);
         seek=new SeekBar(this);seek.setMax(10000);seek.setContentDescription("播放进度");
@@ -196,8 +210,6 @@ public final class PlayerActivity extends Activity {
             overlay.setPadding(left+dp(8),top+dp(4),right+dp(8),bottom+dp(8));return insets;
         });
         root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
-            boolean compact=(b-t)/getResources().getDisplayMetrics().density<340;
-            status.setVisibility(compact?View.GONE:View.VISIBLE);
             handler.removeCallbacks(refreshSurfaces);handler.post(refreshSurfaces);
         });
         root.requestApplyInsets();
@@ -230,7 +242,7 @@ public final class PlayerActivity extends Activity {
     }
     private void scheduleHide(){
         handler.removeCallbacks(hideControls);
-        if(player!=null&&player.isPlaying()&&!dragging)handler.postDelayed(hideControls,4500);
+        if(!personalDialogOpen&&personalPending.isEmpty()&&player!=null&&player.isPlaying()&&!dragging)handler.postDelayed(hideControls,4500);
     }
     private void showControls(boolean visible){
         controlsVisible=visible;
@@ -247,6 +259,60 @@ public final class PlayerActivity extends Activity {
             (enabled?View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY:0));
         root.requestApplyInsets();
     }
+    private void centerPersonalAction(Button button){
+        android.graphics.drawable.Drawable image=button.getCompoundDrawables()[0];
+        int content=Math.round(button.getPaint().measureText(button.getText().toString()))+(image==null?0:image.getBounds().width()+dp(2));
+        int side=Math.max(dp(4),(button.getWidth()-content)/2);button.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        if(button.getPaddingLeft()!=side||button.getPaddingRight()!=side)button.setPadding(side,0,side,0);
+    }
+    private void refreshPersonal(){
+        if(personalRating==null)return;
+        boolean available=work!=null&&file!=null;
+        boolean enabled=available&&!personalPending.contains(work.optLong("id"));
+        for(Button control:new Button[]{personalRating,personalFavorite,personalLiked,personalDisliked})control.setEnabled(enabled);
+        if(!available)return;
+        personalRating.setText(work.isNull("rating")?"评分":work.optInt("rating")+" 分");MediaStyle.icon(personalRating,"star",!work.isNull("rating"));
+        personalFavorite.setText(work.optInt("favorite")==1?"已收藏":"收藏");MediaStyle.icon(personalFavorite,"heart",work.optInt("favorite")==1);
+        personalLiked.setText(work.optInt("liked")==1?"已喜欢":"喜欢");MediaStyle.icon(personalLiked,"check",work.optInt("liked")==1);
+        personalDisliked.setText("不喜欢");MediaStyle.icon(personalDisliked,"ban",work.optInt("disliked")==1);
+        for(Button control:new Button[]{personalRating,personalFavorite,personalLiked,personalDisliked}){control.setCompoundDrawablePadding(dp(2));centerPersonalAction(control);}
+        personalFavorite.setSelected(work.optInt("favorite")==1);personalLiked.setSelected(work.optInt("liked")==1);personalDisliked.setSelected(work.optInt("disliked")==1);
+        personalFavorite.setContentDescription(work.optInt("favorite")==1?"取消收藏":"收藏");personalLiked.setContentDescription(work.optInt("liked")==1?"取消喜欢":"喜欢");personalDisliked.setContentDescription(work.optInt("disliked")==1?"取消不喜欢":"不喜欢");
+    }
+    private void togglePersonal(String field){
+        if(work==null||file==null)return;
+        try{savePersonal(work,new JSONObject().put(field,work.optInt(field)!=1));}catch(Exception e){error(e);}
+    }
+    private void savePersonal(JSONObject target,JSONObject fields){
+        long id=target.optLong("id");if(personalPending.contains(id))return;
+        personalPending.add(id);refreshPersonal();handler.removeCallbacks(hideControls);
+        Api client=api;
+        network.execute(()->{
+            try{
+                JSONObject response=client.post("/api/works/"+id+"/personal",fields);JSONObject saved=response.optJSONObject("personal");
+                runOnUiThread(()->{
+                    if(isDestroyed())return;
+                    personalPending.remove(id);
+                    try{
+                        if(saved!=null){for(String key:new String[]{"rating","favorite","watchlist","liked","disliked"})target.put(key,saved.opt(key));}
+                        else {java.util.Iterator<String> keys=fields.keys();while(keys.hasNext()){String key=keys.next();Object value=fields.get(key);target.put(key,value instanceof Boolean?((Boolean)value?1:0):value);}if(fields.optBoolean("liked"))target.put("disliked",0);if(fields.optBoolean("disliked"))target.put("liked",0);}
+                        if(work!=null&&work.optLong("id")==id){for(String key:new String[]{"rating","favorite","watchlist","liked","disliked"})work.put(key,target.opt(key));refreshPersonal();}
+                    }catch(Exception ignored){}
+                    Toast.makeText(this,"已保存",Toast.LENGTH_SHORT).show();scheduleHide();
+                });
+            }catch(Exception exception){runOnUiThread(()->{if(isDestroyed())return;personalPending.remove(id);refreshPersonal();Toast.makeText(this,"未保存，请重试："+exception.getMessage(),Toast.LENGTH_LONG).show();scheduleHide();});}
+        });
+    }
+    private void choosePersonalRating(){
+        if(work==null||file==null)return;
+        JSONObject target=work;String[] labels=new String[11];labels[0]="清除评分";for(int i=1;i<=10;i++)labels[i]=i+" 分";
+        personalDialogOpen=true;handler.removeCallbacks(hideControls);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("我的评分 · "+work.optString("title")).setSingleChoiceItems(labels,work.isNull("rating")?0:work.optInt("rating"),(d,index)->{
+            try{savePersonal(target,new JSONObject().put("rating",index==0?JSONObject.NULL:index));}catch(Exception e){error(e);}d.dismiss();
+        }).setNegativeButton("取消",null).create();
+        dialog.setOnDismissListener(d->{personalDialogOpen=false;scheduleHide();});dialog.show();
+    }
+
     private void playbackSettings(){
         new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频","播放速度","自动播放下一集"},(d,index)->{
             switch(index){case 0:tracks(false);break;case 1:tracks(true);break;case 2:decoder();break;case 3:orientationSettings();break;
@@ -310,7 +376,7 @@ public final class PlayerActivity extends Activity {
     private void load(long workId,long fileId) {
         flushPreferences();
         pauseAfterStyleChange=false;
-        desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;software=getSharedPreferences("playback",0).getBoolean("software",false);
+        desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;refreshPersonal();software=getSharedPreferences("playback",0).getBoolean("software",false);
         final int ticket=++generation;setNavigationPending(true);
         network.execute(()->{
             try {
@@ -323,7 +389,7 @@ public final class PlayerActivity extends Activity {
                 JSONObject savedPreferences=readPreferences(selected);
                 runOnUiThread(()->{
                     if(isDestroyed()||ticket!=generation)return;
-                    boolean sameWork=work!=null&&work.optLong("id")==data.optLong("id");setNavigationPending(false);work=data;if(!sameWork)setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;filePreferences=savedPreferences;applyFilePreferences();applyOrientation();showControls(true);subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
+                    boolean sameWork=work!=null&&work.optLong("id")==data.optLong("id");setNavigationPending(false);work=data;if(!sameWork)setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;refreshPersonal();filePreferences=savedPreferences;applyFilePreferences();applyOrientation();showControls(true);subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
                     if(getIntent().hasExtra("start_position")){resumeMs=Math.max(0,Math.min((long)(getIntent().getDoubleExtra("start_position",0)*1000),durationFromFile()));getIntent().removeExtra("start_position");}
                     title.setText(work.optString("title")+(work.optString("kind").equals("series")?" · S"+file.optInt("season")+" E"+file.optInt("episode"):""));
                     if(started)startPlayback();

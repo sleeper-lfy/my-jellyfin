@@ -233,3 +233,9 @@ PC 新增 GitHub 稳定 Release 检测与 target 成功发布清单回退、后�
 Windows 最终源码 `4e17fb742cb7bd095b4235cbcb9b3a34880d0c28` 的运行 `40062702407`：Windows job 成功，219 项测试 0 失败 / 0 跳过，EXE 安装 / 启动 / 卸载与程序 / 插件 worker 验证通过；末尾产物 Git 回写失败。恢复运行 `40063590711` 成功校验原始请求、源码输入无差异、Windows job、JUnit、原 EXE SHA-256 和同源 APK，将同一 Windows EXE 分片及清单写回 target；不重跑构建、不替换二进制。APK 101016620 字节，SHA-256 `94ee4292b520c922df9c775a1db02ee48c848d5f0ac3aaf7efe67278fcb6fa69`；EXE 201589778 字节，SHA-256 `b9aeb6d81ed7b6c321fdd3f4b959eb0ba9f7ea1cdafffe02824e72fd813d07be`。
 
 发布运行 `40063761005` 成功，创建 [v0.4.7 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.7)，统一上传原 EXE / APK 与各自校验文件。两个安装包均已通过公开下载重新核对大小、SHA-256；target 五个 EXE 分片逐个校验并重新合并，与原完整 EXE 一致。PC 更新器已实际从公开数据解析到 0.4.7 及正确 EXE 大小 / SHA-256。README、target 文档与下载验证记录同步；没有重新构建或替换已验证文件。
+
+## 0.4.8 播放中个人操作（2026-10-24）
+
+PC / Android 播放器增加评分（1–10 / 清除）、独立收藏及互斥的喜欢 / 不喜欢。操作不停止、重载或切换视频，保留会话和位置；全屏 / Android 横竖屏 / VR 都有入口。Android 异步保存、按作品限制重复提交、失败提示并重试，切片 / 切作品时按原作品 ID 保存并刷新当前状态。PC 播放器和详情同步状态；旧库 / 旧备份迁移保留原评分、收藏和负反馈，原备份不修改。偏好影响推荐，不影响随机概率。
+
+本地最终 Python 回归 222 项通过、2 项平台检查跳过；Android 59 项测试、lint 与 assembleDebug 通过。新增覆盖真实播放时保存不变更会话 / 视频、评分与清除、互斥与收藏独立、旧库 / 旧备份兼容、保存失败恢复、延迟保存不误改下一作品、手机低高度全屏控件不重叠，以及原生播放器页面绘制。PC 实际 Qt 截图及 Android Activity 绘制截图见 `docs/releases/0.4.8.md`，不代替真机验收。Windows 构建与公开下载校验结果完成后追加。

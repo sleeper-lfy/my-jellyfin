@@ -57,7 +57,7 @@ public class PlayerUiTest {
                         root.layout(0,0,width,height);
                     }
                     assertEquals("Controls must float above a full-size video",height,root.getChildAt(0).getHeight());
-                    assertTrue(top.getBottom()<=bottom.getTop());
+                    assertTrue("layout "+size[0]+"x"+size[1]+" vr="+vrMode+" top="+top.getBottom()+" bottom="+bottom.getTop()+" bottomHeight="+bottom.getHeight(),top.getBottom()<=bottom.getTop());
                     for(View row:new View[]{top,bottom}){
                         Rect rect=new Rect(0,0,row.getWidth(),row.getHeight());root.offsetDescendantRectToMyCoords(row,rect);
                         assertTrue(rect.left>=left);assertTrue(rect.top>=topInset);assertTrue(rect.right<=width);assertTrue(rect.bottom<=height-nav);

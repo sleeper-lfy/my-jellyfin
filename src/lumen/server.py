@@ -60,7 +60,7 @@ def parse_range(value, size):
 
 
 def public_work(work, detail=False):
-    result = {key: work[key] for key in ['id','kind','title','year','rating','favorite','watchlist','disliked','added']}
+    result = {key: work[key] for key in ['id','kind','title','year','rating','favorite','watchlist','disliked','liked','added']}
     result.update(cover=f"/api/works/{work['id']}/cover" if work['thumbnail'] else None,
                   file_count=len(work['files']), tags=work['metadata'].get('tags', []),
                   position=max((f['position'] for f in work['files']),default=0))
@@ -323,11 +323,12 @@ class LanServer:
                         match=re.fullmatch(r'/api/works/(\d+)/personal',path)
                         if match:
                             library.work(int(match[1]))
-                            if not body or not body.keys()<={'rating','favorite','watchlist','disliked'}:raise ApiError(400,'无效个人字段')
-                            for key in ['favorite','watchlist','disliked']:
+                            if not body or not body.keys()<={'rating','favorite','watchlist','disliked','liked'}:raise ApiError(400,'无效个人字段')
+                            for key in ['favorite','watchlist','disliked','liked']:
                                 if key in body and type(body[key]) is not bool:raise ApiError(400,'标记须为布尔值')
                             library.update_personal(int(match[1]),**body)
-                            return self.send_json(200,{'ok':True})
+                            work=library.work(int(match[1]))
+                            return self.send_json(200,{'ok':True,'personal':{key:work[key] for key in ['rating','favorite','watchlist','liked','disliked']}})
                         if path == '/api/playback/start':
                             file=self.file(library,int(body.get('file_id',0)))
                             if file['duration'] <= 0:

@@ -16,9 +16,11 @@ def restore_database(library, path):
         expected = {r[0]: r[1] for r in library.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table'")}
         actual = {r[0]: r[1] for r in source.execute("SELECT name,sql FROM sqlite_master WHERE type='table'")}
         missing=set(expected)-set(actual)
-        if set(actual)-set(expected) or missing-{'bookmarks','playback_preferences'} or any(actual[name]!=expected[name] for name in actual):
+        legacy_works=expected['works'].replace(', liked INTEGER NOT NULL DEFAULT 0 CHECK(liked IN (0,1))','')
+        migrate_liked=actual.get('works')==legacy_works and legacy_works!=expected['works']
+        if set(actual)-set(expected) or missing-{'bookmarks','playback_preferences'} or any(actual[name]!=expected[name] and not (name=='works' and migrate_liked) for name in actual):
             raise ValueError('备份格式或版本不兼容')
-        if missing:
+        if missing or migrate_liked:
             # Migrate a copy; a user's original backup always remains unchanged.
             staging=tempfile.TemporaryDirectory(prefix='lumen-restore-')
             staged=Path(staging.name)/'library.sqlite'

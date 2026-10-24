@@ -207,6 +207,8 @@ class Library(CatalogActions):
           position REAL NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', image TEXT, created TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS bookmarks_file ON bookmarks(file_id,position);
         ''')
+        if 'liked' not in {row['name'] for row in self.db.execute('PRAGMA table_info(works)')}:
+            self.db.execute('ALTER TABLE works ADD COLUMN liked INTEGER NOT NULL DEFAULT 0 CHECK(liked IN (0,1))')
         self.db.commit()
 
     def close(self):
@@ -236,11 +238,15 @@ class Library(CatalogActions):
         return item
 
     def update_personal(self, work_id, **fields):
-        allowed = {'rating', 'favorite', 'watchlist', 'disliked'}
+        allowed = {'rating', 'favorite', 'watchlist', 'disliked', 'liked'}
         if not fields or not fields.keys() <= allowed:
             raise ValueError('无效个人字段')
         if 'rating' in fields and fields['rating'] is not None and (type(fields['rating']) is not int or not 1 <= fields['rating'] <= 10):
             raise ValueError('个人评分须为 1–10 整数或空')
+        if 'liked' in fields and type(fields['liked']) is not bool:raise ValueError('喜欢标记须为布尔值')
+        if fields.get('liked') and fields.get('disliked'):raise ValueError('喜欢与不喜欢不能同时选择')
+        if fields.get('liked'):fields['disliked']=False
+        elif fields.get('disliked'):fields['liked']=False
         with self.db:
             self.db.execute('UPDATE works SET ' + ','.join(f'{key}=?' for key in fields) + ' WHERE id=?', (*fields.values(), work_id))
 
@@ -260,9 +266,11 @@ class Library(CatalogActions):
             self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(source['identity'],source_id))
             self.db.execute('UPDATE files SET work_id=? WHERE work_id=?', (target_id, source_id))
             self.db.execute('UPDATE sources SET work_id=? WHERE work_id=?', (target_id, source_id))
-            self.db.execute('UPDATE works SET metadata=?,rating=?,favorite=?,watchlist=?,disliked=?,discovered=?,thumbnail=? WHERE id=?',
+            self.db.execute('UPDATE works SET metadata=?,rating=?,favorite=?,watchlist=?,disliked=?,liked=?,discovered=?,thumbnail=? WHERE id=?',
                 (json.dumps(merged, ensure_ascii=False), target['rating'] if target['rating'] is not None else source['rating'],
-                 max(target['favorite'],source['favorite']),max(target['watchlist'],source['watchlist']),max(target['disliked'],source['disliked']),
+                 max(target['favorite'],source['favorite']),max(target['watchlist'],source['watchlist']),
+                 (target if target['liked'] or target['disliked'] else source)['disliked'],
+                 (target if target['liked'] or target['disliked'] else source)['liked'],
                  min([d for d in [target['discovered'],source['discovered']] if d] or [None]),target['thumbnail'] or source['thumbnail'],target_id))
             self.db.execute('UPDATE name_keys SET work_id=? WHERE work_id=?', (target_id,source_id))
             self.db.execute('UPDATE external_ids SET work_id=? WHERE work_id=?', (target_id,source_id))
@@ -713,7 +721,7 @@ class Library(CatalogActions):
         weights = Counter()
         for w in all_items:
             rating = (w['rating'] - 5.5) * 3 if w['rating'] is not None else 0
-            strength = rating + w['favorite'] * 4 + w['watchlist'] * 2 - w['disliked'] * 20 + min(w['watched'] / 3600, 1)
+            strength = rating + w.get('liked',0) * 6 + w['favorite'] * 4 + w['watchlist'] * 2 - w['disliked'] * 20 + min(w['watched'] / 3600, 1)
             features = ['标签:' + t for t in w['metadata'].get('tags', [])]
             features += ['演员:' + a['name'] for a in w['metadata'].get('actors', []) if a.get('gender') == 'female']
             for feature in set(features):

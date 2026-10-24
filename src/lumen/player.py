@@ -1,6 +1,5 @@
 from pathlib import Path
 from datetime import datetime, timedelta
-from .presentation import rating_text
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
@@ -145,11 +144,15 @@ class Player(QDialog):
         self.rating.setStyleSheet('color: #efc84a;')
         row.addWidget(self.rating)
         row.addStretch()
-        self.like = QPushButton('♡')
-        self.like.setCheckable(True)
-        self.like.setAccessibleName('喜欢')
-        self.like.clicked.connect(self.toggle_like)
-        row.addWidget(self.like)
+        from .components import icon
+        personal_row=QHBoxLayout()
+        self.personal_rating=QPushButton();self.personal_rating.setObjectName('playerRating');self.personal_rating.setAccessibleName('我的评分');self.personal_rating.clicked.connect(self.choose_personal_rating)
+        personal_row.addWidget(self.personal_rating)
+        self.like=QPushButton();self.like.setObjectName('playerFavorite');self.like.setCheckable(True);self.like.setAccessibleName('收藏');self.like.clicked.connect(self.toggle_like);personal_row.addWidget(self.like)
+        self.positive=QPushButton();self.positive.setObjectName('playerLiked');self.positive.setCheckable(True);self.positive.setAccessibleName('喜欢');self.positive.clicked.connect(lambda:self.save_personal({'liked':self.positive.isChecked()}));personal_row.addWidget(self.positive)
+        self.negative=QPushButton();self.negative.setObjectName('playerDisliked');self.negative.setCheckable(True);self.negative.setAccessibleName('不喜欢');self.negative.clicked.connect(lambda:self.save_personal({'disliked':self.negative.isChecked()}));personal_row.addWidget(self.negative)
+        personal_row.addStretch();bottom.insertLayout(0,personal_row)
+        for action_button in [self.personal_rating,self.like,self.positive,self.negative]:action_button.setEnabled(False)
         self.mute = control(QStyle.StandardPixmap.SP_MediaVolume, '静音 / 恢复音量', self.toggle_mute)
         volume = self.volume = QSlider(Qt.Orientation.Horizontal)
         volume.setRange(0, 100)
@@ -376,7 +379,7 @@ class Player(QDialog):
             self.idle.stop()
 
     def hide_controls(self):
-        if self.auto_hide.isChecked() and self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not any(dialog.isVisible() for dialog in self.findChildren(QDialog)) and not self.timeline.isSliderDown() and not self.footer.underMouse():
+        if not getattr(self,'_personal_menu',None) and self.auto_hide.isChecked() and self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not any(dialog.isVisible() for dialog in self.findChildren(QDialog)) and not self.timeline.isSliderDown() and not self.footer.underMouse():
             self.header.hide()
             self.footer.hide()
             self.overlay.setCursor(Qt.CursorShape.BlankCursor)
@@ -387,15 +390,39 @@ class Player(QDialog):
         self.track_dialog.raise_()
 
     def update_like(self, work):
-        self.like.setChecked(bool(work['favorite']))
-        self.like.setText('♥' if work['favorite'] else '♡')
-        self.like.setToolTip('取消喜欢' if work['favorite'] else '喜欢')
+        from .components import icon
+        for control,key,name,color in [(self.like,'favorite','heart','#f4779b'),(self.positive,'liked','check','#65d3ed'),(self.negative,'disliked','ban','#ef8b87')]:
+            active=bool(work.get(key));control.setChecked(active);control.setEnabled(True)
+            text={'favorite':('已收藏','收藏'),'liked':('已喜欢','喜欢'),'disliked':('不喜欢','不喜欢')}[key][0 if active else 1]
+            control.setText(text);control.setIcon(icon(name,color if active else '#dddddd',active and name=='heart'))
+            control.setToolTip(('取消' if active else '确认')+{'favorite':'收藏','liked':'喜欢','disliked':'不喜欢'}[key]);control.setStyleSheet('color: '+(color if active else '#eeeeee'))
+        self.personal_rating.setEnabled(True);self.personal_rating.setText(f"我的 {work['rating']} 分" if work.get('rating') is not None else '评分')
+        self.personal_rating.setIcon(icon('star','#e7c567',work.get('rating') is not None))
+        source=next((s for s in work.get('sources',[]) if s.get('rating') is not None),None)
+        self.rating.setText(f"来源 ★ {source['rating']:.1f}" if source else '来源暂无评分')
+
+    def save_personal(self, fields, work_id=None):
+        if not self.file:return
+        target=work_id if work_id is not None else self.file['work_id']
+        try:self.library.update_personal(target,**fields)
+        except Exception as error:
+            self.set_error('偏好未保存：'+str(error));self.update_like(self.library.work(self.file['work_id']));return
+        if self.error.text().startswith('偏好未保存：'):self.set_error(self.backend_message)
+        if self.file and self.file['work_id']==target:self.update_like(self.library.work(target))
+        self.show_controls();self.refreshed.emit()
 
     def toggle_like(self):
-        if self.file:
-            self.library.update_personal(self.file['work_id'], favorite=self.like.isChecked())
-            self.update_like(self.library.work(self.file['work_id']))
-            self.refreshed.emit()
+        self.save_personal({'favorite':self.like.isChecked()})
+
+    def choose_personal_rating(self):
+        if not self.file:return
+        work_id=self.file['work_id'];current=self.library.work(work_id)['rating'];menu=QMenu(self)
+        for value in [None,*range(1,11)]:
+            action=menu.addAction('清除评分' if value is None else f'{value} 分');action.setCheckable(True);action.setChecked(current==value)
+            action.triggered.connect(lambda checked=False,value=value:self.save_personal({'rating':value},work_id))
+        self._personal_menu=menu;self.show_controls();self.idle.stop()
+        try:menu.exec(self.personal_rating.mapToGlobal(self.personal_rating.rect().bottomLeft()))
+        finally:self._personal_menu=None;self.show_controls()
 
     def toggle_mute(self):
         self.audio.setMuted(not self.audio.isMuted())
@@ -414,6 +441,7 @@ class Player(QDialog):
         self.finish()
         if not Path(file['path']).is_file():
             self.file=None
+            for action_button in [self.personal_rating,self.like,self.positive,self.negative]:action_button.setEnabled(False)
             self.title.setText('视频文件离线');self.caption.clear();self.caption.hide()
             self.set_error('文件不存在，请检查磁盘或重新导入：' + file['path'])
             self.show()
@@ -427,7 +455,6 @@ class Player(QDialog):
         work = self.library.work(file['work_id'])
         self.title.setToolTip(work['title'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' and file['season'] is not None and file['episode'] is not None else ''))
-        self.rating.setText(rating_text(work))
         self.update_like(work)
         self.show_controls()
         self.set_error(self.backend_message)

@@ -407,7 +407,7 @@ public final class MainActivity extends Activity {
         if(browseRoot!=null&&detail!=null){
             long id=detail.optLong("id");JSONObject record=browseRecords.get(id);
             if(record!=null){
-                try{for(String field:new String[]{"favorite","watchlist","rating","watch_state"})record.put(field,detail.opt(field));}catch(Exception ignored){}
+                try{for(String field:new String[]{"favorite","watchlist","rating","watch_state","liked","disliked"})record.put(field,detail.opt(field));}catch(Exception ignored){}
                 Button favorite=browseRoot.findViewWithTag("mark:"+id+":favorite");
                 if(favorite!=null){markStyle(favorite,record,"favorite",record.optInt("favorite")==1,true);favorite.setEnabled(true);}
                 if((favorites&&record.optInt("favorite")==0)||(!watchFilter.isEmpty()&&!watchFilter.equals(record.optString("watch_state")))){

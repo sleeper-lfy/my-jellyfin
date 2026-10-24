@@ -30,7 +30,7 @@ final class MediaStyle {
         view.setPadding(dp(context,12),dp(context,6),dp(context,12),dp(context,6));view.setMinWidth(0);view.setMinimumHeight(dp(context,48));
     }
     static void icon(Button button,String name,boolean selected){
-        Symbol icon=new Symbol(name,name.equals("play")?Color.WHITE:selected?(name.equals("heart")?HEART:name.equals("star")?0xffe7c567:ACCENT):0xffddddE5,selected);
+        Symbol icon=new Symbol(name,name.equals("play")?Color.WHITE:selected?(name.equals("heart")?HEART:name.equals("star")?0xffe7c567:name.equals("ban")?0xffef8b87:ACCENT):0xffddddE5,selected);
         icon.setBounds(0,0,dp(button.getContext(),20),dp(button.getContext(),20));
         button.setCompoundDrawables(icon,null,null,null);button.setCompoundDrawablePadding(dp(button.getContext(),7));
     }
@@ -48,6 +48,8 @@ final class MediaStyle {
                 case "search":canvas.drawCircle(10,10,7,paint);path.moveTo(16,16);path.lineTo(21,21);break;
                 case "filter":path.moveTo(4,6);path.lineTo(20,6);path.moveTo(7,12);path.lineTo(17,12);path.moveTo(10,18);path.lineTo(14,18);break;
                 case "close":path.moveTo(6,6);path.lineTo(18,18);path.moveTo(18,6);path.lineTo(6,18);break;
+                case "check":path.moveTo(5,12);path.lineTo(9,16);path.lineTo(19,6);break;
+                case "ban":canvas.drawCircle(12,12,9,paint);path.moveTo(6,6);path.lineTo(18,18);break;
                 case "previous":path.moveTo(6,5);path.lineTo(6,19);path.moveTo(18,5);path.lineTo(8,12);path.lineTo(18,19);path.close();break;
                 case "next":path.moveTo(18,5);path.lineTo(18,19);path.moveTo(6,5);path.lineTo(16,12);path.lineTo(6,19);path.close();break;
                 case "play":path.moveTo(8,5);path.lineTo(19,12);path.lineTo(8,19);path.close();break;

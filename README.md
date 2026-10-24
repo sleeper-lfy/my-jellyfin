@@ -28,6 +28,10 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 更多交互说明与截图复现方法见 [UI 设计说明](docs/ui-design.md)。
 
+### 0.4.8 播放中评分与偏好
+
+PC 和手机播放器直接评分、收藏、确认喜欢 / 不喜欢，普通播放、全屏与 VR 均可使用；保存不打断视频。喜欢与收藏独立，旧数据保留。[更新说明](docs/releases/0.4.8.md) · [PC 播放截图](docs/screenshots/player-personal-pc.png) · [安卓播放截图](docs/screenshots/player-personal-android.png) · [VR 控件截图](docs/screenshots/player-personal-android-vr.png)。
+
 ### 0.4.7 基础功能补全
 
 新增两端排序、三态观看筛选、手动标记、按季选集、倍速、连播开关、可编辑队列和全屏剧照。PC 增加多选批量操作、仅移出媒体库与校验后目录重定位；Android 增加共享智能片单及返回列表保留位置。封面个人操作去掉圆形背景。[更新说明](docs/releases/0.4.7.md) · [设计对照核查](docs/basic-feature-audit.md) · [按季选集截图](docs/screenshots/catalog-season-pc.png) · [队列编辑截图](docs/screenshots/catalog-queue-pc.png)。
