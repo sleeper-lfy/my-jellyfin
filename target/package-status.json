@@ -1,15 +1,16 @@
 {
-  "version": "0.4.3",
-  "source_commit": "91f07502e6afd58a46375082f9f487ab15e51eb9",
-  "workflow_commit": "c3aba147bdcee8ea5525282ae7b2915ff77f00f0",
-  "windows": "success",
-  "delivery": "success",
+  "version": "0.4.6",
+  "source_commit": "178a66a127b24aaecbc02857164335035d8c11e1",
+  "workflow_commit": "a91e11aea3122e20836ee500b2c727c796249525",
+  "windows": "failure",
+  "delivery": "skipped",
   "release_published": false,
-  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/39930617864",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40058183728",
   "tests": {
-    "tests": 180,
-    "failures": 0,
+    "tests": 211,
+    "failures": 1,
     "errors": 0,
     "skipped": 0
-  }
+  },
+  "diagnostics": "........................................................................ [ 68%]\n.........................................................F.........      [100%]\n================================== FAILURES ===================================\n_ test_cached_update_recovers_without_network_and_failed_install_does_not_auto_retry _\n\nqapp = <PySide6.QtWidgets.QApplication(0x1d962663d20) at 0x000001D966BB4940>\nwindow = <lumen.ui.MainWindow(0x1d906b08a60) at 0x000001D96ABA8500>\nmonkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D968A61B20>\n\n    def test_cached_update_recovers_without_network_and_failed_install_does_not_auto_retry(qapp,window,monkeypatch):\n        value=candidate();directory=window.library.directory/'updates';directory.mkdir();path=directory/f'Lumen-Setup-{value.version}-x64.exe';path.write_bytes(executable())\n        (directory/'staged.json').write_text(json.dumps(asdict(value)));(directory/'update-result.json').write_text(json.dumps({'version':value.version,'ok':False}))\n        controller=window.updater();until(qapp,lambda:not controller.restoring and not window._auxiliary_jobs)\n>       assert controller.staged==path and controller.failed_version==value.version\nE       AssertionError: assert (None == WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_cached_update_recovers_wi0/updates-ui/updates/Lumen-Setup-0.4.6-x64.exe'))\nE        +  where None = <lumen.updates_ui.DesktopUpdates(0x1d906e66f10) at 0x000001D97CAD33C0>.staged\n\ntests\\test_updates_ui.py:62: AssertionError\n-- generated xml file: D:\\a\\my-jellyfin\\my-jellyfin\\.local\\test-results.xml ---\n=========================== short test summary info ===========================\nFAILED tests/test_updates_ui.py::test_cached_update_recovers_without_network_and_failed_install_does_not_auto_retry - AssertionError: assert (None == WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_cached_update_recovers_wi0/updates-ui/updates/Lumen-Setup-0.4.6-x64.exe'))\n +  where None = <lumen.updates_ui.DesktopUpdates(0x1d906e66f10) at 0x000001D97CAD33C0>.staged\n1 failed, 210 passed in 103.34s (0:01:43)"
 }
