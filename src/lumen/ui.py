@@ -237,7 +237,7 @@ class PosterDelegate(QStyledItemDelegate):
             _,actions=poster_regions(option.rect)
             for key,name,color in [('favorite','heart','#f4779b'),('watchlist','bookmark','#65d3ed')]:
                 if hover or data.get(key):
-                    area=actions[key];painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor(0,0,0,190));painter.drawEllipse(area)
+                    area=actions[key]
                     icon(name,color if data.get(key) else '#eeeeee',bool(data.get(key))).paint(painter,area.adjusted(6,6,-6,-6))
         painter.setClipping(False)
         if selected:

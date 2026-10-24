@@ -387,7 +387,7 @@ public final class MainActivity extends Activity {
         String title=field.equals("favorite")?"收藏":"想看";
         button.setText(compact?"":(active?"已":"")+title);button.setContentDescription((active?"取消":"加入")+title);
         MediaStyle.button(button,false,active,field.equals("favorite"));MediaStyle.icon(button,field.equals("favorite")?"heart":"bookmark",active);
-        if(compact)button.setBackground(MediaStyle.surface(this,0xe51a1a21,active?0xff985166:0xff45454c,24));
+        if(compact)button.setBackgroundColor(Color.TRANSPARENT);
     }
     private Button markButton(JSONObject work,String field,boolean compact){
         Button button=button("",()->{});button.setTag("mark:"+work.optLong("id")+":"+field);markStyle(button,work,field,work.optInt(field)==1,compact);
