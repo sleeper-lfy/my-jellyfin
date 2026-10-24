@@ -1,11 +1,11 @@
 {
-  "tag": "v0.4.8",
-  "source_commit": "7eff01c257ac0ac3a0dba2a34d953543ad6c0827",
-  "workflow_commit": "444a8af49a6c399451886002ef50dfeecfd01d79",
+  "tag": "v0.4.9",
+  "source_commit": "0400d9e247aae3108eb497a02748ae4ef4fc8376",
+  "workflow_commit": "e65658d0b817b4e9aa97e92a406f78b47edc74a5",
   "windows": "success",
   "publish": "success",
-  "package_run_id": 40067501680,
-  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40068190145",
-  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.8",
-  "release_commit": "444a8af49a6c399451886002ef50dfeecfd01d79"
+  "package_run_id": 40068831314,
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40069351635",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.9",
+  "release_commit": "e65658d0b817b4e9aa97e92a406f78b47edc74a5"
 }
