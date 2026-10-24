@@ -5,9 +5,15 @@ from pathlib import Path
 import time
 import pytest
 from PySide6.QtCore import QEventLoop,QTimer
-from lumen import updates
+from lumen import updates,__version__
 from lumen.ui import MainWindow
-from test_desktop_updates import candidate,executable
+from test_desktop_updates import candidate as sample_candidate,executable
+
+
+def candidate():
+    current=list(updates.version(__version__));current[-1]+=1
+    next_version='.'.join(map(str,current));sample=sample_candidate()
+    return updates.Candidate(next_version,sample.url.replace('/v'+sample.version+'/', '/v'+next_version+'/'),sample.size,sample.sha256,sample.notes)
 
 
 def spin(app,seconds=.03):
