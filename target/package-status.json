@@ -1,13 +1,13 @@
 {
-  "version": "0.4.8",
-  "source_commit": "7eff01c257ac0ac3a0dba2a34d953543ad6c0827",
-  "workflow_commit": "bebb8c1e61a57c98c6d2adbbb736ead37e8df18e",
+  "version": "0.4.9",
+  "source_commit": "0400d9e247aae3108eb497a02748ae4ef4fc8376",
+  "workflow_commit": "3f5da14561a64770108cc0a9f0a307a5bbafdcbf",
   "windows": "success",
   "delivery": "success",
   "release_published": false,
-  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40067501680",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40068831314",
   "tests": {
-    "tests": 224,
+    "tests": 225,
     "failures": 0,
     "errors": 0,
     "skipped": 0
