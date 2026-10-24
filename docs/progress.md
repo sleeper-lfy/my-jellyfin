@@ -231,3 +231,5 @@ PC 新增 GitHub 稳定 Release 检测与 target 成功发布清单回退、后�
 发布前复核补充：Android 返回原列表时将详情修改的个人状态同步至原卡片对象与图标，收藏 / 观看状态筛选不再保留不符合条件的卡片，并修正已加载偏移。对应返回流程测试同时检查分页保留和收藏同步。新增按季选集、队列编辑的实际 Qt 页面截图与隔离复现脚本。
 
 Windows 最终源码 `4e17fb742cb7bd095b4235cbcb9b3a34880d0c28` 的运行 `40062702407`：Windows job 成功，219 项测试 0 失败 / 0 跳过，EXE 安装 / 启动 / 卸载与程序 / 插件 worker 验证通过；末尾产物 Git 回写失败。恢复运行 `40063590711` 成功校验原始请求、源码输入无差异、Windows job、JUnit、原 EXE SHA-256 和同源 APK，将同一 Windows EXE 分片及清单写回 target；不重跑构建、不替换二进制。APK 101016620 字节，SHA-256 `94ee4292b520c922df9c775a1db02ee48c848d5f0ac3aaf7efe67278fcb6fa69`；EXE 201589778 字节，SHA-256 `b9aeb6d81ed7b6c321fdd3f4b959eb0ba9f7ea1cdafffe02824e72fd813d07be`。
+
+发布运行 `40063761005` 成功，创建 [v0.4.7 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.7)，统一上传原 EXE / APK 与各自校验文件。两个安装包均已通过公开下载重新核对大小、SHA-256；target 五个 EXE 分片逐个校验并重新合并，与原完整 EXE 一致。PC 更新器已实际从公开数据解析到 0.4.7 及正确 EXE 大小 / SHA-256。README、target 文档与下载验证记录同步；没有重新构建或替换已验证文件。
