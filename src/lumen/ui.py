@@ -164,6 +164,8 @@ class PosterList(QListWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if self.property('batchMode'):
+            super().mouseReleaseEvent(event);return
         item = self.itemAt(event.position().toPoint())
         if item and event.button() == Qt.MouseButton.LeftButton:
             data = item.data(Qt.ItemDataRole.UserRole) or {}
@@ -339,6 +341,7 @@ def filter_tokens(filters):
     low,high=filters.get('year_min'),filters.get('year_max')
     if low or high:tokens.append(('years',None,str(low) if low==high else f"{low or '最早'} — {high or '至今'}"))
     if filters.get('favorite'):tokens.append(('favorite',None,'已收藏'))
+    if filters.get('watch_state'):tokens.append(('watch_state',None,{'unwatched':'未开始','progress':'观看中','completed':'已完成'}.get(filters['watch_state'],'')))
     if filters.get('watched'):tokens.append(('watched',None,'已观看' if filters['watched']=='yes' else '未观看'))
     if filters.get('watchlist'):tokens.append(('watchlist',None,'想看'))
     if filters.get('folder'):tokens.append(('folder',None,'目录：'+Path(filters['folder']).name))
@@ -381,8 +384,8 @@ class FilterDialog(QDialog):
             control=FilterCombo(options.get('years',[]),filters.get(key) or '');self.numbers[key]=control;field(title,control,years)
         layout.addLayout(years)
         self.watched=QComboBox()
-        for title,value in [('全部观看状态',''),('已观看','yes'),('未观看','no')]:self.watched.addItem(title,value)
-        self.watched.setCurrentIndex(max(0,self.watched.findData(filters.get('watched',''))))
+        for title,value in [('全部观看状态',''),('未开始','unwatched'),('观看中','progress'),('已完成','completed')]:self.watched.addItem(title,value)
+        self.watched.setCurrentIndex(max(0,self.watched.findData(filters.get('watch_state',''))))
         status_row=QHBoxLayout();field('观看状态',self.watched,status_row)
         self.favorite=ActionButton('仅看已收藏','heart',checked=bool(filters.get('favorite')),accent='#f4779b');self.favorite.setObjectName('favoriteAction');field('收藏',self.favorite,status_row);layout.addLayout(status_row)
         self.advanced_toggle=ActionButton('高级条件','chevron',lambda:self.show_advanced(not self.advanced.isVisible()))
@@ -456,7 +459,7 @@ class FilterDialog(QDialog):
         return {'query':self.query.text().strip(),'kinds':[key for key,control in self.types.items() if control.isChecked()],
                 **{key:list(dict.fromkeys(part.strip() for part in field.text().replace('，',',').split(',') if part.strip())) for key,field in self.fields.items()},
                 **{key:field.value() for key,field in self.numbers.items() if field.value()},
-                'watched':self.watched.currentData(),'folder':self.folder.text().strip(),'actor':self.actor.text(),
+                'watch_state':self.watched.currentData(),'folder':self.folder.text().strip(),'actor':self.actor.text(),
                 **({'watchlist':True} if self.original.get('watchlist') else {}),
                 **({'favorite':True} if self.favorite.isChecked() else {})}
 
@@ -515,6 +518,11 @@ class Details(QWidget):
         self.management_menu.addAction(icon('folder'),'整理文件…',self.organize)
         self.management_menu.addAction('从 NFO 补充图片…',lambda:window.import_nfo_artwork(work_id))
         self.management_menu.addAction('重新截取封面…',self.recapture)
+        self.management_menu.addAction('整部标记已看',lambda:window.catalog_watch(work_id,'completed'))
+        self.management_menu.addAction('整部重置进度',lambda:window.catalog_watch(work_id,'unwatched'))
+        self.management_menu.addAction('从头播放',lambda:window.catalog_restart(work_id))
+        self.management_menu.addAction('加入播放队列',lambda:window.library.edit_queue([*window.library.setting('queue',{'ids':[]})['ids'],work_id]))
+        self.management_menu.addAction('仅移出媒体库…',lambda:window.remove_catalog_work(work_id))
         if w['kind']!='other':self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
         self.dislike_action=self.management_menu.addAction(icon('ban'),'不感兴趣');self.dislike_action.setCheckable(True);self.dislike_action.setChecked(bool(w['disliked']));self.dislike_action.triggered.connect(lambda value:self.personal(disliked=value))
         more.setMenu(self.management_menu);actions.addWidget(more);actions.addStretch();info.addLayout(actions)
@@ -544,9 +552,23 @@ class Details(QWidget):
             item.setToolTip(f['path'])
             item.setData(Qt.ItemDataRole.UserRole, f)
             self.files.addItem(item)
+        if self.files.count():self.files.setCurrentRow(0)
         self.files.itemDoubleClicked.connect(lambda item: window.play_file(item.data(Qt.ItemDataRole.UserRole)))
         self.files_heading=label('视频文件 / 季与集 · 双击播放', 'subtitle')
         outer.addWidget(self.files_heading)
+        if w['kind']=='series':
+            self.season_filter=QComboBox();self.season_filter.addItem('全部季',None)
+            for season in sorted({f['season'] for f in w['files'] if f['season'] is not None}):self.season_filter.addItem('特别篇' if season==0 else f'第 {season} 季',season)
+            def choose_season():
+                for i in range(self.files.count()):self.files.item(i).setHidden(self.season_filter.currentData() is not None and self.files.item(i).data(Qt.ItemDataRole.UserRole)['season']!=self.season_filter.currentData())
+                for i in range(self.files.count()):
+                    if not self.files.item(i).isHidden():self.files.setCurrentRow(i);break
+            self.season_filter.currentIndexChanged.connect(choose_season);outer.addWidget(self.season_filter)
+        watch_row=QHBoxLayout()
+        def mark_episode(state):
+            item=self.files.currentItem()
+            if item:self.library.set_watched(self.work_id,state,item.data(Qt.ItemDataRole.UserRole)['id']);self.window.open_details(self.work_id,fetch=False)
+        watch_row.addWidget(button('当前视频标为已看',lambda:mark_episode('completed')));watch_row.addWidget(button('重置当前视频进度',lambda:mark_episode('unwatched')));outer.addLayout(watch_row)
         outer.addWidget(self.files)
         bookmark_row=QHBoxLayout();self.bookmark_heading=label('时间点书签 · 双击跳转','subtitle');bookmark_row.addWidget(self.bookmark_heading,1)
         self.add_bookmark_action=ActionButton('添加时间点书签','bookmark',self.add_bookmark);self.add_bookmark_action.setVisible(bool(w['files']));bookmark_row.addWidget(self.add_bookmark_action);outer.addLayout(bookmark_row)
@@ -589,6 +611,8 @@ class Details(QWidget):
         outer.insertWidget(4,self.still_gallery)
         self.still_gallery.itemClicked.connect(self.show_still)
         self.set_stills(still_paths(w))
+        self.still_gallery.itemDoubleClicked.connect(self.fullscreen_stills)
+        outer.addWidget(button('全屏浏览剧照',lambda:self.fullscreen_stills(self.still_gallery.currentItem() or self.still_gallery.item(0))))
         self.gallery_status=label('','subtitle')
         self.gallery_status.setWordWrap(True)
         outer.insertWidget(5,self.gallery_status)
@@ -684,6 +708,11 @@ class Details(QWidget):
             open_private(url)
         except (ValueError, RuntimeError) as error:
             QMessageBox.information(self, '无痕浏览', str(error))
+
+    def fullscreen_stills(self,item):
+        if item is None:return
+        from .catalog_ui import StillViewer
+        viewer=StillViewer([self.still_gallery.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.still_gallery.count())],self.still_gallery.row(item),self);viewer.exec()
 
     def set_stills(self, paths, prefix='剧照'):
         self.still_gallery.clear()
@@ -1081,6 +1110,16 @@ class MainWindow(QMainWindow):
         self.view_mode.setCurrentIndex(max(0, self.view_mode.findData(self.library.setting('view_mode', 'poster'))))
         self.view_mode.currentIndexChanged.connect(self.change_view_mode)
         self.toolbar.addWidget(self.view_mode)
+        self.catalog_sort=QComboBox()
+        for text,key in [('入库时间','added'),('名称','title'),('年份','year'),('个人评分','rating'),('时长','duration')]:self.catalog_sort.addItem(text,key)
+        self.catalog_sort.setCurrentIndex(max(0,self.catalog_sort.findData(self.library.setting('catalog_sort','added'))))
+        self.catalog_sort.currentIndexChanged.connect(self.change_catalog_sort);self.toolbar.addWidget(self.catalog_sort)
+        self.catalog_direction=QPushButton('降序' if self.library.setting('catalog_descending',True) else '升序')
+        self.catalog_direction.clicked.connect(self.flip_catalog_sort);self.toolbar.addWidget(self.catalog_direction)
+        self.batch_select=QPushButton('多选');self.batch_select.setCheckable(True);self.batch_select.toggled.connect(self.select_catalog_mode);self.toolbar.addWidget(self.batch_select)
+        from .catalog_ui import batch_menu,relocate
+        self.toolbar.addWidget(button('批量操作',lambda:batch_menu(self)))
+        self.toolbar.addWidget(button('修复路径',lambda:relocate(self)))
         self.actor_min = QComboBox()
         for n in [0,1,3,5,10]:
             self.actor_min.addItem(f'至少 {n} 部已评分', n)
@@ -1248,6 +1287,8 @@ class MainWindow(QMainWindow):
 
     def effective_filters(self):
         filters = dict(self.filters)
+        filters.setdefault('sort',self.library.setting('catalog_sort','added'))
+        filters.setdefault('descending',self.library.setting('catalog_descending',True))
         if self.section in KINDS:
             filters.setdefault('kinds', [self.section])
         if self.section == 'home' and self.subtab == 3:
@@ -1259,6 +1300,18 @@ class MainWindow(QMainWindow):
         if self.search.text().strip():
             filters['query'] = self.search.text().strip()
         return filters
+
+    def change_catalog_sort(self):
+        self.library.set_setting('catalog_sort',self.catalog_sort.currentData());self.filters.pop('sort',None);self.refresh()
+
+    def flip_catalog_sort(self):
+        value=not self.library.setting('catalog_descending',True);self.library.set_setting('catalog_descending',value)
+        self.catalog_direction.setText('降序' if value else '升序');self.filters.pop('descending',None);self.refresh()
+
+    def select_catalog_mode(self,enabled):
+        self.cards.setProperty('batchMode',enabled)
+        self.cards.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection if enabled else QAbstractItemView.SelectionMode.SingleSelection)
+        self.cards.clearSelection()
 
     def change_view_mode(self):
         self.library.set_setting('view_mode', self.view_mode.currentData())
@@ -1314,6 +1367,7 @@ class MainWindow(QMainWindow):
         for index in range(4):
             self.toolbar.itemAt(index).widget().setVisible((self.section == 'discover') if index == 3 else index!=2 and self.section not in {'discover','stats'})
         self.view_mode.setVisible(not actresses and self.section != 'stats')
+        for control in [self.catalog_sort,self.catalog_direction,self.batch_select]:control.setVisible(not actresses and self.section not in {'stats','discover'} and not home)
         self.actor_min.setVisible(actresses)
         self.actor_sort.setVisible(actresses)
         self.source_filter.setVisible(self.section == 'discover')
@@ -1412,6 +1466,7 @@ class MainWindow(QMainWindow):
             self.append_cards()
 
     def open_item(self, item):
+        if self.cards.property('batchMode'):return
         data = item.data(Qt.ItemDataRole.UserRole)
         if 'work_ids' in data:
             self.search_metadata('actor', data['name'])
@@ -1493,7 +1548,26 @@ class MainWindow(QMainWindow):
         if data.get('kind') in {'movie', 'vr'}:
             target = 'movie' if data['kind'] == 'vr' else 'vr'
             menu.addAction('移至' + KINDS[target], lambda: self.change_movie_kind(data['id'], target))
+        if data.get('kind'):
+            menu.addAction('标记已看',lambda:self.catalog_watch(data['id'],'completed'))
+            menu.addAction('标记未看 / 重置进度',lambda:self.catalog_watch(data['id'],'unwatched'))
+            menu.addAction('从头播放',lambda:self.catalog_restart(data['id']))
+            menu.addAction('加入播放队列',lambda:self.library.edit_queue([*self.library.setting('queue',{'ids':[]})['ids'],data['id']]))
+            menu.addAction('仅移出媒体库…',lambda:self.remove_catalog_work(data['id']))
         menu.exec(self.cards.mapToGlobal(position))
+
+    def catalog_watch(self,work_id,state,file_id=None):
+        self.library.set_watched(work_id,state,file_id);self.refresh()
+
+    def catalog_restart(self,work_id):
+        file=self.library.resume_file(work_id);self.library.set_watched(work_id,'reset',file['id']);file['position']=0;self.play_file(file)
+
+    def remove_catalog_work(self,work_id):
+        if QMessageBox.question(self,'仅移出媒体库','移除该条目及其观看记录、书签？原始视频和 NFO 文件保留；再次扫描可能重新入库。')!=QMessageBox.StandardButton.Yes:return
+        if self.player.file and self.player.file['work_id']==work_id:self.player.finish();self.player.hide()
+        try:self.library.remove_catalog(work_id)
+        except Exception as error:QMessageBox.warning(self,'未移除',str(error));return
+        self.back_details();self.refresh()
 
     def change_movie_kind(self, work_id, kind):
         try:
@@ -1838,49 +1912,8 @@ class MainWindow(QMainWindow):
             self.status.setText('本轮随机队列已结束，可主动重新洗牌。')
 
     def show_queue(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle('随机播放 · 等概率洗牌')
-        dialog.resize(620, 600)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(label('每部电影 / 整部剧 / 其他视频为一个对象', 'subtitle'))
-        queue = self.library.setting('queue', {'ids':[], 'index':0})
-        items = QListWidget()
-        for i, work_id in enumerate(queue['ids']):
-            try:
-                w = self.library.work(work_id)
-                items.addItem(f"{'▶' if i == queue['index'] else '  '} {i+1}. {w['title']} · {KINDS[w['kind']]}")
-            except ValueError:
-                items.addItem(f'{i+1}. 已移除的作品')
-        items.setCurrentRow(queue['index'])
-        layout.addWidget(items)
-        def update_position():
-            current_queue = self.library.setting('queue', {'ids':[], 'index':0})
-            if current_queue['ids'] != queue['ids']:
-                return
-            for row, work_id in enumerate(queue['ids']):
-                item = items.item(row)
-                if item:
-                    text = item.text()
-                    item.setText(('▶ ' if row == current_queue['index'] else '  ') + text[2:])
-            items.setCurrentRow(current_queue['index'] if current_queue['index'] < items.count() else -1)
-        timer = QTimer(dialog)
-        timer.setInterval(500)
-        timer.timeout.connect(update_position)
-        timer.start()
-        row = QHBoxLayout()
-        row.addWidget(button('上一作品', lambda: self.queue_play(-1)))
-        row.addWidget(button('继续队列', lambda: self.queue_play(0), True))
-        row.addWidget(button('下一作品', lambda: self.queue_play(1)))
-        layout.addLayout(row)
-        def configure():
-            f = FilterDialog(queue.get('filters', {}), dialog, self.library.filter_options())
-            if f.exec():
-                if not f.filters()['kinds']:
-                    return
-                self.shuffle(f.filters())
-                dialog.accept()
-        layout.addWidget(button('设置全局范围 / 重新洗牌', configure))
-        dialog.exec()
+        from .catalog_ui import queue_editor
+        queue_editor(self)
 
     def discover(self):
         plugins = [p for p in Plugins(self.library).installed() if p['config'].get('enabled') and 'discover' in p['capabilities']]

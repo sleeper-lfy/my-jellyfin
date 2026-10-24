@@ -248,10 +248,11 @@ public final class PlayerActivity extends Activity {
         root.requestApplyInsets();
     }
     private void playbackSettings(){
-        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频"},(d,index)->{
+        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频","播放速度","自动播放下一集"},(d,index)->{
             switch(index){case 0:tracks(false);break;case 1:tracks(true);break;case 2:decoder();break;case 3:orientationSettings();break;
                 case 4:vrSettings();break;case 5:controller.settings();break;case 6:stepVideo(1);break;case 7:nextWork(false);break;
-                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepVideo(-1);break;}
+                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepVideo(-1);break;case 13:new AlertDialog.Builder(this).setTitle("播放速度").setItems(new String[]{"0.5×","0.75×","1×","1.25×","1.5×","1.75×","2×"},(a,n)->{float rate=new float[]{.5f,.75f,1f,1.25f,1.5f,1.75f,2f}[n];getSharedPreferences("player",0).edit().putFloat("speed",rate).apply();if(player!=null)player.setRate(rate);}).show();break;
+                case 14:new AlertDialog.Builder(this).setTitle("自动播放下一集").setSingleChoiceItems(new String[]{"开启","关闭"},getSharedPreferences("player",0).getBoolean("auto_next",true)?0:1,(a,n)->{getSharedPreferences("player",0).edit().putBoolean("auto_next",n==0).apply();a.dismiss();}).show();break;}
         }).setNegativeButton("关闭",null).show();
     }
     private void orientationSettings(){
@@ -367,6 +368,7 @@ public final class PlayerActivity extends Activity {
                     updateVideoGeometry();scheduleHide();
                     current.setSpuDelay((long)(filePreferences.optDouble("subtitle_delay",0)*1_000_000));
                     if(pauseAfterStyleChange){pauseAfterStyleChange=false;current.pause();showControls(true);}
+                    current.setRate(getSharedPreferences("player",0).getFloat("speed",1f));
                     status.setText(software?"软件解码 · 原画直传":"自动解码 · 硬件优先，软件兜底");
                 }
                 if(event.type==MediaPlayer.Event.EncounteredError){
@@ -375,7 +377,7 @@ public final class PlayerActivity extends Activity {
                     }else {buffering=true;tick(false,false);status.setText("播放失败，请检查网络或文件是否损坏。可切换音轨、字幕或解码模式后重试。");}
                 }
                 if(event.type==MediaPlayer.Event.EndReached&&!ending){
-                    ending=true;handler.post(()->{if(player==current){stopPlayback(true);if(!nextEpisode(true))nextWork(true);}});
+                    ending=true;handler.post(()->{if(player==current){stopPlayback(true);if(work.optString("kind").equals("series")&&!getSharedPreferences("player",0).getBoolean("auto_next",true)){showControls(true);return;}if(!nextEpisode(true)){if(queueMode&&getSharedPreferences("queue",0).getInt("repeat",0)==2)load(work.optLong("id"),0);else nextWork(true);}}});
                 }
                 updateProgress();
             });
@@ -630,6 +632,7 @@ public final class PlayerActivity extends Activity {
             android.content.SharedPreferences prefs=getSharedPreferences("queue",0);JSONArray ids=new JSONArray(prefs.getString("ids","[]"));int current=-1;
             for(int i=0;i<ids.length();i++)if(ids.optLong(i)==work.optLong("id")){current=i;break;}
             int next=current+direction;
+            if(current>=0&&prefs.getInt("repeat",0)==1&&ids.length()>0)next=(next+ids.length())%ids.length();
             if(current<0||next<0||next>=ids.length()){if(automatic)finish();else Toast.makeText(this,direction<0?"已经是队列第一个视频":"本轮队列已结束",Toast.LENGTH_SHORT).show();return;}
             prefs.edit().putInt("index",next).apply();stopPlayback(false);load(ids.getLong(next),direction<0?-1:0);
         }catch(Exception exception){error(exception);}

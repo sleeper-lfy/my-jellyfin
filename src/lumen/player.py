@@ -186,6 +186,14 @@ class Player(QDialog):
         self.subtitles.currentIndexChanged.connect(lambda i:self.select_subtitle(self.subtitles.itemData(i)) if self.subtitles.itemData(i) is not None else None)
         self.audio_tracks = QComboBox()
         self.audio_tracks.currentIndexChanged.connect(lambda i: self.media.setActiveAudioTrack(self.audio_tracks.itemData(i)) if self.audio_tracks.itemData(i) is not None else None)
+        self.playback_speed=QComboBox()
+        for rate in [.5,.75,1.,1.25,1.5,1.75,2.]:self.playback_speed.addItem(f'{rate:g}×',rate)
+        self.playback_speed.setCurrentIndex(max(0,self.playback_speed.findData(self.library.setting('playback_speed',1.))))
+        self.media.setPlaybackRate(self.playback_speed.currentData())
+        self.playback_speed.currentIndexChanged.connect(lambda:(self.media.setPlaybackRate(self.playback_speed.currentData()),self.library.set_setting('playback_speed',self.playback_speed.currentData())))
+        tracks.addWidget(QLabel('播放速度'));tracks.addWidget(self.playback_speed)
+        self.auto_next=QCheckBox('自动播放下一集');self.auto_next.setChecked(self.library.setting('auto_next',True))
+        self.auto_next.toggled.connect(lambda value:self.library.set_setting('auto_next',value));tracks.addWidget(self.auto_next)
         tracks.addWidget(QLabel('字幕'))
         tracks.addWidget(self.subtitles)
         tracks.addWidget(QLabel('音轨'))
@@ -505,8 +513,11 @@ class Player(QDialog):
             self.finish()
             with self.library.db:
                 self.library.db.execute('UPDATE files SET completed=1,position=0 WHERE id=?', (self.file['id'],))
-            if self.library.work(self.file['work_id'])['kind'] == 'series' and self.next_episode():
-                return
+            if self.library.work(self.file['work_id'])['kind'] == 'series':
+                if not self.library.setting('auto_next',True):return
+                if self.next_episode():return
+            if getattr(self.parent(),'random_active',False) and self.library.setting('queue',{}).get('repeat')=='one':
+                self.open_file({**self.library.resume_file(self.file['work_id']),'position':0});return
             self.finish()
             self.queueNext.emit()
 

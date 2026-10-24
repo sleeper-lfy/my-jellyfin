@@ -64,6 +64,8 @@ def public_work(work, detail=False):
     result.update(cover=f"/api/works/{work['id']}/cover" if work['thumbnail'] else None,
                   file_count=len(work['files']), tags=work['metadata'].get('tags', []),
                   position=max((f['position'] for f in work['files']),default=0))
+    from .catalog import watch_state
+    result['watch_state']=watch_state(work['files'])
     result['community_rating']=next((source['rating'] for source in work.get('sources',[]) if source.get('rating') is not None),None)
     if detail:
         from .artwork import still_paths
@@ -174,6 +176,15 @@ class LanServer:
                         body = json.loads(self.rfile.read(length))
                         if not isinstance(body,dict): raise ApiError(400,'请求内容须为对象')
                     if self.command in {'GET','HEAD'}:
+                        if path == '/api/queue-titles':
+                            ids=[int(v) for v in query.get('ids',[''])[0].split(',') if v]
+                            if len(ids)>10000:raise ApiError(400,'队列过长')
+                            rows=library.db.execute('SELECT id,title FROM works WHERE id IN ('+','.join('?' for _ in ids)+')',ids) if ids else []
+                            return self.send_json(200,{'titles':{str(r[0]):r[1] for r in rows}})
+                        if path == '/api/lists':
+                            return self.send_json(200, {'items':[{'name':r[0],'filters':json.loads(r[1])} for r in library.db.execute('SELECT name,filters FROM lists ORDER BY name')]})
+                        if path == '/api/play-queue':
+                            return self.send_json(200,library.setting('queue',{'ids':[],'index':0,'repeat':'off'}))
                         if path == '/api/remote':
                             if not service.remote or not library.setting('remote_enabled',False):raise ApiError(403,'请在电脑设置中启用手机遥控')
                             return self.send_json(200,service.remote.state())
@@ -195,6 +206,10 @@ class LanServer:
                             return self.send_json(200, library.filter_options(filters.get('kinds')))
                         if path in {'/api/works','/api/recommendations'}:
                             filters = self.filters(query)
+                            if query.get('list',[''])[0]:
+                                row=library.db.execute('SELECT filters FROM lists WHERE name=?',(query['list'][0],)).fetchone()
+                                if not row:raise ApiError(404,'片单不存在')
+                                filters={**json.loads(row[0]),'local':True}
                             items = library.query(filters)
                             if path == '/api/recommendations':
                                 selected = {item['id'] for item in items}
@@ -284,8 +299,24 @@ class LanServer:
                                 return self.send_json(200,{'directory':set_download_folder(library,work_id,directory)})
                             task_id=service.downloads.submit(work_id,body.get('index'),action='import' if match[2]=='import-downloads' else 'download')
                             return self.send_json(202,{'task_id':task_id})
+                        if path == '/api/lists':
+                            name=body.get('name','')
+                            if not isinstance(name,str):raise ApiError(400,'片单名称无效')
+                            name=name.strip()
+                            if not name or len(name)>100:raise ApiError(400,'片单名称无效')
+                            filters=body.get('filters')
+                            from .catalog import validate_filters
+                            validate_filters(filters)
+                            with library.db:library.db.execute('INSERT OR REPLACE INTO lists VALUES (?,?)',(name,json.dumps(filters,ensure_ascii=False)))
+                            return self.send_json(200,{'ok':True})
+                        if path == '/api/play-queue':
+                            return self.send_json(200,library.edit_queue(body.get('ids'),body.get('repeat')))
+                        match=re.fullmatch(r'/api/works/(\d+)/watched',path)
+                        if match:
+                            library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
+                            return self.send_json(200,{'ok':True})
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year','sort','direction','watch_state'}})
                             ids=[w['id'] for w in library.query(filters)]
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
@@ -344,6 +375,11 @@ class LanServer:
                     year = int(query['year'][0])
                     if not 1800 <= year <= 2200: raise ApiError(400, '无效年份')
                     filters.update(year_min=year, year_max=year)
+                sort=query.get('sort',['added'])[0]
+                if sort not in {'added','title','year','rating','duration'}:raise ApiError(400,'无效排序')
+                state=query.get('watch_state',[''])[0]
+                if state not in {'','unwatched','progress','completed'}:raise ApiError(400,'无效观看状态')
+                filters.update(sort=sort,descending=query.get('direction',['desc'])[0]!='asc',watch_state=state)
                 return filters
 
             def bookmarks(self,library,file_id):

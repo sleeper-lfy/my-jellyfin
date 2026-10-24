@@ -75,7 +75,7 @@ public class BrowseUiTest {
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);String query=(String)path.invoke(activity);
             assertTrue(query.contains("tag=Drama"));assertTrue(query.contains("actor=Example%20actor"));assertTrue(query.contains("year=2024"));
             call(activity,"showFilters");AlertDialog clear=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();assertTrue(clear.isShowing());clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
-            assertTrue(((String)path.invoke(activity)).endsWith("&tag=&actor=&year="));
+            assertTrue(((String)path.invoke(activity)).contains("&tag=&actor=&year=&"));
         }
     }
     private View findText(View view,String wanted){
@@ -105,6 +105,22 @@ public class BrowseUiTest {
             while(activity.getSharedPreferences("download-tasks",0).getString("42","").isEmpty()&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
             assertNotNull(submitted.get());assertEquals("{\"index\":0}",submitted.get().getBody().readUtf8());
             assertEquals("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",activity.getSharedPreferences("download-tasks",0).getString("42",""));
+        }
+    }
+
+    @Test public void sortingPersistsAndReturningFromDetailKeepsLibraryView()throws Exception{
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");}});server.start();
+            MainActivity activity=lifecycle.get();field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            call(activity,"showLibrary");call(activity,"sorting");AlertDialog menu=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            menu.getListView().performItemClick(menu.getListView().getChildAt(1),1,1);
+            Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);assertTrue(((String)path.invoke(activity)).contains("sort=title"));
+            assertEquals("title",activity.getSharedPreferences("catalog",0).getString("sort",""));
+            Field root=MainActivity.class.getDeclaredField("root");root.setAccessible(true);Object original=root.get(activity);field(activity,"browseRoot",original);field(activity,"offset",60);
+            org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Seasons\",\"kind\":\"series\",\"files\":[{\"id\":1,\"name\":\"Episode 1\",\"season\":1,\"episode\":1},{\"id\":2,\"name\":\"Episode 2\",\"season\":2,\"episode\":1}]}");
+            Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
+            assertNotNull(findText(activity.findViewById(android.R.id.content),"季与集"));
+            activity.onBackPressed();assertSame(original,root.get(activity));Field offset=MainActivity.class.getDeclaredField("offset");offset.setAccessible(true);assertEquals(60,offset.getInt(activity));
         }
     }
 

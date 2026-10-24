@@ -150,7 +150,10 @@ def thumbnail(path, target, duration, at=None, cancelled=None):
         raise RuntimeError('未能生成缩略图')
 
 
-class Library:
+from .catalog import CatalogActions, sort_items, watch_state
+
+
+class Library(CatalogActions):
     def __init__(self, directory=None, *, initialize=True):
         self.directory = Path(directory or data_directory())
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -629,8 +632,12 @@ class Library:
             seen = watched > 0 or any(file['completed'] or file['position'] > 0 for file in item['files'])
             if f.get('watched') == 'yes' and not seen or f.get('watched') == 'no' and seen:
                 continue
+            item['watch_state'] = watch_state(item['files'])
+            if f.get('watch_state') and item['watch_state'] != f['watch_state']:
+                continue
             item['watched'] = watched
             items.append(item)
+        items = sort_items(items, f.get('sort', 'added'), f.get('descending', True))
         return items[offset:offset + limit if limit is not None else None]
 
     def filter_options(self, kinds=None, local=True):
@@ -661,7 +668,9 @@ class Library:
 
     def queue_step(self, delta=0):
         queue = self.setting('queue', {'ids': [], 'index': 0})
-        queue['index'] = max(0, min(len(queue['ids']), queue['index'] + delta))
+        index = queue['index'] + delta
+        if queue.get('repeat') == 'all' and queue['ids']: index %= len(queue['ids'])
+        queue['index'] = max(0, min(len(queue['ids']), index))
         self.set_setting('queue', queue)
         return queue['ids'][queue['index']] if queue['index'] < len(queue['ids']) else None
 

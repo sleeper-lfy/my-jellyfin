@@ -163,3 +163,18 @@ def test_lan_facets_and_combined_filters_apply_before_pagination_and_queue(lan,l
     assert len(ids)==17
     recommended=client.get('/api/recommendations?tag=Target&year=2021').json()['items']
     assert {item['id'] for item in recommended}==set(ids)
+
+
+def test_catalog_sort_watch_status_and_saved_lists(lan,library):
+    client,server,source,_=lan
+    w=library.query()[0]['id']
+    assert client.get('/api/works?sort=title&direction=asc').status_code==200
+    assert client.get('/api/works?sort=invalid').status_code==400
+    assert client.post(f'/api/works/{w}/watched',json={'state':'completed'}).status_code==200
+    assert client.get('/api/works?watch_state=completed').json()['total']==1
+    assert client.get('/api/works?watch_state=unwatched').json()['total']==0
+    assert client.post('/api/lists',json={'name':'Seen','filters':{'watch_state':'completed','sort':'title','descending':False}}).status_code==200
+    assert client.get('/api/lists').json()['items'][0]['name']=='Seen'
+    assert client.get('/api/works?list=Seen').json()['items'][0]['id']==w
+    assert client.post('/api/play-queue',json={'ids':[w],'repeat':'all'}).status_code==200
+    assert client.get('/api/play-queue').json()['ids']==[w]

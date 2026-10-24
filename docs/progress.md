@@ -221,3 +221,9 @@ PC 新增 GitHub 稳定 Release 检测与 target 成功发布清单回退、后�
 构建源码 `37dbbbb7c980baa87e285e5823592770ee28920b`，发布标签提交 `306d64851762d9a4144fd785b080b820c2155563`，两者应用与构建输入一致；target 原始构建清单保持不变，release-status.json 分别记录实际构建来源和标签。两端文件及 SHA-256 已上传，公开下载重新核对一致。发布运行：https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40059572972。更新 README、target 下载入口与公开校验记录。
 
 发布后已使用实际 PC 更新检测逻辑读取 GitHub 公共数据，确认从 0.4.5 能识别 v0.4.6，并匹配原 EXE 的大小与 SHA-256。
+
+## 0.4.7 基础功能补全（2026-10-24）
+
+按 `basic-feature-audit.md` 对照补齐两端排序 / 三态筛选 / 手动观看管理 / 按季浏览 / 倍速 / 连播开关 / 可编辑队列 / 全屏图集；PC 增加多选批量操作、仅移出条目与后台指纹校验后的目录重定位，Android 增加共享智能片单、列表返回位置恢复。封面个人操作取消圆形背景。架构、UI、Android 与核查文档同步，说明原设计缺项与后续需求覆盖关系。
+
+本地完整回归 217 项通过、2 项跳过（原生 mpv 和 Windows PowerShell 语法）；新增测试覆盖排序分页、状态与真实统计隔离、批量与队列、移出保留源文件、迁移失败不提交 / 成功保留 ID 与进度、按季筛选、图集切图与倍速。Android 55 项测试及 lint / assembleDebug 通过，versionCode 10、0.4.7，同上一版签名证书；zipalign 和 aapt 版本校验通过。更新后的 Qt / Activity 渲染截图在 README 使用的 screenshots 目录中，未冒充 Windows / Android 真机截图。Windows 包与发布结果将在完成后追加。
