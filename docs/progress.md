@@ -213,3 +213,11 @@ PC 新增 GitHub 稳定 Release 检测与 target 成功发布清单回退、后�
 按明确要求完成 Windows EXE 与 Android APK，版本 0.4.6 / Android versionCode 9，源码 `37dbbbb7c980baa87e285e5823592770ee28920b`，包含此前电视剧目录、任务窗口、PC 更新和剧照修复。Android 构建、54 项测试、lint、签名 / 版本 / ZIP 对齐检查通过，签名保持不变。
 
 [Windows 打包运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40058565831) 成功完成 211 项测试、程序 / worker 和安装 / 启动 / 卸载验证，产物已提交 target。EXE 201472806 字节，APK 100866478 字节；Windows 各分片与重组 EXE 的 SHA-256 / PE 检查通过，APK 已从公开地址重新下载校验。清单与下载验证记录均已更新；完整 EXE 在 Actions Artifacts，target 提供同一文件的分片与合并脚本。未创建版本标签或更新任何 Release，历史 v0.4.5 保留。
+
+## 0.4.6 发布已验证安装包（2026-10-24）
+
+按后续明确要求发布 [v0.4.6 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.6)，复用原打包运行 40058565831 中已经过 211 项 Windows 测试与安装验证的 EXE 和已经过 54 项 Android 测试 / 签名校验的 APK，未重新构建。发布前验证成功的原始构建来源、应用及构建输入无差异、APK 源码树与签名，以及 Windows 原文件 SHA-256。发布标签由本次授权工作流创建，不触发额外打包。
+
+构建源码 `37dbbbb7c980baa87e285e5823592770ee28920b`，发布标签提交 `306d64851762d9a4144fd785b080b820c2155563`，两者应用与构建输入一致；target 原始构建清单保持不变，release-status.json 分别记录实际构建来源和标签。两端文件及 SHA-256 已上传，公开下载重新核对一致。发布运行：https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40059572972。更新 README、target 下载入口与公开校验记录。
+
+发布后已使用实际 PC 更新检测逻辑读取 GitHub 公共数据，确认从 0.4.5 能识别 v0.4.6，并匹配原 EXE 的大小与 SHA-256。

@@ -1,6 +1,6 @@
 # 电视剧目录、任务窗口、PC 更新与剧照修复
 
-本页修改已打包到 0.4.6 target / Actions，未发布 Release；旧 0.4.5 EXE 不包含本页功能。下载见 [0.4.6 安装包说明](releases/0.4.6.md)，实际结果见 target/package-status.json。
+本页修改已包含在 [0.4.6 Windows + Android Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.6)，target / Actions 保留同一安装包；旧 0.4.5 EXE 不包含本页功能。下载见 [0.4.6 安装包说明](releases/0.4.6.md)，实际结果见 target/release-status.json。
 
 ## 按文件夹导入电视剧
 

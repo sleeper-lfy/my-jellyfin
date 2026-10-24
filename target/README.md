@@ -1,9 +1,10 @@
 # 可下载安装包 · Lumen 0.4.6
 
-本次按明确要求打包并提交到本目录，**不发布 Release**。[0.4.6 更新说明](../docs/releases/0.4.6.md) · [功能入口与实际截图](../docs/pc-maintenance.md)。
+先完成打包交付，随后按明确要求统一发布 [v0.4.6 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.6)，复用本目录已验证的原始文件。[0.4.6 更新说明](../docs/releases/0.4.6.md) · [功能入口与实际截图](../docs/pc-maintenance.md)。
 
-- Windows 完整安装包：[打包运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40058565831) → **Artifacts → Lumen-windows-x64**，解压后取 `installer/Lumen-Setup-x64.exe`。通常需登录 GitHub 下载。
-- [Android 完整 APK](Lumen-android-debug.apk)：0.4.6 / versionCode 9，Android 8.0+，签名与上一版一致，可覆盖安装。54 项测试、lint、签名、版本与 ZIP 对齐检查通过。
+- [Windows 完整 EXE](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.6/Lumen-Setup-x64.exe)，直接安装，无需分片合并。
+- [Android 完整 APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.6/Lumen-android-debug.apk)，0.4.6 / versionCode 9，Android 8.0+，签名与上一版一致，可覆盖安装。
+- [原始打包运行](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40058565831) 的 Lumen-windows-x64 Artifact 与下方 target 分片保留相同产物。
 
 Windows 包含电视剧按文件夹归集、任务窗口后台分页、PC GitHub 更新检测 / 可选自动安装、剧照预览稳定性修复。Android 保留 VR 转向、视频切换、蓝牙及手机控制 Windows 关机等现有功能。
 
@@ -21,10 +22,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Prepare-Installer.ps1
 
 Windows 已完成 211 项测试、打包程序 / 插件 worker、安装 / 启动 / 卸载检查。Windows 分片已校验并重新合并，与完整 SHA-256 和 PE 头一致；APK 已从 GitHub 公开地址重新下载核对。真实 Windows 原位自动升级及显卡上的闪烁表现仍需设备验收。
 
-- `package-status.json`：本次 0.4.6 打包与交付状态，`release_published` 为 false。
+- `package-status.json`：0.4.6 最初仅打包交付的历史状态，后续发布另行记录。
 - `windows-installer.json` / `android-build.json`：本次两端源码、文件大小与 SHA-256。
 - `package-download-verification.json`：本次 target 文件下载及重组校验。
-- `release-status.json` / `release-download-verification.json`：历史 v0.4.5 发布记录，未随本次打包更新。
+- `release-status.json` / `release-download-verification.json`：本次 v0.4.6 发布及公开下载校验。构建源码保留原始提交，发布标签提交另外记录，应用与构建输入已核对一致。
 - `release-upload.json`：更早 Windows 交付记录。
 
-历史 [v0.4.5 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 不包含本次 PC 修复。PC 更新检测目前读取已发布的稳定 Release，本次 0.4.6 需从本目录或 Actions 下载。开发安装包尚未进行商业代码签名。旧源码 / 截图 ZIP 只用于追溯，不是本版安装器。
+历史 [v0.4.5 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.5) 不包含本次 PC 修复。PC 更新检测可读取本次已发布的稳定 Release。开发安装包尚未进行商业代码签名。旧源码 / 截图 ZIP 只用于追溯，不是本版安装器。
