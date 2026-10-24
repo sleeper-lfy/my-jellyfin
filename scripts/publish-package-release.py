@@ -44,8 +44,13 @@ def main():
     source=validate(request,package,windows,android,run,version,jobs)
     subprocess.run(['git','fetch','--depth=1','origin',source],check=True)
     subprocess.run(['git','diff','--exit-code',source,'--',*INPUTS],check=True)
-    jobs=json.loads(gh('api',f'repos/{repository}/actions/runs/{run_id}/jobs'))['jobs']
-    assert all(any(job['name']==name and job['conclusion']=='success' for job in jobs) for name in ('windows','deliver'))
+    assert any(job['name']=='windows' and job['conclusion']=='success' for job in jobs)
+    if run['conclusion']=='success':
+        assert any(job['name']=='deliver' and job['conclusion']=='success' for job in jobs)
+    else:
+        recovery_id=int(package['recovery']['recovery_run_id'])
+        recovery=json.loads(gh('api',f'repos/{repository}/actions/runs/{recovery_id}'))
+        assert recovery['conclusion']=='success' and recovery['path'].split('@')[0]=='.github/workflows/recover-package.yml'
     report={'tag':tag,'source_commit':source,'workflow_commit':head,'windows':'success','publish':'failure',
             'package_run_id':run_id,'run_url':f"{os.environ['GITHUB_SERVER_URL']}/{repository}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
             'release_url':f"https://github.com/{repository}/releases/tag/{tag}"}

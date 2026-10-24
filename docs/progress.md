@@ -229,3 +229,5 @@ PC 新增 GitHub 稳定 Release 检测与 target 成功发布清单回退、后�
 本地完整回归 217 项通过、2 项跳过（原生 mpv 和 Windows PowerShell 语法）；新增测试覆盖排序分页、状态与真实统计隔离、批量与队列、移出保留源文件、迁移失败不提交 / 成功保留 ID 与进度、按季筛选、图集切图与倍速。Android 55 项测试及 lint / assembleDebug 通过，versionCode 10、0.4.7，同上一版签名证书；zipalign 和 aapt 版本校验通过。更新后的 Qt / Activity 渲染截图在 README 使用的 screenshots 目录中，未冒充 Windows / Android 真机截图。Windows 包与发布结果将在完成后追加。
 
 发布前复核补充：Android 返回原列表时将详情修改的个人状态同步至原卡片对象与图标，收藏 / 观看状态筛选不再保留不符合条件的卡片，并修正已加载偏移。对应返回流程测试同时检查分页保留和收藏同步。新增按季选集、队列编辑的实际 Qt 页面截图与隔离复现脚本。
+
+Windows 最终源码 `4e17fb742cb7bd095b4235cbcb9b3a34880d0c28` 的运行 `40062702407`：Windows job 成功，219 项测试 0 失败 / 0 跳过，EXE 安装 / 启动 / 卸载与程序 / 插件 worker 验证通过；末尾产物 Git 回写失败。恢复运行 `40063590711` 成功校验原始请求、源码输入无差异、Windows job、JUnit、原 EXE SHA-256 和同源 APK，将同一 Windows EXE 分片及清单写回 target；不重跑构建、不替换二进制。APK 101016620 字节，SHA-256 `94ee4292b520c922df9c775a1db02ee48c848d5f0ac3aaf7efe67278fcb6fa69`；EXE 201589778 字节，SHA-256 `b9aeb6d81ed7b6c321fdd3f4b959eb0ba9f7ea1cdafffe02824e72fd813d07be`。
