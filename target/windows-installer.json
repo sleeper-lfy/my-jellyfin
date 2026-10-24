@@ -1,33 +1,33 @@
 {
   "file": "Lumen-Setup-x64.exe",
-  "source_commit": "4e17fb742cb7bd095b4235cbcb9b3a34880d0c28",
-  "bytes": 201589778,
-  "sha256": "b9aeb6d81ed7b6c321fdd3f4b959eb0ba9f7ea1cdafffe02824e72fd813d07be",
+  "source_commit": "7eff01c257ac0ac3a0dba2a34d953543ad6c0827",
+  "bytes": 201618058,
+  "sha256": "4e8b0997a0d7f1d8a8946d0dba083754c0762a61fa5f74dd07d3072ef78dc0ac",
   "parts": [
     {
       "name": "Lumen-Setup-x64.exe.part001",
       "bytes": 50331648,
-      "sha256": "db3ead39602282a02a1affe4796cae76265d80da6ca121f53154cfef452e9424"
+      "sha256": "a8422a2e63d559054cc02d42c974a525ba9c8146852930cd451513c182e45211"
     },
     {
       "name": "Lumen-Setup-x64.exe.part002",
       "bytes": 50331648,
-      "sha256": "b8b95d1e1819f8d7c754f72e8c7aef3a04e636a46431ace0bebe8df01f421f56"
+      "sha256": "74e08d501ebc893522e8a1ce1117fb1cebc7f63e9b7dfd37f1c7ca3d8b11f3f8"
     },
     {
       "name": "Lumen-Setup-x64.exe.part003",
       "bytes": 50331648,
-      "sha256": "1a0c610aa0d97b7759837a7cb50f509e792aec8f6b31bfb847a17bea5bc1b579"
+      "sha256": "ff4c3f06f0c82119822eb59563772cf1cb7d817bbddef24fe39f04cd03f0317f"
     },
     {
       "name": "Lumen-Setup-x64.exe.part004",
       "bytes": 50331648,
-      "sha256": "6cffc3930a66f82a15b197fc22193435f2069920256ffe93ffb80a7556a04014"
+      "sha256": "d4ce7417b5a7cba2540729f8f134e0c49e1c6668907ec6c20e014d65c4c8aaa5"
     },
     {
       "name": "Lumen-Setup-x64.exe.part005",
-      "bytes": 263186,
-      "sha256": "eeb1b3236ebde26907edc0d3089e6ade3ca251be1ad85d08f33f1397ad5c3036"
+      "bytes": 291466,
+      "sha256": "4c4f8902ac37a7781045f6d32a06653d101d2f402f3fece9e0725414e8476f26"
     }
   ]
 }

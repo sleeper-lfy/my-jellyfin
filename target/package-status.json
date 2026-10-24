@@ -1,21 +1,15 @@
 {
-  "version": "0.4.7",
-  "source_commit": "4e17fb742cb7bd095b4235cbcb9b3a34880d0c28",
-  "workflow_commit": "c1596440ac198ffdd0af3956aa67c8414e1d5977",
+  "version": "0.4.8",
+  "source_commit": "7eff01c257ac0ac3a0dba2a34d953543ad6c0827",
+  "workflow_commit": "bebb8c1e61a57c98c6d2adbbb736ead37e8df18e",
   "windows": "success",
   "delivery": "success",
   "release_published": false,
-  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40062702407",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40067501680",
   "tests": {
-    "tests": 219,
-    "errors": 0,
+    "tests": 224,
     "failures": 0,
+    "errors": 0,
     "skipped": 0
-  },
-  "recovery": {
-    "original_run_id": 40062702407,
-    "recovery_run_id": 40063590711,
-    "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40063590711",
-    "reason": "Original Windows job succeeded; final Git delivery failed"
   }
 }
