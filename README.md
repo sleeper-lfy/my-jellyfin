@@ -50,19 +50,19 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 ## 下载
 
-[**Lumen 0.4.7 · Windows + Android Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.7) 已发布，两端安装包均已从公开链接重新下载并通过 SHA-256 校验：
+[**Lumen 0.4.9 · Windows + Android Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.9) 已发布，采用用户确认的“喜欢就是收藏”规则：
 
-- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.7/Lumen-Setup-x64.exe)，Windows 10/11 x64，直接安装，无需分片合并。
-- [Android 完整安装包：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.7/Lumen-android-debug.apk)，Android 8.0+，0.4.7 / versionCode 10，与上一版签名一致，可覆盖安装。
-- [target 安装包备份及校验记录](target/README.md)：完整 APK、同一 Windows EXE 的校验分片和合并脚本。Release 同时提供 SHA-256 文件。
+- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.9/Lumen-Setup-x64.exe)，Windows 10/11 x64，直接安装。
+- [Android 完整安装包：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.9/Lumen-android-debug.apk)，Android 8.0+，0.4.9 / versionCode 12，同签名可覆盖安装。
+- [target 安装包备份及校验记录](target/README.md)：完整 APK、同一 EXE 的校验分片与合并脚本。Release 同时提供 SHA-256 文件。
 
-[0.4.7 更新说明](docs/releases/0.4.7.md) · [功能与设计对照](docs/basic-feature-audit.md)。Windows 219 项测试与安装 / 启动 / 卸载验证、Android 55 项测试和 lint 通过。普通推送只验证源码；仅明确请求时打包或发布。源码可通过 **Code → Download ZIP** 获取。
+[0.4.9 更新说明](docs/releases/0.4.9.md)。播放时可直接评分、喜欢／收藏、不喜欢；三者即时保存，喜欢／收藏与不喜欢互斥。Windows 225 项测试及安装验证、Android 59 项测试与 lint 通过；两个公开安装包均已重新下载校验。普通推送只验证源码，仅明确请求时打包或发布。
 
 下载资源的默认目录、HTTP 下载后自动入库及外部磁力工具设置见 [下载与影视入库](docs/downloads.md)。
 
 ## Windows 安装与启动
 
-提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.7 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
+提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.9 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
 
 需要 Windows 10/11 x64、Python 3.12、FFmpeg 与 FFprobe（两个程序加入 PATH）。可通过已安装的 Winget 获取 Python/FFmpeg，或从各项目官方渠道安装；保持包签名/校验验证。
 
@@ -109,7 +109,7 @@ py -3.12 -m venv .venv
 ./scripts/build-windows.ps1
 ```
 
-Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.7 已完成 Windows 安装器验证并发布双端 Release。
+Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.9 已完成 Windows 安装器验证并发布双端 Release。
 
 Linux 云开发：
 
