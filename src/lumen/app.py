@@ -22,8 +22,8 @@ def main():
         os.environ['LUMEN_DATA_DIR'] = args.data_dir
     directory = data_directory()
     directory.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(filename=directory / 'diagnostics.log', level=logging.INFO,
-                        format='%(asctime)s %(levelname)s %(message)s', encoding='utf-8')
+    from .diagnostics import configure_logging
+    configure_logging(directory)
     if args.verify_mpv:
         import json
         from pathlib import Path
@@ -66,6 +66,9 @@ def main():
     from PySide6.QtCore import QTimer, QLockFile
     from .ui import MainWindow
     app = QApplication(sys.argv[:1])
+    from .diagnostics import UiWatchdog
+    watchdog=UiWatchdog(directory,app)
+    app.aboutToQuit.connect(watchdog.stop)
     from PySide6.QtGui import QIcon
     from pathlib import Path
     icon_root=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parents[2]))
@@ -90,9 +93,15 @@ def main():
                     window.tabs.setCurrentIndex(index)
                     app.processEvents()
             window.navigate('home')
-            window.grab().save(str(directory / 'smoke.png'))
-            window.close()
-            app.quit()
+            def capture_and_close():
+                if window._browse_job is not None or window._browse_pending is not None:
+                    QTimer.singleShot(20,capture_and_close)
+                    return
+                window.grab().save(str(directory / 'smoke.png'))
+                # A rejected close waits for its workers; Qt quits when the
+                # final window actually closes rather than destroying threads.
+                window.close()
+            QTimer.singleShot(0,capture_and_close)
         QTimer.singleShot(100, check)
     result = app.exec()
     lock.unlock()

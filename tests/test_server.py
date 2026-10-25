@@ -39,6 +39,21 @@ def test_auth_library_and_personal(lan, library):
     assert client.post('/api/queue', json={'favorite': True}).json()['ids'] == [item['id']]
 
 
+def test_discovery_is_authenticated_and_includes_unimported_source_metadata(lan,library):
+    from test_core import add_work
+    client,server,_,_=lan
+    identifier=add_work(library,'Discovered sample',local=False)
+    with library.db:
+        library.db.execute('INSERT INTO sources(work_id,plugin,site,source_id,url,rating,site_added,updated) VALUES(?,?,?,?,?,?,?,?)',
+                           (identifier,'sample','Example','42','https://example.org/42',8.5,'2026-01-01','2026-01-01'))
+    assert client.get('/api/discover',headers={'Authorization':''}).status_code==401
+    result=client.get('/api/discover?limit=1').json()
+    assert result['total']==1 and result['items'][0]['id']==identifier
+    assert result['items'][0]['file_count']==0
+    assert client.get('/api/works').json()['total']==1
+    assert client.get('/api/discover?q=nomatch').json()['total']==0
+
+
 def test_video_ranges_and_subtitles(lan):
     client, _, source, _ = lan
     work = client.get('/api/works').json()['items'][0]

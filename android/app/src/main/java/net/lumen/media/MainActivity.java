@@ -32,7 +32,7 @@ public final class MainActivity extends Activity {
     private ChipLayout posters;
     private ScrollView detailScroll;
     private String kind="",query="",tagFilter="",actorFilter="",yearFilter="";
-    private boolean favorites=false,recommended=false;
+    private boolean favorites=false,recommended=false,discovery=false;
     private int offset=0,generation=0;
     private long detailId=0,renderedDetailId=0;
     private boolean returned=false;
@@ -42,6 +42,16 @@ public final class MainActivity extends Activity {
     private String sortField="added",watchFilter="",savedList="";
     private boolean sortDescending=true;
     private final java.util.Map<Long,Integer> browsePositions=new java.util.HashMap<>();
+    private final java.util.ArrayDeque<NavigationState> navigationHistory=new java.util.ArrayDeque<>();
+    private ScrollView browseScroll;
+    private int restoreOffset=0,restoreScroll=0;
+    private TextView browseLoading;
+    private static final class NavigationState {
+        String kind,query,tag,actor,year,sort,watch,list;
+        boolean favorites,recommended,discovery,descending;
+        int offset,scroll,detailScroll;
+        JSONObject detail;
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -59,7 +69,7 @@ public final class MainActivity extends Activity {
         if(api!=null) { try {if(detailId>0 && detail!=null)renderDetail(detail);else showLibrary();} catch(Exception e){message(e.getMessage());} }
     }
     @Override public void onBackPressed() {
-        if(detailId>0) {returnLibrary();}else super.onBackPressed();
+        if(detailId>0) {returnLibrary();}else if(!navigationHistory.isEmpty())restoreNavigation();else super.onBackPressed();
     }
     @Override protected void onDestroy() {downloadUpdates.removeCallbacksAndMessages(null);network.shutdownNow();super.onDestroy();}
     private int dp(float value){return Math.round(value*getResources().getDisplayMetrics().density);}
@@ -84,7 +94,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void showConnection() {
-        generation++;detailId=0;api=null;base();
+        generation++;detailId=0;api=null;navigationHistory.clear();discovery=false;base();
         LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(26),dp(40),dp(26),dp(20));ScrollView connectionScroll=new ScrollView(this);connectionScroll.setFillViewport(true);connectionScroll.addView(panel);root.addView(connectionScroll,new LinearLayout.LayoutParams(-1,-1));
         panel.addView(text("Lumen",36,Color.WHITE));panel.addView(text("连接你的家庭媒体库",22,Color.WHITE));
         panel.addView(text("在电脑端设置 → 局域网 / Android 中启动服务。手机与电脑应连接同一 Wi-Fi。",15,MUTED));
@@ -127,19 +137,19 @@ public final class MainActivity extends Activity {
     }
     private void header(String title, boolean back) {
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(8),dp(6));
-        if(back){Button previous=button("",this::returnLibrary);MediaStyle.icon(previous,"back",false);previous.setContentDescription("返回媒体库");row.addView(previous,new LinearLayout.LayoutParams(dp(48),dp(48)));}
+        if(back||!navigationHistory.isEmpty()){Button previous=button("",this::onBackPressed);MediaStyle.icon(previous,"back",false);previous.setContentDescription("返回上一页");row.addView(previous,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         TextView brand=text(title,24,Color.WHITE);row.addView(brand,new LinearLayout.LayoutParams(0,dp(52),1));
-        if(!back){Button collection=button("",()->{kind="";query="";savedList="";favorites=true;recommended=false;tagFilter="";actorFilter="";yearFilter="";showLibrary();});MediaStyle.icon(collection,"heart",favorites);collection.setContentDescription("收藏");row.addView(collection,new LinearLayout.LayoutParams(dp(48),dp(48)));}
+        if(!back){Button collection=button("",()->{navigationHistory.clear();kind="";query="";savedList="";favorites=true;recommended=false;discovery=false;tagFilter="";actorFilter="";yearFilter="";showLibrary();});MediaStyle.icon(collection,"heart",favorites);collection.setContentDescription("收藏");row.addView(collection,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         Button more=button("",()->{});MediaStyle.icon(more,"more",false);more.setContentDescription("更多操作");more.setOnClickListener(view->{
             PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("排序");menu.getMenu().add("智能片单");menu.getMenu().add("播放队列");menu.getMenu().add("随机播放");menu.getMenu().add("观影统计");menu.getMenu().add("电脑遥控");menu.getMenu().add("检查更新");menu.getMenu().add("切换连接");
             menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "排序":sorting();break;case "智能片单":smartLists();break;case "播放队列":queueEditor();break;case "随机播放":shuffle();break;case "观影统计":showStats();break;case "电脑遥控":startActivity(new Intent(this,RemoteActivity.class));break;case "检查更新":startActivity(new Intent(this,UpdateActivity.class));break;default:showConnection();}return true;});menu.show();
         });row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(row);
     }
     private void showLibrary() {
-        generation++;browseRoot=null;detailId=0;renderedDetailId=0;detailScroll=null;offset=0;browsePositions.clear();browseRecords.clear();base();header("Lumen",false);
+        generation++;browseRoot=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();header("Lumen",false);
         LinearLayout searchRow=new LinearLayout(this);searchRow.setPadding(dp(16),0,dp(16),0);
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint("搜索媒体库");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        Runnable applySearch=()->{savedList="";query=search.getText().toString().trim();recommended=false;showLibrary();};
+        Runnable applySearch=()->{savedList="";query=search.getText().toString().trim();showLibrary();};
         search.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
         search.setBackground(MediaStyle.surface(this,0xff202026,0xff3a3a44,8));search.setPadding(dp(12),0,dp(8),0);
         searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(48),1));Button searchButton=button("",applySearch);MediaStyle.icon(searchButton,"search",false);searchButton.setContentDescription("搜索");LinearLayout.LayoutParams searchParams=new LinearLayout.LayoutParams(dp(48),dp(48));searchParams.setMargins(dp(6),0,dp(6),0);searchRow.addView(searchButton,searchParams);
@@ -154,25 +164,25 @@ public final class MainActivity extends Activity {
         if(favorites)selectedFilters.addView(filterChip("已收藏",()->{favorites=false;showLibrary();}));
         if(count>0)root.addView(selectedFilters);
         HorizontalScrollView nav=new HorizontalScrollView(this);nav.setHorizontalScrollBarEnabled(false);LinearLayout links=new LinearLayout(this);
-        String[] names={"首页","电影","电视剧","VR电影","其他","收藏","为你推荐"};String[] types={"","movie","series","vr","other","",""};
+        String[] names={"首页","电影","电视剧","VR电影","其他","收藏","为我推荐","影片发现"};String[] types={"","movie","series","vr","other","","",""};
         for(int i=0;i<names.length;i++) {
-            final int choice=i;Button tab=button(names[i],()->{savedList="";kind=types[choice];favorites=choice==5;recommended=choice==6;query="";tagFilter="";actorFilter="";yearFilter="";showLibrary();});
-            boolean selected=(choice==5&&favorites&&kind.isEmpty())||(choice==6&&recommended)||(choice<5&&(!favorites||!kind.isEmpty())&&!recommended&&kind.equals(types[i]));
+            final int choice=i;Button tab=button(names[i],()->{navigationHistory.clear();savedList="";watchFilter="";kind=types[choice];favorites=choice==5;recommended=choice==6;discovery=choice==7;query="";tagFilter="";actorFilter="";yearFilter="";showLibrary();});
+            boolean selected=(choice==5&&favorites&&kind.isEmpty())||(choice==6&&recommended)||(choice==7&&discovery)||(choice<5&&(!favorites||!kind.isEmpty())&&!recommended&&!discovery&&kind.equals(types[i]));
             tab.setBackground(MediaStyle.surface(this,selected?0xff15343f:Color.TRANSPARENT,0,20));if(selected)tab.setTextColor(0xff9cdef2);links.addView(tab);
         }
         nav.addView(links);root.addView(nav);
-        ScrollView scroll=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        if(kind.isEmpty()&&!favorites&&!recommended&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearFilter.isEmpty()) {
+        ScrollView scroll=new ScrollView(this);browseScroll=scroll;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        if(kind.isEmpty()&&!favorites&&!recommended&&!discovery&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearFilter.isEmpty()) {
             content.addView(text("我的媒体",22,Color.WHITE));LinearLayout tiles=new LinearLayout(this);
             for(int i=1;i<=4;i++){final int choice=i;Button tile=button(names[i],()->{savedList="";kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
             content.addView(tiles);
         }
-        content.addView(text(recommended?"为你推荐":favorites?"收藏":query.isEmpty()?"媒体库":"搜索结果",22,Color.WHITE));
+        content.addView(text(recommended?"为我推荐":discovery?"影片发现":favorites?"收藏":query.isEmpty()?"媒体库":"搜索结果",22,Color.WHITE));
         posters=new ChipLayout(this);content.addView(posters);
         loadPage();
     }
     private String listPath() {
-        String path=recommended?"/api/recommendations?":"/api/works?";
+        String path=recommended?"/api/recommendations?":discovery?"/api/discover?":"/api/works?";
         return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&q="+android.net.Uri.encode(query)+"&tag="+android.net.Uri.encode(tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year="+android.net.Uri.encode(yearFilter)+"&sort="+sortField+"&direction="+(sortDescending?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList);
     }
     private Button filterChip(String text,Runnable remove){
@@ -214,7 +224,7 @@ public final class MainActivity extends Activity {
         });
         MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_POSITIVE),true,false,false);
         MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEGATIVE),false,false,false);MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEUTRAL),false,false,false);
-        request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)),options->{
+        request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)+"&discover="+discovery),options->{
             if(!dialog.isShowing())return;
             AutoCompleteTextView[] inputs={tag,actor,year};String[] keys={"tags","actors","years"};
             for(int i=0;i<inputs.length;i++){
@@ -226,9 +236,9 @@ public final class MainActivity extends Activity {
         });
     }
     private void loadPage() {
-        TextView loading=text("正在读取媒体库…",14,MUTED);content.addView(loading);String path=listPath();
+        TextView loading=text("正在读取媒体库…",14,MUTED);browseLoading=loading;content.addView(loading);String path=listPath();
         request(()->api.get(path),result->{
-            content.removeView(loading);JSONArray items=result.getJSONArray("items");int total=result.optInt("total");
+            content.removeView(loading);if(browseLoading==loading)browseLoading=null;JSONArray items=result.getJSONArray("items");int total=result.optInt("total");
             if(total==0)content.addView(text("暂无内容。请先在电脑端导入媒体，或调整搜索条件。",16,MUTED));
             int columns=getResources().getConfiguration().screenWidthDp>=650?4:2;
             int width=(getResources().getDisplayMetrics().widthPixels-dp(32))/columns;
@@ -247,6 +257,8 @@ public final class MainActivity extends Activity {
                 card.setOnClickListener(view->openDetail(id));poster.setOnClickListener(view->openDetail(id));posters.addView(card,new android.view.ViewGroup.LayoutParams(width,-2));
             }
             offset+=items.length();
+            if(offset<restoreOffset&&offset<total&&items.length()>0){loadPage();return;}
+            if(restoreOffset>0){restoreOffset=0;final int position=restoreScroll;ScrollView target=browseScroll;target.post(()->target.scrollTo(0,position));}
             if(offset<total) {Button more=button("加载更多  ·  "+offset+" / "+total,()->{});more.setOnClickListener(v->{content.removeView(more);loadPage();});content.addView(more);}
         });
     }
@@ -268,6 +280,9 @@ public final class MainActivity extends Activity {
         LinearLayout hero=new LinearLayout(this);hero.setGravity(Gravity.TOP);hero.setPadding(0,dp(8),0,dp(16));
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.FIT_CENTER);poster.setBackground(MediaStyle.surface(this,0xff19191f,0,6));poster.setClipToOutline(true);poster.setContentDescription("海报："+work.optString("title"));
         hero.addView(poster,new LinearLayout.LayoutParams(dp(120),dp(180)));loadImage(poster,work.optString("cover",""));
+        String coverPath=work.optString("cover","");
+        poster.setContentDescription("放大封面："+work.optString("title"));
+        poster.setOnClickListener(view->{if(!coverPath.isEmpty()&&!coverPath.equals("null"))showGallery(new JSONArray().put(coverPath),0);else message("此影片暂无封面");});
         LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(16),0,0,0);
         TextView title=text(work.optString("title"),24,Color.WHITE);title.setMaxLines(4);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setContentDescription(work.optString("title"));
         title.setOnClickListener(view->title.setMaxLines(title.getMaxLines()==4?Integer.MAX_VALUE:4));info.addView(title);
@@ -287,14 +302,22 @@ public final class MainActivity extends Activity {
         JSONArray tags=work.optJSONArray("tags");JSONArray actors=work.optJSONArray("actors");
         ChipLayout metadata=new ChipLayout(this);metadata.setPadding(0,0,0,dp(12));
         if(tags!=null)for(int i=0;i<tags.length();i++){
-            String tag=tags.optString(i);metadata.addView(button(tag,()->{savedList="";tagFilter=tag;actorFilter="";yearFilter="";favorites=false;recommended=false;query="";kind="";showLibrary();}));
+            String tag=tags.optString(i);metadata.addView(button(tag,()->filterMetadata("tag",tag)));
         }
         if(metadata.getChildCount()>0)page.addView(metadata);
         ChipLayout cast=new ChipLayout(this);cast.setPadding(0,0,0,dp(12));
         if(actors!=null&&actors.length()>0){TextView caption=text("主演",13,MUTED);caption.setMinHeight(dp(48));caption.setGravity(Gravity.CENTER_VERTICAL);cast.addView(caption);}
         if(actors!=null)for(int i=0;i<actors.length();i++){
             String actor=actors.optJSONObject(i)==null?"":actors.optJSONObject(i).optString("name");if(actor.isEmpty())continue;
-            cast.addView(button(actor,()->{savedList="";actorFilter=actor;tagFilter="";yearFilter="";favorites=false;recommended=false;query="";kind="";showLibrary();}));
+            JSONObject person=actors.optJSONObject(i);String photo=person.optString("photo","");
+            if(!photo.isEmpty()&&!photo.equals("null")){
+                LinearLayout personCard=new LinearLayout(this);personCard.setOrientation(LinearLayout.VERTICAL);
+                ImageView face=new ImageView(this);face.setScaleType(ImageView.ScaleType.CENTER_CROP);face.setContentDescription("演员头像："+actor);
+                personCard.addView(face,new LinearLayout.LayoutParams(dp(104),dp(132)));loadImage(face,photo);
+                face.setOnClickListener(view->filterMetadata("actor",actor));
+                face.setOnLongClickListener(view->{String credit=person.optString("photo_attribution","")+"\n"+person.optString("photo_license","")+"\n"+person.optString("photo_page",person.optString("photo_source_url",""));new AlertDialog.Builder(this).setTitle(actor+" · 头像来源 / 许可").setMessage(credit.trim().isEmpty()?"来源未提供署名资料":credit.trim()).setPositiveButton("关闭",null).show();return true;});
+                personCard.addView(button(actor,()->filterMetadata("actor",actor)),new LinearLayout.LayoutParams(dp(104),dp(48)));cast.addView(personCard);
+            }else cast.addView(button(actor,()->filterMetadata("actor",actor)));
         }
         if(cast.getChildCount()>0)page.addView(cast);
         page.addView(text(work.optString("overview","暂无简介"),15,MUTED));
@@ -403,6 +426,30 @@ public final class MainActivity extends Activity {
             downloadUpdates.postDelayed(()->pollDownload(task,workId,status,ticket),1000);
         });
     }
+    private void filterMetadata(String field,String value){
+        NavigationState state=new NavigationState();
+        state.kind=kind;state.query=query;state.tag=tagFilter;state.actor=actorFilter;state.year=yearFilter;
+        state.sort=sortField;state.watch=watchFilter;state.list=savedList;state.descending=sortDescending;
+        state.favorites=favorites;state.recommended=recommended;state.discovery=discovery;
+        state.offset=offset;state.scroll=browseScroll==null?0:browseScroll.getScrollY();
+        state.detailScroll=detailScroll==null?0:detailScroll.getScrollY();
+        try{state.detail=detailId>0&&detail!=null?new JSONObject(detail.toString()):null;}catch(Exception ignored){}
+        navigationHistory.addLast(state);while(navigationHistory.size()>20)navigationHistory.removeFirst();
+        savedList="";watchFilter="";tagFilter=field.equals("tag")?value:"";actorFilter=field.equals("actor")?value:"";
+        yearFilter="";favorites=false;recommended=false;discovery=state.discovery;query="";kind="";showLibrary();
+    }
+    private void restoreNavigation(){
+        NavigationState state=navigationHistory.removeLast();
+        kind=state.kind;query=state.query;tagFilter=state.tag;actorFilter=state.actor;yearFilter=state.year;
+        sortField=state.sort;watchFilter=state.watch;savedList=state.list;sortDescending=state.descending;
+        favorites=state.favorites;recommended=state.recommended;discovery=state.discovery;
+        showLibrary();restoreOffset=Math.max(1,state.offset);restoreScroll=state.scroll;
+        if(state.detail!=null){
+            browseRoot=root;
+            try{renderDetail(state.detail);ScrollView target=detailScroll;target.post(()->target.scrollTo(0,state.detailScroll));}
+            catch(Exception error){message(error.getMessage());}
+        }
+    }
     private void returnLibrary(){
         if(browseRoot!=null&&detail!=null){
             long id=detail.optLong("id");JSONObject record=browseRecords.get(id);
@@ -416,7 +463,7 @@ public final class MainActivity extends Activity {
             }
         }
         detailId=0;renderedDetailId=0;detailScroll=null;generation++;
-        if(browseRoot!=null){root=browseRoot;setContentView(root);browseRoot=null;}else showLibrary();
+        if(browseRoot!=null){root=browseRoot;setContentView(root);browseRoot=null;if(browseLoading!=null){content.removeView(browseLoading);browseLoading=null;loadPage();}}else showLibrary();
     }
     private void sorting(){
         new AlertDialog.Builder(this).setTitle("排序").setItems(new String[]{"入库时间","名称","年份","个人评分","时长","切换升序 / 降序"},(d,index)->{

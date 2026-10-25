@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
-from .core import WatchSession
+from .playback_journal import PlaybackJournal, PlaybackSession
 from .windows_fullscreen import set_fullscreen_window
 
 
@@ -22,6 +22,7 @@ class Player(QDialog):
         self._windowed_geometry = None
         self._windowed_flags = None
         self.library = library
+        self.playback_journal = PlaybackJournal(library.directory)
         self.setWindowTitle('Lumen · 播放器')
         self.resize(1100, 720)
         self.session = None
@@ -68,7 +69,8 @@ class Player(QDialog):
             self.canvas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.canvas.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.media = QMediaPlayer(self)
-            self.audio = QAudioOutput(self)
+            from .qt_audio import native_audio_output
+            self.audio = native_audio_output(self)
             self.audio.setVolume(.7)
             self.media.setAudioOutput(self.audio)
             self.media.setVideoOutput(self.video)
@@ -464,7 +466,7 @@ class Player(QDialog):
         if candidates:
             self.load_subtitle(sorted(candidates)[0])
         self.resume = file['position'] if not file['completed'] else 0
-        self.session = WatchSession(self.library, file['id'])
+        self.session = PlaybackSession(self.playback_journal, file['id'])
         # libmpv's render context must exist before opening its first video.
         self.show()
         if self.mpv_backend:
@@ -487,8 +489,7 @@ class Player(QDialog):
     def duration_changed(self, milliseconds):
         self.timeline.setRange(0, milliseconds)
         if self.file and milliseconds > 0:
-            with self.library.db:
-                self.library.db.execute('UPDATE files SET duration=? WHERE id=?',(milliseconds/1000,self.file['id']))
+            self.playback_journal.duration(self.file['id'],milliseconds/1000)
 
     def position_changed(self, position):
         if not self.timeline.isSliderDown():
@@ -537,8 +538,7 @@ class Player(QDialog):
             self.resume = None
         if status == QMediaPlayer.MediaStatus.EndOfMedia and self.file:
             self.finish()
-            with self.library.db:
-                self.library.db.execute('UPDATE files SET completed=1,position=0 WHERE id=?', (self.file['id'],))
+            self.playback_journal.completed(self.file['id'])
             if self.library.work(self.file['work_id'])['kind'] == 'series':
                 if not self.library.setting('auto_next',True):return
                 if self.next_episode():return

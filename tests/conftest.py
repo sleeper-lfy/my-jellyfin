@@ -33,5 +33,11 @@ def video_factory(tmp_path_factory):
 @pytest.fixture(scope='session')
 def qapp():
     from PySide6.QtWidgets import QApplication
+    from lumen.ui import MainWindow
     app = QApplication.instance() or QApplication([])
+    # Existing widget tests inspect small, fixed fixture catalogs immediately.
+    # Production defaults to worker reads; the dedicated navigation regression
+    # explicitly exercises that production path and waits for completion.
+    MainWindow.synchronous_small_catalog = True
     yield app
+    MainWindow.synchronous_small_catalog = False

@@ -11,7 +11,7 @@ from .plugins import Plugins
 
 def preview_cover(library, plugin_id, record):
     """Cache only a bounded preview through the plugin's declared network policy."""
-    url = record.get('poster')
+    url = record.get('poster') or record.get('photo')
     if not url:
         return None
     manager = Plugins(library)
@@ -99,7 +99,7 @@ class CandidatePicker(QDialog):
         for record in records:
             item = QListWidgetItem(QIcon(placeholder), record['title'] + '\n' + str(record.get('year') or '未知年份'))
             item.setSizeHint(QSize(180, 300))
-            item.setToolTip(record['title'] + '\n' + record['url'] + ('\n封面正在载入' if record.get('poster') else '\n来源未提供封面'))
+            item.setToolTip(self.record_tooltip(record) + ('\n封面正在载入' if record.get('poster') else '\n来源未提供封面'))
             self.items.addItem(item)
         layout.addWidget(self.items)
         controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -133,7 +133,12 @@ class CandidatePicker(QDialog):
     def loaded(self, index, path):
         item = self.items.item(index)
         if path: item.setIcon(QIcon(path))
-        item.setToolTip(self.records[index]['title'] + '\n' + self.records[index]['url'] + ('' if path else '\n封面暂不可用，仍可选择此影片'))
+        item.setToolTip(self.record_tooltip(self.records[index]) + ('' if path else '\n图片暂不可用，仍可选择此结果'))
+
+    @staticmethod
+    def record_tooltip(record):
+        credit=[str(record[field]) for field in ('photo_attribution','photo_license','photo_page') if record.get(field)]
+        return record['title']+'\n'+record['url']+('\n头像署名 / 许可：\n'+'\n'.join(credit) if credit else '')
 
     def selection(self):
         index = self.items.currentRow()

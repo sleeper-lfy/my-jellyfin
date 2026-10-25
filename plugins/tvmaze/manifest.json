@@ -2,9 +2,9 @@
   "api_version": 1,
   "id": "tvmaze",
   "name": "TVmaze · 电视剧",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "无需账号的电视剧搜索、详情、演员和新剧目录。数据归 TVmaze（CC BY-SA）；发现按站点剧集索引页抓取。",
-  "capabilities": ["search", "detail", "discover"],
+  "capabilities": ["search", "detail", "discover", "actors"],
   "domains": ["api.tvmaze.com", "static.tvmaze.com"],
   "base_url": "https://api.tvmaze.com"
 }

@@ -85,6 +85,13 @@ public class BrowseUiTest {
         }
         return null;
     }
+    private android.widget.EditText searchInput(View view){
+        if(view instanceof android.widget.EditText)return (android.widget.EditText)view;
+        if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){
+            android.widget.EditText found=searchInput(((ViewGroup)view).getChildAt(i));if(found!=null)return found;
+        }
+        return null;
+    }
     @Test public void downloadClickUsesServerQueueAndSavedDirectoryInsteadOfDownloadingOnPhone()throws Exception{
         java.util.concurrent.atomic.AtomicReference<RecordedRequest> submitted=new java.util.concurrent.atomic.AtomicReference<>();
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
@@ -125,6 +132,72 @@ public class BrowseUiTest {
             assertNotNull(findText(activity.findViewById(android.R.id.content),"季与集"));
             work.put("favorite",1);
             activity.onBackPressed();assertEquals(1,record.optInt("favorite"));assertSame(original,root.get(activity));Field offset=MainActivity.class.getDeclaredField("offset");offset.setAccessible(true);assertEquals(60,offset.getInt(activity));
+        }
+    }
+
+    @Test public void metadataBackRestoresOriginDetailAndTopLevelDiscoveryUsesDiscoveryApi()throws Exception{
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));
+                return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
+            }});server.start();MainActivity activity=lifecycle.get();
+            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            field(activity,"kind","series");field(activity,"query","Original search");call(activity,"showLibrary");
+            org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Source detail\",\"kind\":\"series\",\"files\":[],\"tags\":[\"Adventure\"],\"actors\":[{\"name\":\"Example actor\"}]}");
+            Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
+            View tag=findText(activity.findViewById(android.R.id.content),"Adventure");assertNotNull(tag);tag.performClick();
+            Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);
+            assertTrue(((String)path.invoke(activity)).contains("tag=Adventure"));
+            render.invoke(activity,work);
+            View actor=findText(activity.findViewById(android.R.id.content),"Example actor");assertNotNull(actor);actor.performClick();
+            assertTrue(((String)path.invoke(activity)).contains("actor=Example%20actor"));
+            activity.onBackPressed();
+            Field selected=MainActivity.class.getDeclaredField("detailId");selected.setAccessible(true);assertEquals(42,selected.getLong(activity));
+            assertTrue(((String)path.invoke(activity)).contains("tag=Adventure"));
+            activity.onBackPressed();assertEquals(0,selected.getLong(activity));
+            activity.onBackPressed();assertEquals(42,selected.getLong(activity));
+            String restored=(String)path.invoke(activity);assertTrue(restored.contains("kind=series"));assertTrue(restored.contains("q=Original%20search"));
+            activity.onBackPressed();
+            View discovery=findText(activity.findViewById(android.R.id.content),"影片发现");assertNotNull(discovery);discovery.performClick();
+            assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
+            View recommendation=findText(activity.findViewById(android.R.id.content),"为我推荐");assertNotNull(recommendation);recommendation.performClick();
+            assertTrue(((String)path.invoke(activity)).startsWith("/api/recommendations?"));
+        }
+    }
+
+    @Test public void immediateBackDuringHistoryPageRestoreReissuesCancelledLibraryRead()throws Exception{
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                return new MockResponse().setHeader("Content-Type","application/json")
+                    .setBody("{\"items\":[{\"id\":42,\"title\":\"Restored movie\",\"kind\":\"movie\",\"favorite\":0}],\"total\":1}")
+                    .setBodyDelay(300,java.util.concurrent.TimeUnit.MILLISECONDS);
+            }});server.start();MainActivity activity=lifecycle.get();
+            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            field(activity,"discovery",true);call(activity,"showLibrary");
+            org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Restored movie\",\"kind\":\"movie\",\"files\":[],\"tags\":[\"Remote tag\"]}");
+            Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
+            findText(activity.findViewById(android.R.id.content),"Remote tag").performClick();
+            Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);
+            assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
+            assertTrue(((String)path.invoke(activity)).contains("tag=Remote%20tag"));
+            activity.onBackPressed();activity.onBackPressed();
+            long deadline=System.currentTimeMillis()+6000;
+            while(activity.findViewById(android.R.id.content).findViewWithTag("card:42")==null&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
+            assertNotNull("Restored list must finish after immediately returning from its detail",activity.findViewById(android.R.id.content).findViewWithTag("card:42"));
+            assertNull(findText(activity.findViewById(android.R.id.content),"正在读取媒体库…"));
+            assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
+        }
+    }
+
+    @Test public void recommendationSearchKeepsRecommendationContext()throws Exception{
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");}});
+            server.start();MainActivity activity=lifecycle.get();field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            field(activity,"recommended",true);call(activity,"showLibrary");
+            android.widget.EditText search=searchInput(activity.findViewById(android.R.id.content));assertNotNull(search);search.setText("Search title");
+            search.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+            Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);String result=(String)path.invoke(activity);
+            assertTrue(result.startsWith("/api/recommendations?"));assertTrue(result.contains("q=Search%20title"));
         }
     }
 

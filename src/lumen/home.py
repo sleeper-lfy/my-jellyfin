@@ -72,7 +72,7 @@ class HomePage(QScrollArea):
             self.tiles[kind]=tile;tiles.addWidget(tile)
         self.layout.addLayout(tiles)
         links=QHBoxLayout()
-        for title,section in [('影片发现  ›','discover'),('观影统计  ›','stats')]:
+        for title,section in [('为我推荐  ›','recommend'),('影片发现  ›','discover'),('观影统计  ›','stats')]:
             control=button(title,lambda checked=False,section=section:window.navigate(section));control.setObjectName('headerButton');links.addWidget(control)
         links.addStretch();self.layout.addLayout(links)
         for title in ['继续观看','最新电影','最新电视剧','最新VR电影','为你推荐']:

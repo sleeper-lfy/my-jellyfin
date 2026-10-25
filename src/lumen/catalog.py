@@ -1,5 +1,6 @@
 """Catalog actions shared by desktop and LAN clients; never delete media files."""
 import json
+import time
 from pathlib import Path
 
 SORTS = {'added','title','year','rating','duration'}
@@ -49,6 +50,7 @@ class CatalogActions:
         with self.db:
             for f in files:
                 self.db.execute('UPDATE files SET position=0,completed=? WHERE id=?',(int(state=='completed'),f['id']))
+                self._stamp_file_state(f['id'])
         # Session/activity rows remain real viewing records, never fabricated.
 
     def batch_catalog(self, ids, action, value=None):
@@ -67,7 +69,15 @@ class CatalogActions:
                 elif action=='tags':
                     metadata=w['metadata'];metadata['tags']=list(dict.fromkeys([*metadata.get('tags',[]),*value]))
                     self.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata,ensure_ascii=False),w['id']))
-                else:self.db.execute('UPDATE files SET completed=?,position=0 WHERE work_id=?',(int(action=='completed'),w['id']))
+                else:
+                    self.db.execute('UPDATE files SET completed=?,position=0 WHERE work_id=?',(int(action=='completed'),w['id']))
+                    for f in w['files']:self._stamp_file_state(f['id'])
+
+    def _stamp_file_state(self,file_id):
+        # Manual reset/completion takes precedence over an older queued sample
+        # or an exit recovery file written before the user's explicit action.
+        stamp=json.dumps(time.time_ns())
+        self.db.executemany('INSERT OR REPLACE INTO settings VALUES (?,?)',[(prefix+str(file_id),stamp) for prefix in ('playback-position:','playback-state:')])
 
     def remove_catalog(self, work_id):
         self.work(work_id)

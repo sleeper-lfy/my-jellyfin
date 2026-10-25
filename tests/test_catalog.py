@@ -90,7 +90,12 @@ def test_fullscreen_still_viewer_navigation_and_player_settings(qapp,library,tmp
     paths=[]
     for i in range(2):
         path=tmp_path/f'still{i}.png';image=QImage(640,360,QImage.Format.Format_RGB32);image.fill(QColor('blue' if i else 'red'));image.save(str(path));paths.append(path)
-    viewer=StillViewer(paths);qapp.processEvents();assert len(viewer.scene.items())==1
+    viewer=StillViewer(paths)
+    from PySide6.QtTest import QTest
+    import time
+    deadline=time.monotonic()+3
+    while not viewer.scene.items() and time.monotonic()<deadline:QTest.qWait(10)
+    assert len(viewer.scene.items())==1
     viewer.step(1);assert viewer.index==1 and len(viewer.scene.items())==1;viewer.close()
     player=Player(library);player.playback_speed.setCurrentIndex(player.playback_speed.findData(1.5));assert player.media.playbackRate()==1.5
     player.auto_next.setChecked(False);assert library.setting('auto_next') is False;player.close()

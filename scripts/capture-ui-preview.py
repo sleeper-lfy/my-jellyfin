@@ -14,9 +14,15 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--output',default='docs/screenshots');args=parser.parse_args()
     output=Path(args.output);output.mkdir(parents=True,exist_ok=True)
     app=QApplication([]);app.setStyleSheet(STYLE);app.setFont(QFont('Noto Sans CJK SC',10))
+    window=None
     def settle(seconds=.25):
         deadline=time.monotonic()+seconds
         while time.monotonic()<deadline:app.processEvents();time.sleep(.01)
+        deadline=time.monotonic()+10
+        while window is not None and (window._browse_job is not None or window._browse_pending is not None):
+            if time.monotonic()>deadline:raise RuntimeError('Screenshot capture timed out waiting for catalog')
+            app.processEvents();time.sleep(.01)
+        app.processEvents()
     with tempfile.TemporaryDirectory(prefix='lumen-ui-preview-') as temporary:
         library=Library(Path(temporary)/'library')
         titles=['海岸纪行','森林之声','城市之夜','雪山之巅','远方灯塔','群星之间','荒野来信','夏日回声','山海之间','暮色航线','风的方向','大地之歌']
@@ -52,7 +58,13 @@ def main():
         filters=FilterDialog(window.effective_filters(),window,library.filter_options());filters.show();settle();filters.grab().save(str(output/'ui-filters.png'));filters.reject();settle()
         window.open_details(1,fetch=False);settle(.5);window.grab().save(str(output/'ui-detail.png'))
         window.resize(1024,700);settle();window.grab().save(str(output/'ui-detail-compact.png'))
-        window.close();library.close()
+        from lumen.catalog_ui import StillViewer
+        viewer=StillViewer([library.work(1)['thumbnail']],parent=window,title='封面')
+        deadline=time.monotonic()+10
+        while not viewer.scene.items() and time.monotonic()<deadline:app.processEvents();time.sleep(.01)
+        if not viewer.scene.items():raise RuntimeError('Screenshot capture timed out waiting for cover')
+        settle();viewer.grab().save(str(output/'ui-cover-fullscreen.png'));viewer.close();viewer.deleteLater()
+        window.close();settle();library.close()
     return 0
 
 if __name__=='__main__':raise SystemExit(main())

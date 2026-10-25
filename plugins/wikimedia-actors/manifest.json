@@ -1,0 +1,10 @@
+{
+  "api_version": 1,
+  "id": "wikimedia-actors",
+  "name": "Wikidata / Wikimedia · 女演员头像",
+  "version": "1.0.0",
+  "description": "按姓名搜索 Wikidata 女性人物，读取其 Wikimedia Commons 公开肖像；需人工确认同名候选。人物资料为 CC0，图片依各 Commons 文件页许可使用，不保证每位演员都有照片。",
+  "capabilities": ["actors"],
+  "domains": ["www.wikidata.org", "commons.wikimedia.org", "upload.wikimedia.org"],
+  "base_url": "https://www.wikidata.org"
+}

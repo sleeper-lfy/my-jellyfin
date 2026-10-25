@@ -1,5 +1,6 @@
 function buildRequest(input) {
     var base = input.config.base_url.replace(/\/$/, '');
+    if (input.operation === 'actors') return {url: base + '/search/people?q=' + encodeURIComponent(input.query || '')};
     if (input.operation === 'search') return {url: base + '/search/shows?q=' + encodeURIComponent(input.query || '')};
     if (input.operation === 'detail') {
         var match = /\/shows\/(\d+)/.exec(input.url || '');
@@ -15,6 +16,14 @@ function buildRequest(input) {
 function parseResponse(input) {
     var data = JSON.parse(input.body);
     var base=input.config.base_url.replace(/\/$/, '');
+    if (input.operation === 'actors') {
+        return data.map(function(row) {
+            var p=row.person;
+            return {id:'tvmaze:'+p.id, name:p.name, gender:p.gender==='Female'?'female':p.gender==='Male'?'male':'unknown',
+                aliases:[], url:p.url, photo:p.image ? (p.image.original || p.image.medium) : null,
+                birthday:p.birthday};
+        }).filter(function(person){return person.gender==='female' && person.photo;});
+    }
     if (/\/updates\/shows$/.test(input.url)) {
         var newest=Object.keys(data).sort(function(a,b){return Number(b)-Number(a);}).slice(0,12);
         return {followups:newest.map(function(id){return {url:base+'/shows/'+id+'?embed[]=cast&embed[]=images'};}), records:[]};

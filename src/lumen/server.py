@@ -73,7 +73,10 @@ def public_work(work, detail=False):
         result['download_method']=work['metadata'].get('download_method')
         result['download_url']=work['metadata'].get('download_url',[])
         result.update(overview=work['metadata'].get('overview',''),
-                      actors=[{k:a[k] for k in ['name','gender','aliases'] if k in a} for a in work['metadata'].get('actors',[])],
+                      actors=[{**{k:a[k] for k in ['name','gender','aliases','photo_source_url','photo_page','photo_license','photo_attribution'] if k in a},
+                               'photo':(f"/api/works/{work['id']}/actors/{index}/photo"+
+                                        ('?v='+a['photo_revision'] if isinstance(a.get('photo_revision'),str) and re.fullmatch(r'[a-f0-9]{64}',a['photo_revision']) else '')) if a.get('photo_cache') else None}
+                              for index,a in enumerate(work['metadata'].get('actors',[]))],
                       sources=[{k:s[k] for k in ['site','url','rating']} for s in work['sources']],
                       files=[{**{k:f[k] for k in ['id','season','episode','duration','position','completed']},
                               'overview':f.get('overview',''),'stills':[f"/api/files/{f['id']}/stills/{index}" for index,_ in enumerate(f.get('stills',[])[:40])],
@@ -203,14 +206,16 @@ class LanServer:
                             return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now()})
                         if path == '/api/filters':
                             filters = self.filters(query)
-                            return self.send_json(200, library.filter_options(filters.get('kinds')))
-                        if path in {'/api/works','/api/recommendations'}:
+                            return self.send_json(200, library.filter_options(filters.get('kinds'),local=query.get('discover',['false'])[0]!='true'))
+                        if path in {'/api/works','/api/recommendations','/api/discover'}:
                             filters = self.filters(query)
                             if query.get('list',[''])[0]:
                                 row=library.db.execute('SELECT filters FROM lists WHERE name=?',(query['list'][0],)).fetchone()
                                 if not row:raise ApiError(404,'片单不存在')
                                 filters={**json.loads(row[0]),'local':True}
+                            if path=='/api/discover':filters['local']=False
                             items = library.query(filters)
+                            if path=='/api/discover':items=[item for item in items if item['sources']]
                             if path == '/api/recommendations':
                                 selected = {item['id'] for item in items}
                                 items = [item for item in library.recommendations() if item['id'] in selected]
@@ -225,6 +230,15 @@ class LanServer:
                             return self.send_json(200,result)
                         if path == '/api/stats':
                             return self.send_json(200,library.stats())
+                        match = re.fullmatch(r'/api/works/(\d+)/actors/(\d+)/photo',path)
+                        if match:
+                            work=library.work(int(match[1])); actors=work['metadata'].get('actors',[]); index=int(match[2])
+                            if index>=len(actors) or not actors[index].get('photo_cache'):
+                                raise ApiError(404,'暂无演员头像')
+                            target=Path(actors[index]['photo_cache']).resolve()
+                            if not target.is_relative_to((service.directory/'cache').resolve()):
+                                raise ApiError(403,'演员头像不在缓存内')
+                            return self.send_file(target,'image/jpeg')
                         match = re.fullmatch(r'/api/works/(\d+)/stills/(\d+)',path)
                         if match:
                             from .artwork import still_paths

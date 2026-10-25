@@ -154,15 +154,23 @@ from .catalog import CatalogActions, sort_items, watch_state
 
 
 class Library(CatalogActions):
-    def __init__(self, directory=None, *, initialize=True):
+    def __init__(self, directory=None, *, initialize=True, timeout=30):
         self.directory = Path(directory or data_directory())
         self.directory.mkdir(parents=True, exist_ok=True)
         (self.directory / 'cache').mkdir(exist_ok=True)
-        self.db = sqlite3.connect(self.directory / 'library.sqlite', timeout=30)
+        self.db = sqlite3.connect(self.directory / 'library.sqlite', timeout=timeout)
         self.db.row_factory = sqlite3.Row
-        self.db.execute('PRAGMA journal_mode=WAL')
+        # Reapplying journal_mode and CREATE/INSERT on every connection can wait
+        # for an importer holding the write lock, even for an otherwise read-only
+        # screen. Current databases need no write transaction when reopened.
+        if self.db.execute('PRAGMA journal_mode').fetchone()[0].lower() != 'wal':
+            self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA foreign_keys=ON')
         if not initialize:return
+        tables={row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        required={'works','files','import_cache','sources','name_keys','external_ids','sessions','activity','tasks','settings','lists','playback_preferences','bookmarks'}
+        if required <= tables and 'liked' in {row['name'] for row in self.db.execute('PRAGMA table_info(works)')} and self.setting('personal_unified_v1',False):
+            return
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS works (
           id INTEGER PRIMARY KEY, identity TEXT UNIQUE NOT NULL, kind TEXT NOT NULL,
@@ -710,6 +718,11 @@ class Library(CatalogActions):
                 key = actor.get('id') or actor['name'].casefold()
                 matches = [k for k, a in actors.items() if k == key or a['_names'] & names]
                 record = actors.setdefault(matches[0] if matches else key, {**actor, '_names': set(), '_works': {}})
+                # An earlier locked/missing-photo credit must not hide a cached
+                # portrait found on another matching credit of this actress.
+                if not record.get('photo_cache') and actor.get('photo_cache'):
+                    for field in ('photo', 'photo_cache', 'photo_revision', 'photo_source', 'photo_source_id', 'photo_source_url', 'photo_page', 'photo_license', 'photo_attribution'):
+                        if field in actor: record[field] = actor[field]
                 for old in matches[1:]:
                     record['_names'].update(actors[old]['_names'])
                     record['_works'].update(actors.pop(old)['_works'])

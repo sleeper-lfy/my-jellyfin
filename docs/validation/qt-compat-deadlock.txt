@@ -1,0 +1,38 @@
+Captured during the full local regression on 2026-10-25.
+Linux, CPython 3.12.14, PySide6 / shiboken6 6.8.3, Qt FFmpeg compatibility backend.
+Application fixture uses synthetic AAC video, not user media.
+
+GUI thread (holds Python GIL):
+    syscall
+    QBasicMutex::lockInternal
+    QObjectPrivate::connectImpl
+    QObject::connectImpl
+    QAbstractTextDocumentLayout::registerHandler
+    QTextDocument::documentLayout
+    QWidgetTextControl::QWidgetTextControl
+    QPlainTextEdit::QPlainTextEdit
+    Player.add_bookmark
+
+FFmpeg worker thread (Qt connection mutex held, waiting for Python GIL):
+    pthread_cond_timedwait
+    Shiboken::GilState::acquire
+    Sbk_GetPyOverride
+    QAudioOutput wrapper disconnectNotify
+    QObject::~QObject
+    libffmpegmediaplugin
+    QObject::event
+    QCoreApplicationPrivate::sendPostedEvents
+    QThread::exec
+
+The wrapper identity was resolved from the installed QtMultimedia binary:
+0x7cef3 calls Sbk_GetPyOverride; the override string is disconnectNotify;
+the error class string at 0x872bb is QAudioOutput (offsets for this Linux binary).
+
+Fix: create the compatibility AudioOutput through Qt's QML native type factory,
+preserve its engine and component lifetime, and give it explicit C++ ownership.
+The resulting object is not a Python-created virtual-method wrapper, so the
+worker disconnect path does not attempt the Python override lookup above.
+
+This is evidence for one reproduced compatibility-backend stall, not proof that
+all Windows drivers or user-specific stalls have the same cause. The native
+watchdog additionally records Python stacks while native code retains the GIL.

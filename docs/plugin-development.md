@@ -7,6 +7,7 @@
 - `plugins/example`：通用 JSON 影片目录协议；默认连接用户自己运行的本地目录服务；没有内置假影片。
 - `plugins/tvmaze`：用户指定的优先站点；电视剧搜索、详情（含演员）、最新剧集索引发现。
 - `plugins/internet-archive`：可选公开影片目录；只读取元数据和图片，不下载视频。
+- `plugins/wikimedia-actors`：独立女演员头像搜索，Wikidata 女性人物 + Wikimedia Commons 公开肖像；保留文件页、许可和署名。没有照片或资料的演员不会编造头像。
 
 ## manifest.json
 
@@ -25,7 +26,7 @@
 
 ID 为小写字母开头的 2–51 位字母、数字、连字符。`domains` 为精确主机名（无协议、端口、路径、通配符）；只有这些地址可由宿主请求。插件安装后无法通过 JS 扩大权限；改权限需卸载重装并查看新声明。
 
-能力可选：`search`、`detail`、`discover`、`actors`。演员资料通常随 detail 返回；独立 actors 操作的传输接口可调用，但当前桌面没有单独演员资料抓取按钮。
+能力可选：`search`、`detail`、`discover`、`actors`。演员资料可以随 detail 返回，也可以实现独立 `actors` 搜索；独立演员记录使用下文格式，不是影片记录，不会创建一部同名影片。
 
 ## JavaScript 函数
 
@@ -35,7 +36,7 @@ function buildRequest(input) {
     return {url: input.config.base_url + '/catalog.json'};
 }
 function parseResponse(input) {
-    // input.body, input.url, input.operation, input.content_type, input.config
+    // input.body, input.url, input.operation, input.content_type, input.config, input.context
     return JSON.parse(input.body).items;
 }
 ```
@@ -47,11 +48,13 @@ function parseResponse(input) {
 ```javascript
 return {
   records: [],
-  followups: [{url: 'https://catalog.example.org/detail/123'}]
+  followups: [{url: 'https://catalog.example.org/detail/123', context: {source_id: '123'}}]
 };
 ```
 
 宿主按同一权限和代理依序请求，URL 去重，每任务至多 20 个请求、1000 条记录、180 秒总预算（单次请求结束后检查预算）。JS 每次墙钟超时 8 秒；Linux CPU 7 秒/地址空间 768 MiB，Windows Job Object 768 MiB/父进程墙钟超时。超限进程被终止，错误进入任务列表。
+
+`context` 可选，为后续请求携带 JSON 上下文；宿主将其作为该次 `parseResponse(input).context` 传回。上下文不提供额外权限，也不参与 URL 去重；同一 URL 仍只请求一次。Wikimedia 插件用它将人物标识与 Commons 图片解析结果关联，每次任务至多搜索 6 个候选，保持在上述预算内。
 
 普通响应最大 4 MB，图片 10 MB；单次 HTTP 读超时 20 秒，流读取预算 30 秒；保持 TLS 校验，不跟随 HTTP 重定向。站点需要跳转时配置最终域名和 URL，不能关闭校验。仅支持 GET；不支持任意自定义执行命令、视频资源下载或文件写入。
 
@@ -88,6 +91,34 @@ return {
 来源唯一键为 `(plugin,id)`；外部标识优先，标准化名称+年份+类型作为后备用于跨来源匹配。明确选择的本地作品可吸收对应未入库发现实体；若该来源已绑定另一部本地作品则停止，由用户核对。外部 IDs（如 IMDb）优先关联跨语言同一作品，历史名称与别名另有索引。不同作品恰好同名同年仍可能产生歧义；外部标识冲突时事务回滚，并可在详情中明确合并重复作品。没有共同外部标识时，不声称能自动解决所有同名歧义。
 
 锁定字段不会被刷新覆盖；稀疏发现响应不会用空值清除既有演员/简介。所有来源保留各自评分、网址、更新时间、网站收录时间；软件首次发现时间独立保存。
+
+## 独立演员头像
+
+调用 `Plugins.run(plugin_id, 'actors', query='演员姓名')`。`buildRequest` 的 `operation` 为 `actors`，`query` 为输入姓名；`parseResponse` 直接返回候选数组或 `{records, followups}`。每个候选示例：
+
+```json
+{
+  "id": "provider:person-123",
+  "name": "演员姓名",
+  "gender": "female",
+  "aliases": ["另一种拼写"],
+  "url": "https://catalog.example.org/people/123",
+  "photo": "https://images.example.org/people/123.jpg",
+  "photo_page": "https://images.example.org/people/123",
+  "photo_license": "CC BY-SA 4.0",
+  "photo_attribution": "摄影者姓名"
+}
+```
+
+`id/name/url` 必填，`photo` 允许缺省或 null；没有头像的候选不能用于更新。`gender` 为 female/male/unknown；`aliases` 为至多 100 个姓名。头像和元数据请求遵守 manifest 精确域名、代理、TLS、大小和时间限制。内置 TVmaze 1.2.0 新增 `/search/people` 搜索；Wikimedia 插件使用 Wikidata `wbsearchentities`、`wbgetentities` 以及 Commons `imageinfo`，只返回已声明为女性人物且有公开肖像的候选。站点搜索结果可能包含同名人物，必须由用户确认，不按首条结果自动替换。
+
+确认后调用 `Plugins.merge_actor(plugin_id, candidate, actor_name, replace=False)`，其中 `actor_name` 是本地演员姓名或本地别名。默认补充缺失缓存，`replace=True` 覆盖已有头像；更新该姓名在全库未锁定演员字段中的所有匹配项，保留原演员姓名、别名、其他影片资料。锁定 `actors` 的作品始终跳过。下载及解码在数据库写事务之前进行，并在写入时重新读取资料，避免网络慢时锁住其他写入或覆盖期间的人工编辑。图片按比例缩小到最长边 1200 后缓存。返回 `{updated, skipped, name}`。
+
+本地数据保留 `photo_source/photo_source_id/photo_source_url`，以及来源提供的 `photo_page/photo_license/photo_attribution`。Commons 文件的许可各不相同，使用图片时应同时保留署名及许可来源。头像缓存以图片内容 SHA-256 命名，`photo_revision` 保存该内容散列。局域网详情 `actors[].photo` 返回带内容修订参数的鉴权缓存地址 `/api/works/{work_id}/actors/{index}/photo?v=内容散列`；同一个来源 URL 的图片被更新时，手机会加载新图片而非命中旧头像缓存。生成详情响应不读取图片文件。不暴露本地路径；缓存目录之外的文件拒绝读取。
+
+旧安装的 TVmaze 清单没有 `actors` 能力。在女演员墙点击“刮削演员头像…”或影片详情的“更多操作 → 刮削演员头像…”，再点击“安装 / 更新内置头像来源…”，选择页面列出的来源与域名权限后会安装、更新并启用该来源，保留代理和其他配置。底层 `update_builtin_actor_plugin` 方法只更新文件，不自行启用；在设置中手工安装文件夹仍需手工启用。第三方插件不会被后台自动升级或覆盖。
+
+云开发环境对这些公开站点的请求当前被网络代理拒绝，独立演员流程已通过官方响应结构的本地回归测试；该环境未完成真实站点连通验证。站点没有照片、网络阻断或受地区限制时会显示失败，不伪造成功。
 
 ## 代理和分类
 

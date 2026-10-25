@@ -15,6 +15,9 @@ def load_view(library,request):
                 'history':[dict(row) for row in library.db.execute('SELECT s.started,s.watched,w.title FROM sessions s JOIN files f ON s.file_id=f.id JOIN works w ON w.id=f.work_id ORDER BY s.started DESC LIMIT 200')] if tab==7 else []}
     if section=='movie' and tab==1:
         return {'items':library.actresses(request['actor_min'],request['actor_sort'])}
+    if section=='recommend':
+        selected={item['id'] for item in library.query(request['filters'])}
+        return {'items':[item for item in library.recommendations() if item['id'] in selected]}
     if section=='discover':
         items=library.query({**request['filters'],'local':False})
         if tab==0:

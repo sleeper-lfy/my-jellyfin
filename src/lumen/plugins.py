@@ -13,6 +13,23 @@ from .core import identity, now
 CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
 
 
+def validate_actor(item):
+    """Independent people records are not media records and never create works."""
+    if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not item['name'].strip() or len(item['name']) > 200 or not item.get('id'):
+        raise ValueError('演员资料缺少 name / id')
+    if item.get('gender', 'unknown') not in {'female', 'male', 'unknown'}:
+        raise ValueError('无效演员性别')
+    aliases = item.get('aliases', [])
+    if not isinstance(aliases, list) or len(aliases) > 100 or any(not isinstance(name, str) or len(name) > 200 for name in aliases):
+        raise ValueError('演员 aliases 须为至多 100 个姓名的数组')
+    for field in ('url', 'photo', 'photo_page'):
+        address = item.get(field)
+        if field == 'url' or address:
+            parsed = urlparse(address if isinstance(address, str) else '')
+            if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError('演员来源及头像须为完整 HTTP(S) URL')
+
+
 def validate_metadata(item):
     if not isinstance(item, dict) or not isinstance(item.get('title'), str) or not item['title'].strip() or not item.get('id'):
         raise ValueError('元数据缺少 title / id')
@@ -87,6 +104,37 @@ class Plugins:
         previous.update(config)
         self.library.set_setting('plugin:' + plugin_id, previous)
 
+    @staticmethod
+    def builtin_actor_plugin(plugin_id):
+        """Locate a shipped provider; callers must show its permissions first."""
+        if plugin_id not in {'tvmaze', 'wikimedia-actors'}:
+            raise ValueError('不是随应用提供的演员插件')
+        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2]))
+        folder = root / 'plugins' / plugin_id
+        if not (folder / 'manifest.json').is_file() or not (folder / 'plugin.js').is_file():
+            raise ValueError('当前安装包缺少内置演员插件文件')
+        return folder
+
+    def update_builtin_actor_plugin(self, plugin_id):
+        """Explicitly install/update shipped code, preserving enabled/proxy config.
+
+        This never runs automatically and never enables a newly installed plugin.
+        The UI must display the shipped manifest's domains before invoking it.
+        """
+        folder = self.builtin_actor_plugin(plugin_id)
+        target = self.root / plugin_id
+        if not target.exists():
+            return self.install(folder)
+        manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
+        if manifest['id'] != plugin_id or 'actors' not in manifest['capabilities']:
+            raise ValueError('内置演员插件清单不匹配')
+        # Two atomically replaced files, no deletion of user plugin configuration.
+        for name in ('plugin.js', 'manifest.json'):
+            temporary = target / (name + '.updating')
+            temporary.write_bytes((folder / name).read_bytes())
+            temporary.replace(target / name)
+        return manifest
+
     def uninstall(self, plugin_id):
         found = next(p for p in self.installed() if p['id'] == plugin_id)
         shutil.rmtree(self.root / found['id'])
@@ -160,7 +208,7 @@ class Plugins:
                 visited.add(url)
                 data, content_type = self.fetch(plugin, url)
                 parsed = self.javascript(plugin_id, 'parseResponse', {'operation': operation, 'url': url, 'body': data.decode('utf-8-sig'), 'content_type': content_type,
-                                                                     'config': plugin['config']})
+                                                                     'config': plugin['config'], 'context': request.get('context')})
                 if isinstance(parsed, dict):
                     followups = parsed.get('followups', [])
                     if not isinstance(followups, list) or len(followups) > 19 or any(not isinstance(r,dict) or not isinstance(r.get('url'),str) for r in followups):
@@ -171,6 +219,9 @@ class Plugins:
                     raise ValueError('插件必须返回至多 1000 条元数据记录')
                 result.extend(parsed)
             for item in result:
+                if operation == 'actors':
+                    validate_actor(item)
+                    continue
                 if not isinstance(item, dict) or not isinstance(item.get('title'), str) or not item['title'].strip() or not item.get('id'):
                     raise ValueError('元数据缺少 title / id')
                 if item.get('kind', 'movie') not in {'movie', 'series', 'vr'}:
@@ -183,6 +234,88 @@ class Plugins:
         except Exception as exc:
             self.library.task(task_id, 'scrape', 'failed', payload, error=str(exc))
             raise
+
+    def merge_actor(self, plugin_id, metadata, actor_name, *, replace=False):
+        """Cache a confirmed portrait once, then update matching local cast entries.
+
+        Run this on a worker: downloading/decoding happens before any write
+        transaction so a slow provider cannot hold SQLite's writer lock.
+        """
+        validate_actor(metadata)
+        if not isinstance(actor_name, str) or not actor_name.strip() or type(replace) is not bool:
+            raise ValueError('须指定本地演员姓名及是否覆盖')
+        plugin = next(p for p in self.installed() if p['id'] == plugin_id)
+        if not plugin['config'].get('enabled') or 'actors' not in plugin['capabilities']:
+            raise ValueError('演员资料插件未启用或不支持此功能')
+        if not metadata.get('photo'):
+            raise ValueError('所选演员没有头像')
+        wanted = actor_name.strip().casefold()
+        def matches(actor):
+            return wanted in {str(name).strip().casefold() for name in [actor.get('name', ''), *actor.get('aliases', [])]}
+        eligible = []
+        skipped = 0
+        # Stream cast metadata: a large library need not hold every NFO in RAM.
+        for row in self.library.db.execute('SELECT id,metadata,locked FROM works'):
+            details = json.loads(row['metadata'])
+            if not any(matches(actor) for actor in details.get('actors', [])):
+                continue
+            if 'actors' in json.loads(row['locked']):
+                skipped += 1
+                continue
+            targets = [actor for actor in details.get('actors', []) if matches(actor)]
+            if not replace and all(actor.get('photo_cache') and Path(actor['photo_cache']).is_file() for actor in targets):
+                skipped += 1
+                continue
+            eligible.append(row['id'])
+        if not eligible:
+            return {'updated': 0, 'skipped': skipped, 'name': actor_name}
+        data, content_type = self.fetch(plugin, metadata['photo'], image=True)
+        if not content_type.lower().startswith('image/'):
+            raise ValueError('演员头像响应类型错误')
+        from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QSaveFile
+        from PySide6.QtGui import QImageReader
+        buffer = QBuffer(); buffer.setData(QByteArray(data)); buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        reader = QImageReader(buffer); reader.setAutoTransform(True); size = reader.size()
+        if not size.isValid() or size.width() * size.height() > 40_000_000:
+            raise ValueError('演员头像尺寸无效或过大')
+        # Portrait tiles never need an original 40 MP image in memory/cache.
+        if max(size.width(), size.height()) > 1200:
+            from PySide6.QtCore import QSize, Qt
+            reader.setScaledSize(size.scaled(QSize(1200, 1200), Qt.AspectRatioMode.KeepAspectRatio))
+        picture = reader.read()
+        if picture.isNull():
+            raise ValueError('演员头像无法解码')
+        revision = hashlib.sha256(data).hexdigest()
+        path = self.library.directory / 'cache' / ('actor-' + revision + '.jpg')
+        output = QSaveFile(str(path))
+        if not output.open(QIODevice.OpenModeFlag.WriteOnly) or not picture.save(output, 'JPG') or not output.commit():
+            raise ValueError('演员头像缓存未能保存')
+        updated = 0
+        with self.library.db:
+            for work_id in eligible:
+                # Read again after the network request, preserving concurrent edits.
+                row = self.library.db.execute('SELECT metadata,locked FROM works WHERE id=?', (work_id,)).fetchone()
+                if not row or 'actors' in json.loads(row['locked']):
+                    skipped += 1
+                    continue
+                details = json.loads(row['metadata']); changed = False
+                for actor in details.get('actors', []):
+                    if not matches(actor) or not replace and actor.get('photo_cache') and Path(actor['photo_cache']).is_file():
+                        continue
+                    actor.update(photo=metadata['photo'], photo_cache=str(path), photo_revision=revision, photo_source=plugin_id,
+                                 photo_source_id=str(metadata['id']), photo_source_url=metadata['url'])
+                    import html
+                    import re
+                    for field in ('photo_page', 'photo_license', 'photo_attribution'):
+                        actor.pop(field, None)
+                        value = metadata.get(field)
+                        if isinstance(value, str):
+                            actor[field] = html.unescape(re.sub(r'<[^>]*>', '', value))[:4000]
+                    changed = True
+                if changed:
+                    self.library.db.execute('UPDATE works SET metadata=? WHERE id=?', (json.dumps(details, ensure_ascii=False), work_id))
+                    updated += 1
+        return {'updated': updated, 'skipped': skipped, 'name': actor_name}
 
     def merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False):
         with self.library.db:
@@ -271,7 +404,8 @@ class Plugins:
                 picture = QImage.fromData(data)
                 if picture.isNull() or picture.width() * picture.height() > 40_000_000:
                     raise ValueError('图片无效或过大')
-                path = self.library.directory / 'cache' / (hashlib.sha256(image_url.encode()).hexdigest() + '.jpg')
+                filename = 'actor-' + hashlib.sha256(data).hexdigest() if actor is not None else hashlib.sha256(image_url.encode()).hexdigest()
+                path = self.library.directory / 'cache' / (filename + '.jpg')
                 picture.save(str(path), 'JPG')
                 with self.library.db:
                     if actor is None and 'poster' not in item['locked']:
@@ -279,6 +413,7 @@ class Plugins:
                         self.library.db.execute('UPDATE works SET thumbnail=? WHERE id=?', (str(path), work_id))
                     elif actor is not None:
                         actor['photo_cache'] = str(path)
+                        actor['photo_revision'] = hashlib.sha256(data).hexdigest()
                         self.library.db.execute('UPDATE works SET metadata=? WHERE id=?', (json.dumps(merged, ensure_ascii=False), work_id))
             except Exception as exc:
                 import uuid

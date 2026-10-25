@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-25",
+  "scope": "Source verification after 0.4.9; no new installer or Release",
+  "base_commit": "900f43f4110749790ead855cbaf8ca3fe3ed85c1",
+  "python": {
+    "command": "QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q -o faulthandler_timeout=40",
+    "passed": 259,
+    "skipped": 2,
+    "failed": 0,
+    "seconds": 92.63
+  },
+  "android": {
+    "command": "python scripts/build-android-cloud.py --offline :app:testDebugUnitTest :app:lintDebug",
+    "passed": 63,
+    "skipped": 0,
+    "failed": 0,
+    "lint": "passed"
+  },
+  "application_smoke": "passed; actual Qt process, asynchronous browsing, native compatibility audio factory, orderly exit, screenshot and startup log",
+  "coverage": [
+    "Nested tag and actor navigation, scroll restoration, stale request rejection",
+    "Recommendation and discovery filters, unimported catalog items",
+    "Background facets preserve user input and ignore closed dialogs",
+    "Cover zoom, background decoding, rapid navigation coalescing",
+    "Actor provider protocol, confirmed photo updates, locks, missing-only/replace, authenticated versioned image URLs",
+    "Real SQLite writer contention, playback accounting, end-of-file state, exit snapshot and idempotent recovery",
+    "Native QAudioOutput ownership and 80 real AAC source switches with bookmark/text controls",
+    "CPython C watchdog captures a subprocess deliberately holding the GIL in a native call"
+  ],
+  "limitations": [
+    "Source verification ran in Linux cloud and Android test environments; Windows drivers and physical Android devices were not manually exercised",
+    "Live TVmaze/Wikimedia requests were blocked by this cloud network; official response structure and local integration were verified",
+    "One reproduced Qt compatibility deadlock was captured and fixed; residual device-specific hangs require logs"
+  ]
+}
