@@ -32,9 +32,9 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢就是收藏，不再分成两个按钮。普通播放、全屏与 VR 均可使用，保存不打断视频。[更新说明](docs/releases/0.4.9.md) · [PC 播放截图](docs/screenshots/player-personal-pc.png) · [安卓播放截图](docs/screenshots/player-personal-android.png) · [VR 控件截图](docs/screenshots/player-personal-android-vr.png)。
 
-### 后续源码修复
+### 0.4.10 导航、头像与响应性修复
 
-标签和演员结果支持返回实际来源页面；为我推荐、影片发现提升为一级入口。详情封面可点击缩放查看，新增独立演员头像插件匹配。目录与筛选读取、播放记录保存和大图解码移到后台，并自动记录界面卡顿堆栈。[操作与日志位置](docs/navigation-portraits-and-responsiveness.md) · [放大封面截图](docs/screenshots/ui-cover-fullscreen.png)。这些修改尚未生成新安装包，下面的下载仍为 0.4.9。
+标签和演员结果支持返回实际来源页面；为我推荐、影片发现提升为一级入口。详情封面可点击缩放查看，新增独立演员头像插件匹配。目录与筛选读取、播放记录保存和大图解码移到后台，并自动记录界面卡顿堆栈。[操作与日志位置](docs/navigation-portraits-and-responsiveness.md) · [放大封面截图](docs/screenshots/ui-cover-fullscreen.png)。这些修复已包含在 [0.4.10 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.10)，并修复 Windows 筛选窗口后台对象释放后的异常。
 
 ### 0.4.7 基础功能补全
 
@@ -54,19 +54,19 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 ## 下载
 
-[**Lumen 0.4.9 · Windows + Android Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.9) 已发布，采用用户确认的“喜欢就是收藏”规则：
+[**Lumen 0.4.10 · Windows + Android Release**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.10) 已发布，包含页面返回、一级推荐 / 发现、封面放大、演员头像插件和界面响应修复：
 
-- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.9/Lumen-Setup-x64.exe)，Windows 10/11 x64，直接安装。
-- [Android 完整安装包：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.9/Lumen-android-debug.apk)，Android 8.0+，0.4.9 / versionCode 12，同签名可覆盖安装。
+- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.10/Lumen-Setup-x64.exe)，Windows 10/11 x64，直接安装。
+- [Android 完整安装包：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.10/Lumen-android-debug.apk)，Android 8.0+，0.4.10 / versionCode 13，同签名可覆盖安装。
 - [target 安装包备份及校验记录](target/README.md)：完整 APK、同一 EXE 的校验分片与合并脚本。Release 同时提供 SHA-256 文件。
 
-[0.4.9 更新说明](docs/releases/0.4.9.md)。播放时可直接评分、喜欢／收藏、不喜欢；三者即时保存，喜欢／收藏与不喜欢互斥。Windows 225 项测试及安装验证、Android 59 项测试与 lint 通过；两个公开安装包均已重新下载校验。普通推送只验证源码，仅明确请求时打包或发布。
+[0.4.10 更新说明](docs/releases/0.4.10.md)。Windows 261 项测试及安装验证、Android 63 项测试与 lint 通过；两个公开安装包均已重新下载校验。PC 更新检测已确认能从 0.4.9 识别 0.4.10。普通推送只验证源码，仅明确请求时打包或发布。
 
 下载资源的默认目录、HTTP 下载后自动入库及外部磁力工具设置见 [下载与影视入库](docs/downloads.md)。
 
 ## Windows 安装与启动
 
-提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.9 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
+提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.10 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
 
 需要 Windows 10/11 x64、Python 3.12、FFmpeg 与 FFprobe（两个程序加入 PATH）。可通过已安装的 Winget 获取 Python/FFmpeg，或从各项目官方渠道安装；保持包签名/校验验证。
 
@@ -113,7 +113,7 @@ py -3.12 -m venv .venv
 ./scripts/build-windows.ps1
 ```
 
-Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.9 已完成 Windows 安装器验证并发布双端 Release。
+Windows 打包输出 `dist\Lumen\Lumen.exe` 和 `dist\Lumen-windows-x64.zip`，使用 onedir 保留可替换的动态库。包含 FFmpeg/FFprobe 和插件示例，必须在 Windows 上构建。`.github/workflows/windows.yml` 定义手动测试、打包和 artifact；0.4.10 已完成 Windows 安装器验证并发布双端 Release。
 
 Linux 云开发：
 
