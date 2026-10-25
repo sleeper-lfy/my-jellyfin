@@ -1,19 +1,19 @@
 {
-  "version": "0.4.9",
-  "source_commit": "0400d9e247aae3108eb497a02748ae4ef4fc8376",
-  "release_published": true,
-  "verified_at": "2026-10-24T06:16:24.336316+00:00",
+  "version": "0.4.10",
+  "source_commit": "f1ebfb5c05e66328de2c50ff760396415199f4ff",
+  "release_published": false,
+  "verified_at": "2026-10-25T05:20:59.345379+00:00",
   "windows": {
     "method": "Git fetched target parts; verify every part, reconstruct full SHA-256 and PE signature",
-    "bytes": 201624103,
-    "sha256": "ee9953df23638fc23d3209890bfbf62d5d8f1ebf0fa7542a051b90d1f38cdd46",
+    "bytes": 201823162,
+    "sha256": "d1bac80e5b932f3f7f8ad39874988c3ac62422c93bfd336419bbf9e1800a8c83",
     "parts": 5,
     "verified": true
   },
   "android": {
-    "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.9/Lumen-android-debug.apk",
-    "bytes": 100882310,
-    "sha256": "7fc31def0eb87aa4a35818c617a5eb4cf63b3bbdff85f8492998ee2213ed22e6",
+    "method": "Git target APK; verified SHA-256, signature, version, source hash and alignment",
+    "bytes": 100885114,
+    "sha256": "81e5ec8698902e4fd2de4e029f51e88aba267850ed48185cdd3091c29469b9b4",
     "verified": true
   }
 }

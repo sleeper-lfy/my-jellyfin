@@ -261,3 +261,9 @@ PC / Android 的标签和演员筛选新增有界返回历史，逐层返回实�
 当前库连接不再重复 DDL 和全库写入；播放计时、位置、时长与片尾状态后台合并保存，幂等重试和退出恢复文件保护最终记录。复测中捕获 Qt 兼容播放器的原生音频包装对象 / GIL 互锁，改用 Qt 原生音频实例并验证 80 次实际切源和书签输入框创建。新增 3 秒 Python 界面监控与约 5 秒 C 级备用监控，支持原生调用持有 GIL 时记录堆栈；任务与诊断增加实际日志目录入口。
 
 最终完整 Python 回归 **259 项通过、2 项环境检查跳过**（92.63 秒）；Android **63 项通过、0 跳过**及 lint 通过。应用 `--smoke` 启动、异步页面退出及日志检查通过；README 的 PC 图片更新为实际 Qt 导航、详情和放大封面截图。[操作与日志](navigation-portraits-and-responsiveness.md)、[原生互锁证据](validation/qt-compat-deadlock.txt)、[验证记录](validation/navigation-responsiveness.json)。本次未请求打包或发布，target 与现有 0.4.9 Release 保持原交付产物。
+
+## 0.4.10 两端构建及请求发布（2026-10-25）
+
+用户明确要求打包并更新 Releases。构建前读取上一轮 Windows 原生失败日志，修复筛选后台对象已释放后继续取消任务的问题，并在回归中明确处理 DeferredDelete 后再接受筛选。最终构建源码 `f1ebfb5c05e66328de2c50ff760396415199f4ff`；Windows 运行 `40164654926` 成功，261 项测试无失败 / 错误 / 跳过，程序及插件 worker、安装 / 启动 / 卸载验证通过。EXE 201823162 字节，SHA-256 `d1bac80e5b932f3f7f8ad39874988c3ac62422c93bfd336419bbf9e1800a8c83`；Git 分片逐个校验并重组，完整 SHA-256 和 PE 签名验证通过。
+
+Android 0.4.10 / versionCode 13 完成 63 项测试、lint、assembleDebug、原签名、版本与 zipalign 检查；APK 100885114 字节，SHA-256 `81e5ec8698902e4fd2de4e029f51e88aba267850ed48185cdd3091c29469b9b4`。target 已保存两端同源产物与清单；开始发布同一批文件，公开下载结果完成后追加。
