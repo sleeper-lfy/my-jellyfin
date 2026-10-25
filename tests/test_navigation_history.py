@@ -106,6 +106,10 @@ def test_filter_facets_load_off_thread_without_replacing_typed_values_or_recomme
         while window._auxiliary_jobs and time.monotonic()<deadline:
             loop=QEventLoop();QTimer.singleShot(10,loop.quit);loop.exec()
         assert dialog.actor.text()=='Typed actor' and dialog.actor.findText('Existing actor')>=0
+        # Windows can delete the completed worker before the user accepts the
+        # still-open panel. Flush DeferredDelete explicitly on every platform.
+        from PySide6.QtCore import QCoreApplication,QEvent
+        QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
         dialog.accept();qapp.processEvents()
         assert window.section=='recommend' and window.search.text()=='Matching'
         assert len(window.current_items)==1 and window.catalog_sort.isHidden()

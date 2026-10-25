@@ -7,8 +7,8 @@ android {
         applicationId 'net.lumen.media'
         minSdk 26
         targetSdk 35
-        versionCode 12
-        versionName '0.4.9'
+        versionCode 13
+        versionName '0.4.10'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

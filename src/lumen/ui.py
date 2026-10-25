@@ -1782,7 +1782,11 @@ class MainWindow(QMainWindow):
         def failed(error):
             if alive[0] and not self._closing:dialog.facet_status.setText('下拉选项读取失败，可手动输入：'+error)
         def finished(result):
-            alive[0]=False;job.requestInterruption();self._filter_dialog=None
+            alive[0]=False
+            # A completed facet worker has already scheduled its QObject for
+            # deletion; only cancel workers still owned by the job registry.
+            if job in self._auxiliary_jobs:job.requestInterruption()
+            self._filter_dialog=None
             if result==QDialog.DialogCode.Accepted and not self._closing:
                 filters=dialog.filters()
                 if self.section not in {'discover','recommend'}:
