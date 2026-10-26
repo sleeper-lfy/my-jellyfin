@@ -1,6 +1,6 @@
 # 字幕、发现搜索与 Fans 视频
 
-本页描述 0.4.10 之后的源码更新，现有 0.4.10 安装包不包含这些修改。
+本页功能已包含在 [0.4.11 Windows + Android Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.11)。历史 0.4.10 不包含这些功能。
 
 ## 字幕
 

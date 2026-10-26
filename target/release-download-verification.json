@@ -1,29 +1,29 @@
 {
-  "tag": "v0.4.10",
-  "source_commit": "f1ebfb5c05e66328de2c50ff760396415199f4ff",
-  "verified_at": "2026-10-25T05:24:37.239227+00:00",
-  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.10",
+  "tag": "v0.4.11",
+  "source_commit": "504bc33c5b395227a7b443b0df2587e60c6719ae",
+  "verified_at": "2026-10-26T06:25:20.431049+00:00",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.11",
   "assets": [
     {
       "file": "Lumen-Setup-x64.exe",
-      "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.10/Lumen-Setup-x64.exe",
-      "bytes": 201823162,
-      "sha256": "d1bac80e5b932f3f7f8ad39874988c3ac62422c93bfd336419bbf9e1800a8c83",
+      "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.11/Lumen-Setup-x64.exe",
+      "bytes": 202068539,
+      "sha256": "2a70621ffc209ae8d9fdf1a6b207d57b7ff7d2862f68bd848b4f93bb883eb8d0",
       "public_download_verified": true
     },
     {
       "file": "Lumen-android-debug.apk",
-      "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.10/Lumen-android-debug.apk",
-      "bytes": 100885114,
-      "sha256": "81e5ec8698902e4fd2de4e029f51e88aba267850ed48185cdd3091c29469b9b4",
+      "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.11/Lumen-android-debug.apk",
+      "bytes": 100895070,
+      "sha256": "2699710af2666e757d51ea895395abcb0b862d3967f58aa44630fca405fac05f",
       "public_download_verified": true
     }
   ],
   "pc_update_check": {
-    "from_version": "0.4.9",
-    "detected_version": "0.4.10",
-    "size": 201823162,
-    "sha256": "d1bac80e5b932f3f7f8ad39874988c3ac62422c93bfd336419bbf9e1800a8c83",
+    "from_version": "0.4.10",
+    "detected_version": "0.4.11",
+    "size": 202068539,
+    "sha256": "2a70621ffc209ae8d9fdf1a6b207d57b7ff7d2862f68bd848b4f93bb883eb8d0",
     "verified": true
   }
 }

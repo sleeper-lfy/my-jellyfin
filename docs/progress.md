@@ -279,3 +279,9 @@ Android 0.4.10 / versionCode 13 完成 63 项测试、lint、assembleDebug、原
 完整 Python 回归在真实 libmpv 环境执行，321 项通过、1 项平台检查跳过（119.21 秒）；包括真正字幕像素、轨道与连续播放检查。最后修正搜索进入详情后的瞬态提示及 Fans 文件标题／总时长后，16 项界面专项回归通过。Android 71 项测试、0 失败 / 跳过，lint 通过。启动与异步退出冒烟检查通过；实际 Qt 发现页、Fans 作者墙和作者详情截图已加入 README，使用独立示例库，不冒充真机截图。Android ASS 自带框及位图／烧录字幕限制在说明中保留；本轮未执行真实站点连通验收。
 
 本次仅提交源码及文档，未修改版本号、target 安装包或已发布 0.4.10 Release。操作见 [字幕、发现与 Fans](discovery-and-fans.md)。
+
+## 0.4.11 发布（2026-10-26）
+
+按明确要求完成双端打包及发布。源码 `504bc33c5b395227a7b443b0df2587e60c6719ae`；Windows 构建 `https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40278428799` 成功，323 项测试无失败/错误/跳过，程序及插件 worker、安装/启动/卸载验证通过。Android 0.4.11 / versionCode 14 完成 71 项测试、lint、原签名、版本及对齐检查。EXE 202068539 字节、SHA-256 `2a70621ffc209ae8d9fdf1a6b207d57b7ff7d2862f68bd848b4f93bb883eb8d0`；APK 100895070 字节、SHA-256 `2699710af2666e757d51ea895395abcb0b862d3967f58aa44630fca405fac05f`。
+
+发布运行 `https://github.com/sleeper-lfy/my-jellyfin/actions/runs/40279528110` 成功，标签提交 `ade7c515207bdbb39e4d2cb48c589c3c768aff44` 与构建输入核对一致。两个公开安装包均已重新下载并验证完整 SHA-256；Windows 分片逐个验证并重组检查 PE。PC 更新器从 0.4.10 识别到 0.4.11 及正确大小/哈希。README、target 和使用文档同步，没有重新生成或替换已经验证的产物。
