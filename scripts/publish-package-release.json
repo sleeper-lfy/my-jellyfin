@@ -1,7 +1,7 @@
 {
-  "tag": "v0.4.10",
-  "build_source_commit": "f1ebfb5c05e66328de2c50ff760396415199f4ff",
-  "package_run_id": 40164654926,
+  "tag": "v0.4.11",
+  "build_source_commit": "504bc33c5b395227a7b443b0df2587e60c6719ae",
+  "package_run_id": 40278428799,
   "publish": true,
   "attempt": 1
 }

@@ -1,3 +1,5 @@
-# Lumen 0.4.11 构建中
+# Lumen 0.4.11 已验证，正在发布
 
-Android APK 已完成 71 项测试、lint、签名、版本与对齐检查。Windows 安装包正在原生构建及安装验证，本目录 Windows 分片在成功交付前仍可能是 0.4.10。当前稳定发布版：[v0.4.10](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.10)。
+Windows 323 项测试及安装 / 启动 / 卸载检查通过；Android 71 项、lint、原签名与版本检查通过。两端同源，完整 APK 和 EXE 五个校验分片已保存。
+
+正在发布 [v0.4.11 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.11)，公开下载完成后会补充校验记录。
