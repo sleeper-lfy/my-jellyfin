@@ -8,7 +8,7 @@ import sys
 import time
 from urllib.parse import urlparse
 import httpx
-from .core import identity, now
+from .core import identity, now, check_cancelled, ImportCancelled
 
 CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
 
@@ -79,6 +79,9 @@ class Plugins:
             raise ValueError('无效插件 ID')
         if not set(manifest['capabilities']) <= CAPABILITIES or manifest.get('api_version') != 1:
             raise ValueError('不支持的插件接口')
+        filters = manifest.get('search_filters', ['name'])
+        if not isinstance(filters, list) or not filters or any(not isinstance(field, str) for field in filters) or not set(filters) <= {'name', 'tag'}:
+            raise ValueError('search_filters 须为 name / tag 数组')
         if not manifest.get('domains') or any('/' in d or '*' in d or ':' in d for d in manifest['domains']):
             raise ValueError('须声明精确网络主机名')
         script = (folder / 'plugin.js').read_text(encoding='utf-8')
@@ -105,15 +108,27 @@ class Plugins:
         self.library.set_setting('plugin:' + plugin_id, previous)
 
     @staticmethod
+    def _builtin_plugin_folder(plugin_id, allowed):
+        if not isinstance(plugin_id, str) or plugin_id not in allowed:
+            raise ValueError('不是此功能随应用提供的内置插件')
+        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2])).resolve()
+        base = (root / 'plugins').resolve()
+        folder = (base / plugin_id).resolve()
+        if not base.is_relative_to(root) or not folder.is_relative_to(base):
+            raise ValueError('内置插件不在应用发布目录中')
+        if not (folder / 'manifest.json').is_file() or not (folder / 'plugin.js').is_file():
+            raise ValueError('当前安装包缺少内置插件文件')
+        return folder
+
+    @staticmethod
     def builtin_actor_plugin(plugin_id):
         """Locate a shipped provider; callers must show its permissions first."""
-        if plugin_id not in {'tvmaze', 'wikimedia-actors'}:
-            raise ValueError('不是随应用提供的演员插件')
-        root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2]))
-        folder = root / 'plugins' / plugin_id
-        if not (folder / 'manifest.json').is_file() or not (folder / 'plugin.js').is_file():
-            raise ValueError('当前安装包缺少内置演员插件文件')
-        return folder
+        return Plugins._builtin_plugin_folder(plugin_id, {'tvmaze', 'wikimedia-actors'})
+
+    @staticmethod
+    def builtin_search_plugin(plugin_id):
+        """Only the TVmaze/IA copies shipped with the application can be updated."""
+        return Plugins._builtin_plugin_folder(plugin_id, {'tvmaze', 'internet-archive'})
 
     def update_builtin_actor_plugin(self, plugin_id):
         """Explicitly install/update shipped code, preserving enabled/proxy config.
@@ -121,18 +136,43 @@ class Plugins:
         This never runs automatically and never enables a newly installed plugin.
         The UI must display the shipped manifest's domains before invoking it.
         """
-        folder = self.builtin_actor_plugin(plugin_id)
+        return self._update_builtin_plugin(plugin_id, self.builtin_actor_plugin(plugin_id), 'actors')
+
+    def update_builtin_search_plugin(self, plugin_id):
+        """Explicit shipped-source update; keep configuration and never auto-enable."""
+        return self._update_builtin_plugin(plugin_id, self.builtin_search_plugin(plugin_id), 'search')
+
+    def _update_builtin_plugin(self, plugin_id, folder, capability):
+        manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
+        if manifest.get('id') != plugin_id or manifest.get('api_version') != 1 or capability not in manifest.get('capabilities', []):
+            raise ValueError('内置插件清单与所选功能不匹配')
+        if not set(manifest['capabilities']) <= CAPABILITIES:
+            raise ValueError('内置插件包含不支持的接口')
+        domains = manifest.get('domains')
+        if not isinstance(domains, list) or not domains or any(not isinstance(domain, str) or not domain or any(char in domain for char in '/*:') for domain in domains):
+            raise ValueError('内置插件须声明精确网络主机名')
+        filters = manifest.get('search_filters', ['name'])
+        if not isinstance(filters, list) or not filters or any(not isinstance(field, str) for field in filters) or not set(filters) <= {'name', 'tag'}:
+            raise ValueError('search_filters 须为 name / tag 数组')
+        script = (folder / 'plugin.js').read_bytes()
+        if len(script) > 1_000_000:
+            raise ValueError('内置插件脚本过大')
         target = self.root / plugin_id
+        if target.resolve() != self.root.resolve() / plugin_id:
+            raise ValueError('插件安装目录不能链接到其他目录')
         if not target.exists():
             return self.install(folder)
-        manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
-        if manifest['id'] != plugin_id or 'actors' not in manifest['capabilities']:
-            raise ValueError('内置演员插件清单不匹配')
         # Two atomically replaced files, no deletion of user plugin configuration.
+        import tempfile
         for name in ('plugin.js', 'manifest.json'):
-            temporary = target / (name + '.updating')
-            temporary.write_bytes((folder / name).read_bytes())
-            temporary.replace(target / name)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=target, prefix=name+'.', suffix='.updating', delete=False) as stream:
+                    temporary = Path(stream.name)
+                    stream.write(script if name == 'plugin.js' else json.dumps(manifest, ensure_ascii=False).encode('utf-8'))
+                temporary.replace(target / name)
+            finally:
+                if temporary is not None: temporary.unlink(missing_ok=True)
         return manifest
 
     def uninstall(self, plugin_id):
@@ -182,7 +222,7 @@ class Plugins:
                         raise ValueError('响应大小或时间超限')
                 return bytes(data), response.headers.get('content-type', '')
 
-    def run(self, plugin_id, operation, **parameters):
+    def run(self, plugin_id, operation, *, cancelled=None, **parameters):
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         if not plugin['config'].get('enabled'):
             raise ValueError('插件未启用')
@@ -193,12 +233,14 @@ class Plugins:
         payload = {'plugin': plugin_id, 'operation': operation, 'parameters': parameters}
         self.library.task(task_id, 'scrape', 'running', payload)
         try:
+            check_cancelled(cancelled)
             request = self.javascript(plugin_id, 'buildRequest', {'operation': operation, 'config': plugin['config'], **parameters})
             pending = [request]
             visited = set()
             result = []
             deadline = time.monotonic() + 180
             while pending:
+                check_cancelled(cancelled)
                 request = pending.pop(0)
                 url = request['url']
                 if url in visited:
@@ -207,6 +249,7 @@ class Plugins:
                     raise ValueError('插件请求预算超限（20 次 / 180 秒）')
                 visited.add(url)
                 data, content_type = self.fetch(plugin, url)
+                check_cancelled(cancelled)
                 parsed = self.javascript(plugin_id, 'parseResponse', {'operation': operation, 'url': url, 'body': data.decode('utf-8-sig'), 'content_type': content_type,
                                                                      'config': plugin['config'], 'context': request.get('context')})
                 if isinstance(parsed, dict):
@@ -219,6 +262,7 @@ class Plugins:
                     raise ValueError('插件必须返回至多 1000 条元数据记录')
                 result.extend(parsed)
             for item in result:
+                check_cancelled(cancelled)
                 if operation == 'actors':
                     validate_actor(item)
                     continue
@@ -232,7 +276,7 @@ class Plugins:
             self.library.task(task_id, 'scrape', 'done', payload, {'count': len(result)})
             return result
         except Exception as exc:
-            self.library.task(task_id, 'scrape', 'failed', payload, error=str(exc))
+            self.library.task(task_id, 'scrape', 'cancelled' if isinstance(exc, ImportCancelled) else 'failed', payload, error=str(exc))
             raise
 
     def merge_actor(self, plugin_id, metadata, actor_name, *, replace=False):
@@ -321,11 +365,15 @@ class Plugins:
         with self.library.db:
             return self._merge(plugin_id,metadata,work_id,replace_nfo=replace_nfo)
 
-    def _merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False):
+    def _merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False, cache_images=True):
+        if work_id and self.library.work(work_id)['kind'] in {'other', 'fans'}:
+            raise ValueError('其他视频和 Fans 分区不执行影视刮削')
         metadata = {key:value for key,value in metadata.items() if key not in {'stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','nfo_thumbnails','download_plugin'}}
         validate_metadata(metadata)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         existing = self.library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?', (plugin_id, str(metadata['id']))).fetchone()
+        if existing and self.library.work(existing[0])['kind'] in {'other', 'fans'}:
+            raise ValueError('该来源关联其他视频或 Fans 作品，不执行影视刮削')
         if existing and work_id and existing[0] != work_id:
             source = self.library.work(existing[0])
             if source['files']:
@@ -385,6 +433,8 @@ class Plugins:
             self.library.db.execute('UPDATE works SET identity=?,metadata=?,title=?,year=? WHERE id=?',
                                     (key, json.dumps(merged, ensure_ascii=False), item['title'] if 'title' in protected else metadata['title'],
                                      item['year'] if 'year' in protected else metadata.get('year', item['year']), work_id))
+            if not cache_images and 'poster' not in protected and metadata.get('poster') and metadata['poster'] != item['metadata'].get('poster'):
+                self.library.db.execute('UPDATE works SET thumbnail=NULL WHERE id=?', (work_id,))
             self.library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(key,work_id))
             for alias in merged['aliases']:
                 self.library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(identity(alias,metadata.get('year'),kind),work_id))
@@ -392,6 +442,8 @@ class Plugins:
                 self.library.db.execute('INSERT OR IGNORE INTO external_ids VALUES (?,?,?,?)',(kind,namespace,value,work_id))
             self.library.db.execute('INSERT INTO sources VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(plugin,source_id) DO UPDATE SET url=excluded.url,updated=excluded.updated,site_added=excluded.site_added,rating=excluded.rating',
                                     (work_id, plugin_id, plugin['name'], str(metadata['id']), metadata['url'], now(), metadata.get('site_added'), metadata.get('rating')))
+        if not cache_images:
+            return work_id
         # Images use exactly the same network policy and proxy as metadata.
         for image_url, actor in [(metadata.get('poster'), None), *[(a.get('photo'), a) for a in merged.get('actors', [])]]:
             if not image_url or actor is None and item['metadata'].get('nfo_poster') and not replace_nfo:

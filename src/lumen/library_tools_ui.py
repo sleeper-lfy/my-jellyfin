@@ -28,12 +28,14 @@ class LibraryTools(QDialog):
         export=QPushButton('导出体检报告…');export.clicked.connect(self.export);health_layout.addWidget(export)
     def reload(self):
         self.list.clear()
-        kinds={'movie':'电影','series':'电视剧','vr':'VR电影','other':'其他'}
+        from .ui import KINDS
+        kinds=KINDS
         for entry in self.folders:self.list.addItem(('启用' if entry.get('enabled',True) else '暂停')+' · '+kinds.get(entry['kind'],entry['kind'])+' · '+entry['path'])
     def add(self):
         path=QFileDialog.getExistingDirectory(self,'选择监控目录')
         if not path:return
-        names={'电影':'movie','电视剧':'series','VR电影':'vr','其他':'other'}
+        from .ui import KINDS
+        names={title:kind for kind,title in KINDS.items()}
         kind,ok=QInputDialog.getItem(self,'媒体类型','此目录作为',list(names),0,False)
         if not ok:return
         target=Path(path).resolve()

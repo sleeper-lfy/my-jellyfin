@@ -67,15 +67,15 @@ class HomePage(QScrollArea):
         self.setWidget(self.content);self.rows=[];self.tiles={};self.sections={}
         self.layout.addWidget(label('我的媒体','sectionTitle'))
         tiles=QHBoxLayout();tiles.setSpacing(16)
-        for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('other','其他视频')]:
-            tile=MediaTile(title,'0 部作品',None,lambda checked=False,kind=kind:window.navigate(kind))
+        for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('fans','Fans'),('other','其他视频')]:
+            tile=MediaTile(title,'0 位作者' if kind=='fans' else '0 部作品',None,lambda checked=False,kind=kind:window.navigate(kind))
             self.tiles[kind]=tile;tiles.addWidget(tile)
         self.layout.addLayout(tiles)
         links=QHBoxLayout()
         for title,section in [('为我推荐  ›','recommend'),('影片发现  ›','discover'),('观影统计  ›','stats')]:
             control=button(title,lambda checked=False,section=section:window.navigate(section));control.setObjectName('headerButton');links.addWidget(control)
         links.addStretch();self.layout.addLayout(links)
-        for title in ['继续观看','最新电影','最新电视剧','最新VR电影','为你推荐']:
+        for title in ['继续观看','最新电影','最新电视剧','最新VR电影','最新Fans作者','为你推荐']:
             heading=label(title,'sectionTitle');self.layout.addWidget(heading)
             cards=PosterList(window.play_work)
             cards.favoriteRequested.connect(window.toggle_favorite)
@@ -101,11 +101,11 @@ class HomePage(QScrollArea):
             for work in items[:24]:
                 record=self.window.card_data(work,True);cover=record.get('_cover') or record.get('thumbnail')
                 if cover:break
-            tile.subtitle=f'{len(items)} 部作品';tile.cover_path=cover;tile.update()
+            tile.subtitle=f'{len(items)} 位作者' if kind=='fans' else f'{len(items)} 部作品';tile.cover_path=cover;tile.update()
         continuing=[work for work in works if any(file['position']>0 and not file['completed'] for file in work['files'])]
         if recommendations is None:recommendations=self.window.library.recommendations()
         sections=[('继续观看',continuing,True),('最新电影',[work for work in works if work['kind']=='movie'],False),
-                  ('最新电视剧',[work for work in works if work['kind']=='series'],False),('最新VR电影',[work for work in works if work['kind']=='vr'],False),('为你推荐',recommendations,False)]
+                  ('最新电视剧',[work for work in works if work['kind']=='series'],False),('最新VR电影',[work for work in works if work['kind']=='vr'],False),('最新Fans作者',[work for work in works if work['kind']=='fans'],False),('为你推荐',recommendations,False)]
         self.rows=[]
         for title,items,landscape in sections:
             heading,cards=self.sections[title];landscape=landscape or self.window.view_mode.currentData()=='thumbnail'

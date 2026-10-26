@@ -89,7 +89,7 @@ class Settings(QDialog):
             partition_layout.addRow(KINDS[kind] + ' · 自动刮削', box)
             partition_layout.addRow('自动整理目标', row)
             self.partition_controls[kind] = (box, destination)
-        notice = label('自动整理仅在标题、年份和类型唯一匹配后执行。\n目标存在同名文件时停止，复制校验成功后才删除原文件；失败可从任务页恢复。\n“其他”保持目录结构且不联网，可在详情页手动整理。')
+        notice = label('自动整理仅在标题、年份和类型唯一匹配后执行。\n目标存在同名文件时停止，复制校验成功后才删除原文件；失败可从任务页恢复。\nFans 按第一层作者文件夹归组，不使用影视刮削；同作者多个文件夹可在作者详情中合并。\n“其他”保持目录结构且不联网，可在详情页手动整理。')
         notice.setWordWrap(True)
         partition_layout.addRow(notice)
         partition_layout.addRow(button('保存分区规则', self.save_partitions, True))

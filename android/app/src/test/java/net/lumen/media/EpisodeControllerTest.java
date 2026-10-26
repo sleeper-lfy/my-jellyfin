@@ -90,6 +90,22 @@ public class EpisodeControllerTest {
             call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.PREVIOUS_EPISODE);assertEquals(301L,((JSONObject)read(activity,"file")).getLong("id"));
         }
     }
+    @Test public void fansControlsAndAutomaticPlaybackFinishAuthorFilesBeforeQueueAndRespectAutoNext()throws Exception{
+        JSONObject first=vrWork(30,301,302).put("kind","fans"),second=vrWork(20,201,202).put("kind","fans");
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){String path=request.getPath();return new MockResponse().setBody(path.equals("/api/works/30")?first.toString():path.equals("/api/works/20")?second.toString():path.endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();
+            PlayerActivity activity=lifecycle.get();build(activity,server,first);write(activity,"vrEnabled",false);write(activity,"queueMode",true);
+            activity.getSharedPreferences("queue",0).edit().putString("ids","[30,20]").putInt("index",0).apply();
+            ((android.widget.Button)read(activity,"nextVideo")).performClick();waitFile(activity,302);assertEquals(30,((JSONObject)read(activity,"work")).optLong("id"));
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.PREVIOUS_EPISODE);waitFile(activity,301);
+            call(activity,"onPlaybackEnded",new Class<?>[]{});waitFile(activity,302);assertEquals(0,activity.getSharedPreferences("queue",0).getInt("index",-1));
+            call(activity,"onPlaybackEnded",new Class<?>[]{});waitFile(activity,201);assertEquals(1,activity.getSharedPreferences("queue",0).getInt("index",-1));assertFalse((boolean)read(activity,"vrEnabled"));
+            ((android.widget.Button)read(activity,"previousVideo")).performClick();waitFile(activity,302);assertEquals(30,((JSONObject)read(activity,"work")).optLong("id"));
+            activity.getSharedPreferences("player",0).edit().putBoolean("auto_next",false).apply();
+            call(activity,"onPlaybackEnded",new Class<?>[]{});assertEquals(302,((JSONObject)read(activity,"file")).optLong("id"));assertEquals(0,activity.getSharedPreferences("queue",0).getInt("index",-1));
+            call(activity,"performAction",new Class<?>[]{ControllerBindings.Action.class},ControllerBindings.Action.NEXT_EPISODE);waitFile(activity,201);
+        }
+    }
     @Test public void lookupFailureKeepsCurrentVideoAndAllowsRetry()throws Exception{
         JSONObject current=vrWork(20,201);
         try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){

@@ -390,7 +390,7 @@ public final class PlayerActivity extends Activity {
                     if(isDestroyed()||ticket!=generation)return;
                     boolean sameWork=work!=null&&work.optLong("id")==data.optLong("id");setNavigationPending(false);work=data;if(!sameWork)setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;refreshPersonal();filePreferences=savedPreferences;applyFilePreferences();applyOrientation();showControls(true);subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
                     if(getIntent().hasExtra("start_position")){resumeMs=Math.max(0,Math.min((long)(getIntent().getDoubleExtra("start_position",0)*1000),durationFromFile()));getIntent().removeExtra("start_position");}
-                    title.setText(work.optString("title")+(work.optString("kind").equals("series")?" · S"+file.optInt("season")+" E"+file.optInt("episode"):""));
+                    title.setText(work.optString("title")+(work.optString("kind").equals("series")?" · S"+file.optInt("season")+" E"+file.optInt("episode"):work.optString("kind").equals("fans")&&!file.optString("name").isEmpty()?" · "+file.optString("name"):""));
                     if(started)startPlayback();
                 });
             }catch(Exception exception){runOnUiThread(()->{if(ticket==generation){setNavigationPending(false);if(started)error(exception);}});}
@@ -403,8 +403,8 @@ public final class PlayerActivity extends Activity {
         try {
             bridge=new PlaybackBridge(api.connection.base,api.connection.token,file.optLong("id"));
             ArrayList<String> options=new ArrayList<>();options.add("--network-caching=1500");
-            options.add("--freetype-fontsize="+dp(filePreferences.optInt("subtitle_size",22)));
-            options.add("--sub-margin="+Math.max(0,(root.getHeight()>0?root.getHeight():getResources().getDisplayMetrics().heightPixels)*(100-filePreferences.optInt("subtitle_position",90))/100));
+            options.addAll(SubtitleAppearance.options(dp(filePreferences.optInt("subtitle_size",22)),
+                (root.getHeight()>0?root.getHeight():getResources().getDisplayMetrics().heightPixels)*(100-filePreferences.optInt("subtitle_position",90))/100));
             vlc=new LibVLC(this,options);player=new MediaPlayer(vlc);
             player.setAudioOutputDevice("stereo");
             if(vrEnabled){
@@ -442,7 +442,7 @@ public final class PlayerActivity extends Activity {
                     }else {buffering=true;tick(false,false);status.setText("播放失败，请检查网络或文件是否损坏。可切换音轨、字幕或解码模式后重试。");}
                 }
                 if(event.type==MediaPlayer.Event.EndReached&&!ending){
-                    ending=true;handler.post(()->{if(player==current){stopPlayback(true);if(work.optString("kind").equals("series")&&!getSharedPreferences("player",0).getBoolean("auto_next",true)){showControls(true);return;}if(!nextEpisode(true)){if(queueMode&&getSharedPreferences("queue",0).getInt("repeat",0)==2)load(work.optLong("id"),0);else nextWork(true);}}});
+                    ending=true;handler.post(()->{if(player==current)onPlaybackEnded();});
                 }
                 updateProgress();
             });
@@ -661,6 +661,16 @@ public final class PlayerActivity extends Activity {
     }
     private boolean nextEpisode(boolean automatic) {
         return stepEpisode(1,automatic);
+    }
+    private void onPlaybackEnded(){
+        stopPlayback(true);
+        if(work==null||file==null)return;
+        String kind=work.optString("kind");
+        if((kind.equals("series")||kind.equals("fans"))&&!getSharedPreferences("player",0).getBoolean("auto_next",true)){showControls(true);return;}
+        if(!nextEpisode(true)){
+            if(queueMode&&getSharedPreferences("queue",0).getInt("repeat",0)==2)load(work.optLong("id"),0);
+            else nextWork(true);
+        }
     }
     private boolean stepEpisode(int direction,boolean automatic) {
         if(work==null||file==null)return false;

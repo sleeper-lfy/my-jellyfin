@@ -2,7 +2,7 @@
 import hashlib
 from pathlib import Path
 from urllib.parse import urlparse
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, QSize, Qt, QTimer, QByteArray, QBuffer, QIODevice
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, QSize, Qt, QTimer, QByteArray, QBuffer, QIODevice, QSaveFile
 from PySide6.QtGui import QIcon, QPixmap, QImageReader
 from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QDialogButtonBox, QAbstractItemView
 from .core import Library
@@ -31,7 +31,8 @@ def preview_cover(library, plugin_id, record):
         raise ValueError('候选封面无效或过大')
     reader.setScaledSize(size.scaled(QSize(300, 450), Qt.AspectRatioMode.KeepAspectRatio))
     picture = reader.read()
-    if picture.isNull() or not picture.save(str(path), 'JPG'):
+    output = QSaveFile(str(path))
+    if picture.isNull() or not output.open(QIODevice.OpenModeFlag.WriteOnly) or not picture.save(output, 'JPG') or not output.commit():
         raise ValueError('候选封面解码失败')
     return str(path)
 

@@ -8,7 +8,13 @@ function buildRequest(input) {
     var category=input.category || input.config.category || 'feature_films';
     if(!/^[a-zA-Z0-9_-]+$/.test(category)) throw new Error('分类须为 collection 标识符');
     var q='mediatype:movies AND collection:'+category;
-    if(input.operation==='search') q+=' AND title:('+String(input.query || '').replace(/[+\-!(){}\[\]^"~*?:\\/]/g,' ') + ')';
+    if(input.operation==='search') {
+        function phrase(value) {return '"'+String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';}
+        var name=String(input.query || '').trim(),tag=String(input.tag || '').trim();
+        if(!name && !tag) throw new Error('请输入影片名称或站点标签');
+        if(name) q+=' AND title:'+phrase(name);
+        if(tag) q+=' AND subject:'+phrase(tag);
+    }
     var fields=['identifier','title','year','date','addeddate','description','subject','creator'];
     return {url:base+'/advancedsearch.php?q='+encodeURIComponent(q)+'&output=json&rows=50&sort[]=addeddate+desc&'+fields.map(function(f){return 'fl[]='+f;}).join('&')};
 }

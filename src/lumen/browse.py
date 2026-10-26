@@ -19,11 +19,11 @@ def load_view(library,request):
         selected={item['id'] for item in library.query(request['filters'])}
         return {'items':[item for item in library.recommendations() if item['id'] in selected]}
     if section=='discover':
-        items=library.query({**request['filters'],'local':False})
-        if tab==0:
-            selected={item['id'] for item in items}
-            items=[item for item in library.recommendations(True) if item['id'] in selected]
-        return {'items':items}
+        from .discovery_catalog import query_discovery,discovery_facets
+        filters={**request['filters'],**({'watchlist':True} if tab==2 else {})}
+        return {'items':query_discovery(library,filters,source=request.get('source',''),
+                                       category=request.get('category',''),tag_query=request.get('tag_query','')),
+                'facets':discovery_facets(library)}
     result={'items':library.query(request['filters'])}
     if section=='other':result['tree']=library.query({'kinds':['other']})
     return result

@@ -243,6 +243,9 @@ class Library(CatalogActions):
         item['liked'] = item['favorite']
         item['locked'] = json.loads(item['locked'])
         item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
+        if item['kind']=='fans':
+            from .series import natural_key
+            item['files'].sort(key=lambda file:natural_key(file['path']))
         for file in item['files']:
             details = item['metadata'].get('episode_details', {}).get(str(file['id']), {})
             file.update({key: details[key] for key in ['title','overview'] if key in details})
@@ -272,8 +275,12 @@ class Library(CatalogActions):
             return target_id
         source, target = self.work(source_id), self.work(target_id)
         if source['kind'] != target['kind'] or source['kind'] == 'other':
-            raise ValueError('仅可合并相同类型的电影或电视剧')
+            raise ValueError('仅可合并相同类型的影视或 Fans 条目')
         merged = {**source['metadata'], **target['metadata']}
+        if source['kind']=='fans':
+            from .fans import roots_for
+            merged['fans_roots']=list(dict.fromkeys([*roots_for(target),*roots_for(source)]))
+            merged['creator']=target['metadata'].get('creator') or target['title']
         for field in ('episode_details','episode_stills','nfo_thumbnails'):
             if field in source['metadata'] or field in target['metadata']:
                 merged[field] = {**source['metadata'].get(field,{}), **target['metadata'].get(field,{})}
@@ -331,7 +338,14 @@ class Library(CatalogActions):
             self.db.executemany('INSERT INTO name_keys VALUES (?,?)',[(key,work_id) for key in keys])
             self.db.execute('UPDATE external_ids SET kind=? WHERE work_id=?',(kind,work_id))
 
+    def merge_fans_folders(self, work_ids, target_id, creator=None):
+        from .fans import merge_folders
+        return merge_folders(self,work_ids,target_id,creator)
+
     def import_folder(self, root, kind, progress=None, fast=False, cancelled=None, candidates=None):
+        if kind=='fans':
+            from .fans import import_folder
+            return import_folder(self,root,progress,fast,cancelled,candidates)
         if kind not in {'movie', 'series', 'other', 'vr'}:
             raise ValueError('无效媒体类型')
         root = Path(root).resolve(strict=True)
@@ -629,6 +643,9 @@ class Library(CatalogActions):
             item['liked'] = item['favorite']
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
+            if item['kind']=='fans':
+                from .series import natural_key
+                item['files'].sort(key=lambda file:natural_key(file['path']))
             for file in item['files']:
                 details=item['metadata'].get('episode_details',{}).get(str(file['id']),{})
                 file.update({key:details[key] for key in ['title','overview'] if key in details})
@@ -741,6 +758,7 @@ class Library(CatalogActions):
 
     def recommendations(self, discovered=False, items=None):
         all_items = self.query({'local': False}) if items is None else items
+        all_items = [work for work in all_items if work['kind']!='fans']
         weights = Counter()
         for w in all_items:
             rating = (w['rating'] - 5.5) * 3 if w['rating'] is not None else 0

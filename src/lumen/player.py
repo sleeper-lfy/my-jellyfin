@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox,QGraphicsDropShadowEffect
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -105,7 +105,12 @@ class Player(QDialog):
         self.caption.setTextFormat(Qt.TextFormat.PlainText)
         self.caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.caption.setWordWrap(True)
-        self.caption.setStyleSheet('font-size: 22px; color: white; background: rgba(0,0,0,120); padding: 6px;')
+        self.caption.setStyleSheet('font-size:22px; color:white; background:transparent; padding:6px;')
+        subtitle_shadow=QGraphicsDropShadowEffect(self.caption)
+        subtitle_shadow.setBlurRadius(3)
+        subtitle_shadow.setOffset(0,1)
+        subtitle_shadow.setColor(QColor(0,0,0,230))
+        self.caption.setGraphicsEffect(subtitle_shadow)
         self.error = QLabel()
         self.error.setTextFormat(Qt.TextFormat.PlainText)
         self.error.setWordWrap(True)
@@ -135,7 +140,7 @@ class Player(QDialog):
             button.clicked.connect(callback)
             row.addWidget(button)
             return button
-        self.previous_control = control(QStyle.StandardPixmap.SP_MediaSkipBackward, '上一作品', self.queuePrevious.emit)
+        self.previous_control = control(QStyle.StandardPixmap.SP_MediaSkipBackward, '上一作品', self.previous_item)
         control(QStyle.StandardPixmap.SP_MediaSeekBackward, '后退 10 秒（←）', lambda: self.jump(-10000))
         self.pause = control(QStyle.StandardPixmap.SP_MediaPlay, '播放 / 暂停（空格）', self.toggle)
         control(QStyle.StandardPixmap.SP_MediaSeekForward, '前进 10 秒（→）', lambda: self.jump(10000))
@@ -438,6 +443,10 @@ class Player(QDialog):
         if not self.next_episode():
             self.queueNext.emit()
 
+    def previous_item(self):
+        if not self.previous_episode():
+            self.queuePrevious.emit()
+
     def open_file(self, file):
         self.finish()
         if not Path(file['path']).is_file():
@@ -456,6 +465,11 @@ class Player(QDialog):
         work = self.library.work(file['work_id'])
         self.title.setToolTip(work['title'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' and file['season'] is not None and file['episode'] is not None else ''))
+        if work['kind']=='fans':self.title.setText(work['title']+' · '+Path(file['path']).stem)
+        previous,next_item=(('上一视频','下一视频') if work['kind']=='fans' else
+                            ('上一集','下一集') if work['kind']=='series' else ('上一作品','下一集 / 下一作品'))
+        for control,text in ((self.previous_control,previous),(self.next_control,next_item)):
+            control.setToolTip(text);control.setAccessibleName(text)
         self.update_like(work)
         self.show_controls()
         self.set_error(self.backend_message)
@@ -539,24 +553,33 @@ class Player(QDialog):
         if status == QMediaPlayer.MediaStatus.EndOfMedia and self.file:
             self.finish()
             self.playback_journal.completed(self.file['id'])
-            if self.library.work(self.file['work_id'])['kind'] == 'series':
+            if self.library.work(self.file['work_id'])['kind'] in {'series','fans'}:
                 if not self.library.setting('auto_next',True):return
                 if self.next_episode():return
             if getattr(self.parent(),'random_active',False) and self.library.setting('queue',{}).get('repeat')=='one':
-                self.open_file({**self.library.resume_file(self.file['work_id']),'position':0});return
+                work=self.library.work(self.file['work_id'])
+                first=work['files'][0] if work['kind'] in {'series','fans'} else self.library.resume_file(work['id'])
+                self.open_file({**first,'position':0});return
             self.finish()
             self.queueNext.emit()
 
     def next_episode(self):
+        return self.step_group_file(1)
+
+    def previous_episode(self):
+        return self.step_group_file(-1)
+
+    def step_group_file(self,direction):
         if not self.file:
             return False
         work = self.library.work(self.file['work_id'])
-        if work['kind'] != 'series':
+        if work['kind'] not in {'series','fans'}:
             return False
         files = work['files']
-        index = next(i for i, f in enumerate(files) if f['id'] == self.file['id'])
-        if index + 1 < len(files):
-            self.open_file(files[index + 1])
+        index = next((i for i, f in enumerate(files) if f['id'] == self.file['id']),-1)
+        target=index+direction
+        if index>=0 and 0<=target<len(files):
+            self.open_file(files[target])
             return True
         return False
 
@@ -607,7 +630,7 @@ class Player(QDialog):
 
     def apply_subtitle_preferences(self):
         value=self.subtitle_preferences
-        self.caption.setStyleSheet(f"font-size: {value.get('subtitle_size',22)}px; color:white; background:rgba(0,0,0,120); padding:6px;")
+        self.caption.setStyleSheet(f"font-size: {value.get('subtitle_size',22)}px; color:white; background:transparent; padding:6px;")
         if self.mpv_backend:self.media.set_subtitle_style(value.get('subtitle_delay',0),value.get('subtitle_size',22),value.get('subtitle_position',90))
         self.position_changed(self.media.position())
 

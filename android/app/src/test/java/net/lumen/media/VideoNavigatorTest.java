@@ -29,4 +29,15 @@ public class VideoNavigatorTest {
             assertNull(VideoNavigator.adjacent(api,999,1,path,-1,()->false));assertNull(VideoNavigator.adjacent(api,150,1,path,-1,()->true));
         }
     }
+    @Test public void discoveryResultScopeAndSortAreRetainedWhileSkippingUnplayableMatches()throws Exception{
+        try(MockWebServer server=new MockWebServer()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){
+                assertEquals("/api/discover",request.getRequestUrl().encodedPath());assertEquals("42,43,44",request.getRequestUrl().queryParameter("ids"));assertEquals("community_rating",request.getRequestUrl().queryParameter("sort"));assertEquals("asc",request.getRequestUrl().queryParameter("direction"));
+                return new MockResponse().setBody("{\"total\":3,\"items\":[{\"id\":42,\"file_count\":1},{\"id\":43,\"file_count\":0},{\"id\":44,\"file_count\":2}]}");
+            }});server.start();Api api=new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456"));
+            String path="/api/discover?ids=42,43,44&sort=community_rating&direction=asc";
+            assertEquals(44,VideoNavigator.adjacent(api,42,1,path,-1,()->false).id);
+            assertEquals(42,VideoNavigator.adjacent(api,44,-1,path,-1,()->false).id);
+        }
+    }
 }

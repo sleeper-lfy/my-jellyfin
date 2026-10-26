@@ -106,7 +106,10 @@ def test_compact_and_ultrawide_details_keep_primary_actions_in_view(qapp,tmp_pat
 def test_discovery_filters_apply_to_metadata_only_candidates(library):
     from lumen.browse import load_view
     selected=add_work(library,'Selected discovery',local=False,metadata={'tags':['Drama'],'actors':[{'name':'Actor'}]})
-    add_work(library,'Another discovery',local=False,metadata={'tags':['Comedy'],'actors':[{'name':'Actor'}]})
+    another=add_work(library,'Another discovery',local=False,metadata={'tags':['Comedy'],'actors':[{'name':'Actor'}]})
+    with library.db:
+        library.db.executemany('INSERT INTO sources(work_id,plugin,site,source_id,url,updated) VALUES(?,?,?,?,?,?)',
+            [(work,'example','Example',str(work),'https://example.org/'+str(work),'now') for work in [selected,another]])
     request={'section':'discover','tab':1,'filters':{'tags_all':['Drama'],'actor':'Actor','year_min':2024,'year_max':2024}}
     result=load_view(library,request)
     assert [work['id'] for work in result['items']]==[selected]

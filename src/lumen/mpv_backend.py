@@ -58,6 +58,7 @@ class MpvMedia(QObject):
         self._seek_on_load=None
         self.enhanced=False
         self.subtitle_style={}
+        self.set_subtitle_style()
         self._state = QMediaPlayer.PlaybackState.StoppedState
         self._status = QMediaPlayer.MediaStatus.NoMedia
         self._duration = self._position = 0
@@ -163,6 +164,19 @@ class MpvMedia(QObject):
         self.subtitle_style={'delay':delay,'size':size,'position':position}
         if self.engine is not None:
             self.engine.sub_delay=delay;self.engine.sub_font_size=size;self.engine.sub_pos=position
+            self.engine.sub_color='1/1/1/1'
+            self.engine.sub_border_style='outline-and-shadow'
+            self.engine.sub_border_color='0/0/0/1'
+            self.engine.sub_border_size=1.5
+            self.engine.sub_back_color='0/0/0/0'
+            self.engine.sub_shadow_offset=0
+            # ASS BorderStyle=3/4 produces opaque rectangles even if the usual
+            # text background is transparent. Force the same outlined white
+            # text appearance for embedded ASS without changing its timing.
+            self.engine.sub_ass_override='force'
+            self.engine.sub_ass_style_overrides=['BorderStyle=1','PrimaryColour=&H00FFFFFF',
+                                                 'OutlineColour=&H00000000','BackColour=&HFF000000',
+                                                 'Outline=1.5','Shadow=0']
 
     def diagnostics(self):
         values={}

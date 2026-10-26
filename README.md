@@ -36,6 +36,10 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 标签和演员结果支持返回实际来源页面；为我推荐、影片发现提升为一级入口。详情封面可点击缩放查看，新增独立演员头像插件匹配。目录与筛选读取、播放记录保存和大图解码移到后台，并自动记录界面卡顿堆栈。[操作与日志位置](docs/navigation-portraits-and-responsiveness.md) · [放大封面截图](docs/screenshots/ui-cover-fullscreen.png)。这些修复已包含在 [0.4.10 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.10)，并修复 Windows 筛选窗口后台对象释放后的异常。
 
+### 后续源码：透明字幕、在线发现与 Fans 视频
+
+字幕取消应用添加的黑底；发现支持按名称、标签筛选已发现资料，也能通过插件在线搜索，并按名称、年份、来源评分或时间升降序排列。Fans 视频按总目录下的作者文件夹归组，可手动合并同作者的多个目录，保留文件、进度与书签。[使用说明](docs/discovery-and-fans.md) · [发现页截图](docs/screenshots/discovery-search-pc.png) · [Fans 作者墙](docs/screenshots/fans-library-pc.png) · [作者详情](docs/screenshots/fans-author-pc.png)。这些是源码更新，尚未包含在下方 0.4.10 安装包中。截图来自实际 Qt 程序与独立示例资料库。
+
 ### 0.4.7 基础功能补全
 
 新增两端排序、三态观看筛选、手动标记、按季选集、倍速、连播开关、可编辑队列和全屏剧照。PC 增加多选批量操作、仅移出媒体库与校验后目录重定位；Android 增加共享智能片单及返回列表保留位置。封面个人操作去掉圆形背景。[更新说明](docs/releases/0.4.7.md) · [设计对照核查](docs/basic-feature-audit.md) · [按季选集截图](docs/screenshots/catalog-season-pc.png) · [队列编辑截图](docs/screenshots/catalog-queue-pc.png)。

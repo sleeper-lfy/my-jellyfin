@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-26",
+  "scope": "Source after 0.4.10; no packaging or Release",
+  "python_full": {
+    "passed": 321,
+    "skipped": 1,
+    "failed": 0,
+    "seconds": 119.21,
+    "native_mpv": true
+  },
+  "final_ui_regression": {
+    "passed": 16,
+    "failed": 0,
+    "seconds": 2.11
+  },
+  "android": {
+    "passed": 71,
+    "failed": 0,
+    "skipped": 0,
+    "lint": "passed"
+  },
+  "smoke": "passed",
+  "screenshots": [
+    "discovery-search-pc.png",
+    "fans-library-pc.png",
+    "fans-author-pc.png"
+  ],
+  "limitations": [
+    "Online providers verified with official response fixtures and real local HTTP/JS chain, not live cloud connectivity",
+    "Android LibVLC cannot override ASS file backgrounds; bitmap/burned subtitles are image content",
+    "Windows and Android physical devices were not manually exercised in this source-only update"
+  ]
+}

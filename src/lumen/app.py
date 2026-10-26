@@ -87,7 +87,7 @@ def main():
         QTimer.singleShot(15000,lambda:window.updater().startup())
     if args.smoke:
         def check():
-            for section in ['home','movie','series','vr','other','discover','stats']:
+            for section in ['home','movie','series','vr','fans','other','discover','stats']:
                 window.navigate(section)
                 for index in range(window.tabs.count()):
                     window.tabs.setCurrentIndex(index)

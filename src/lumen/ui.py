@@ -20,7 +20,7 @@ from .presentation import rating_text
 from .theme import STYLE
 from .components import ActionButton,FlowLayout,chip,icon,ElidedLabel
 
-KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'other': '其他'}
+KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'fans': 'Fans', 'other': '其他'}
 
 
 def button(text, callback, primary=False):
@@ -525,8 +525,10 @@ class Details(QWidget):
         info = QVBoxLayout();info.setSpacing(12)
         heading=label(w['title'],'detailTitle');heading.setWordWrap(True);info.addWidget(heading)
         facts=QHBoxLayout();facts.setSpacing(16)
-        facts.addWidget(label(str(w['year'] or '年份待补充'),'subtitle'));facts.addWidget(label(KINDS[w['kind']],'subtitle'))
-        duration=max((file['duration'] for file in w['files']),default=0)
+        if w['kind']!='fans':facts.addWidget(label(str(w['year'] or '年份待补充'),'subtitle'))
+        facts.addWidget(label('Fans · 作者文件夹' if w['kind']=='fans' else KINDS[w['kind']],'subtitle'))
+        duration=sum(file['duration'] for file in w['files']) if w['kind']=='fans' else max((file['duration'] for file in w['files']),default=0)
+        if w['kind']=='fans':facts.addWidget(label(f"{len(w['files'])} 个视频",'subtitle'))
         if duration:facts.addWidget(label(f'{duration/60:.0f} 分钟','subtitle'))
         source=next((source for source in w['sources'] if source.get('rating') is not None),None)
         if source:facts.addWidget(label(f"★ {source['rating']:.1f}",'sourceScore'))
@@ -540,20 +542,22 @@ class Details(QWidget):
         self.watchlist_action.clicked.connect(lambda value:self.personal(watchlist=value));actions.addWidget(self.watchlist_action)
         self.rating_action=ActionButton(f"{w['rating']} 分" if w['rating'] else '评分','star',self.choose_rating,accent='#e7c567');self.rating_action.setVisible(w['kind']!='other');self.rating_action.setToolTip('我的评分');self.rating_action.setAccessibleName('我的评分');actions.addWidget(self.rating_action)
         more=ActionButton('更多操作','more').icon_only();self.management_menu=QMenu(more)
-        if w['kind']!='other':
+        if w['kind'] in {'movie','series','vr'}:
             self.management_menu.addAction(icon('search'),'刮削匹配…',self.scrape)
             self.management_menu.addAction('编辑资料 / 锁定…',self.edit)
             self.management_menu.addSeparator()
         self.management_menu.addAction(icon('folder'),'整理文件…',self.organize)
-        self.management_menu.addAction('从 NFO 补充图片…',lambda:window.import_nfo_artwork(work_id))
-        self.management_menu.addAction('刮削演员头像…',self.scrape_actor_photo)
+        if w['kind']!='fans':
+            self.management_menu.addAction('从 NFO 补充图片…',lambda:window.import_nfo_artwork(work_id))
+            self.management_menu.addAction('刮削演员头像…',self.scrape_actor_photo)
         self.management_menu.addAction('重新截取封面…',self.recapture)
         self.management_menu.addAction('整部标记已看',lambda:window.catalog_watch(work_id,'completed'))
         self.management_menu.addAction('整部重置进度',lambda:window.catalog_watch(work_id,'unwatched'))
         self.management_menu.addAction('从头播放',lambda:window.catalog_restart(work_id))
         self.management_menu.addAction('加入播放队列',lambda:window.library.edit_queue([*window.library.setting('queue',{'ids':[]})['ids'],work_id]))
         self.management_menu.addAction('仅移出媒体库…',lambda:window.remove_catalog_work(work_id))
-        if w['kind']!='other':self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
+        if w['kind'] in {'movie','series','vr'}:self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
+        if w['kind']=='fans':self.management_menu.addAction('合并同作者文件夹…',self.merge_fans_folders)
         self.dislike_action=self.management_menu.addAction(icon('ban'),'不感兴趣');self.dislike_action.setCheckable(True);self.dislike_action.setChecked(bool(w['disliked']));self.dislike_action.triggered.connect(lambda value:self.personal(disliked=value))
         more.setMenu(self.management_menu);actions.addWidget(more);actions.addStretch();info.addLayout(actions)
         def links(values,field):
@@ -567,7 +571,7 @@ class Details(QWidget):
         self.tag_links=links(w['metadata'].get('tags',[]),'tags_all')
         self.actor_links=links([actor['name'] for actor in w['metadata'].get('actors',[])],'actor')
         if w['metadata'].get('released'):info.addWidget(label('上映 / 首播  '+str(w['metadata']['released']),'subtitle'))
-        description=label(w['metadata'].get('overview','暂无简介，可通过刮削补充。') if w['kind']!='other' else '保留原始目录结构。')
+        description=label(('按作者归组，包含此作者文件夹及下级目录的视频。多个目录属于同一作者时，可在“更多操作”中合并，原始文件保留。' if w['kind']=='fans' else w['metadata'].get('overview','暂无简介，可通过刮削补充。')) if w['kind']!='other' else '保留原始目录结构。')
         description.setWordWrap(True);info.addWidget(description,1)
         recommended=next((item for item in window.current_items if item.get('id')==work_id and item.get('reasons')),None)
         if recommended:
@@ -584,7 +588,7 @@ class Details(QWidget):
             self.files.addItem(item)
         if self.files.count():self.files.setCurrentRow(0)
         self.files.itemDoubleClicked.connect(lambda item: window.play_file(item.data(Qt.ItemDataRole.UserRole)))
-        self.files_heading=label('视频文件 / 季与集 · 双击播放', 'subtitle')
+        self.files_heading=label('作者视频 · 双击播放' if w['kind']=='fans' else '视频文件 / 季与集 · 双击播放', 'subtitle')
         outer.addWidget(self.files_heading)
         if w['kind']=='series':
             self.season_filter=QComboBox();self.season_filter.addItem('全部季',None)
@@ -653,7 +657,8 @@ class Details(QWidget):
         self.resources_heading=label('下载资源','sectionTitle')
         outer.addWidget(self.resources_heading)
         from .downloads import download_folder
-        self.download_directory_label=label('保存位置：'+str(download_folder(self.library,self.work_id)) if w['kind'] != 'other' else '其他分类不使用插件下载')
+        film_download=w['kind'] in {'movie','series','vr'}
+        self.download_directory_label=label('保存位置：'+str(download_folder(self.library,self.work_id)) if film_download else '')
         self.download_directory_label.setWordWrap(True)
         outer.addWidget(self.download_directory_label)
         directory_actions=QHBoxLayout()
@@ -663,7 +668,7 @@ class Details(QWidget):
         download_menu.addSeparator();download_menu.addAction('检查下载文件并入库',self.import_downloads)
         download_options.setMenu(download_menu);directory_actions.addWidget(download_options);directory_actions.addStretch()
         outer.addLayout(directory_actions)
-        self.download_directory_label.setVisible(w['kind']!='other');download_options.setVisible(w['kind']!='other')
+        self.download_directory_label.setVisible(film_download);download_options.setVisible(film_download);self.resources_heading.setVisible(film_download)
         self.resource_buttons=[]
         for entry in w['metadata'].get('download_url',[]):
             method=entry.get('method',w['metadata'].get('download_method'))
@@ -671,10 +676,11 @@ class Details(QWidget):
             control=button(('磁力 · ' if method=='magnet' else '直链 · ')+text,
                            lambda checked=False,entry=entry:self.start_download(entry))
             control.setObjectName('resourceAction');control.setIcon(icon('folder'));self.resource_buttons.append(control);outer.addWidget(control)
-        if not self.resource_buttons:
+        if not self.resource_buttons and film_download:
             outer.addWidget(label('来源尚未提供下载资源；可刷新来源详情。','subtitle'))
         self.refresh_resources=button('刷新剧照与下载资源',lambda:self.window.refresh_source_details(self.work_id))
-        outer.addWidget(self.refresh_resources)
+        outer.addWidget(self.refresh_resources);self.refresh_resources.setVisible(film_download)
+        if w['kind']=='fans':self.gallery_status.hide()
         if not self.work['files']:
             outer.addWidget(label('此影片尚未入库。查看剧照和下载资源无需先导入视频。','subtitle'))
         bottom = QHBoxLayout()
@@ -760,6 +766,10 @@ class Details(QWidget):
             if not ok:return
         from .actor_ui import show_actor_scraper
         show_actor_scraper(self.window,name)
+
+    def merge_fans_folders(self):
+        from .fans_ui import merge_author_folders
+        merge_author_folders(self)
 
     def set_stills(self, paths, prefix='剧照'):
         self.still_gallery.clear()
@@ -1114,7 +1124,7 @@ class MainWindow(QMainWindow):
         nav = QVBoxLayout(self.drawer)
         nav.setContentsMargins(6, 20, 6, 18)
         self.nav_buttons = {}
-        for key, title in [('home','首页'),('recommend','为我推荐'),('discover','影片发现'),('movie','电影'),('series','电视剧'),('vr','VR电影'),('other','其他'),('stats','观影统计')]:
+        for key, title in [('home','首页'),('recommend','为我推荐'),('discover','影片发现'),('movie','电影'),('series','电视剧'),('vr','VR电影'),('fans','Fans'),('other','其他'),('stats','观影统计')]:
             control = button(title, lambda checked=False, key=key: self.navigate(key))
             control.setObjectName('nav')
             control.setCheckable(True)
@@ -1174,8 +1184,8 @@ class MainWindow(QMainWindow):
         self.catalog_direction.clicked.connect(self.flip_catalog_sort);self.toolbar.addWidget(self.catalog_direction)
         self.batch_select=QPushButton('多选');self.batch_select.setCheckable(True);self.batch_select.toggled.connect(self.select_catalog_mode);self.toolbar.addWidget(self.batch_select)
         from .catalog_ui import batch_menu,relocate
-        self.toolbar.addWidget(button('批量操作',lambda:batch_menu(self)))
-        self.toolbar.addWidget(button('修复路径',lambda:relocate(self)))
+        self.batch_action=button('批量操作',lambda:batch_menu(self));self.toolbar.addWidget(self.batch_action)
+        self.relocate_action=button('修复路径',lambda:relocate(self));self.toolbar.addWidget(self.relocate_action)
         self.actor_min = QComboBox()
         for n in [0,1,3,5,10]:
             self.actor_min.addItem(f'至少 {n} 部已评分', n)
@@ -1189,12 +1199,11 @@ class MainWindow(QMainWindow):
         self.actor_photo_action=button('刮削演员头像…',self.scrape_actor_photo)
         self.toolbar.addWidget(self.actor_photo_action)
         self.source_filter = QComboBox()
-        self.source_filter.currentIndexChanged.connect(self.refresh)
-        self.toolbar.addWidget(self.source_filter)
         self.category_filter = QComboBox()
         self.category_filter.addItem('全部分类', '')
-        self.category_filter.currentIndexChanged.connect(self.refresh)
-        self.toolbar.addWidget(self.category_filter)
+        from .discovery_ui import DiscoveryPanel
+        self.discovery_panel=DiscoveryPanel(self)
+        main.addWidget(self.discovery_panel)
         main.addLayout(self.toolbar)
         main.addWidget(self.home_page, 1)
         self.splitter = QSplitter()
@@ -1219,6 +1228,8 @@ class MainWindow(QMainWindow):
         self.cards.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.cards.customContextMenuRequested.connect(self.card_menu)
         self.cards.verticalScrollBar().valueChanged.connect(self.load_more)
+        from .discovery_images import DiscoveryImages
+        self.discovery_images=DiscoveryImages(self)
         self.splitter.addWidget(self.cards)
         self.splitter.setSizes([220, 900])
         main.addWidget(self.splitter, 1)
@@ -1325,30 +1336,36 @@ class MainWindow(QMainWindow):
         while self.tabs.count():
             self.tabs.removeTab(0)
         titles = {'home':['媒体总览','继续观看','最近入库','想看'], 'movie':['影片海报墙','女演员墙'], 'series':['剧集海报墙'],
-                  'recommend':['为我推荐'], 'vr':['VR影片海报墙'], 'other':['文件夹浏览'], 'discover':['为你发现','网站最新收录','想看清单'], 'stats':['数据概览','日趋势','周趋势','月趋势','年度报告','影片偏好','评分分布','观看历史']}
+                  'recommend':['为我推荐'], 'vr':['VR影片海报墙'], 'fans':['作者文件夹'], 'other':['文件夹浏览'], 'discover':['全部发现','网站最新收录','想看清单'], 'stats':['数据概览','日趋势','周趋势','月趋势','年度报告','影片偏好','评分分布','观看历史']}
         for text in titles[section]:
             self.tabs.addTab(text)
         self.tabs.blockSignals(False)
-        self.heading.setText({'home':'首页','recommend':'为我推荐','movie':'电影','series':'电视剧','vr':'VR电影','other':'其他视频','discover':'影片发现','stats':'观影统计'}[section])
+        self.heading.setText({'home':'首页','recommend':'为我推荐','movie':'电影','series':'电视剧','vr':'VR电影','fans':'Fans','other':'其他视频','discover':'影片发现','stats':'观影统计'}[section])
         for key, b in self.nav_buttons.items():
             b.setChecked(key == section)
         if section == 'discover':
-            self.source_filter.blockSignals(True)
-            self.source_filter.clear()
-            self.source_filter.addItem('全部来源', '')
-            for p in Plugins(self.library).installed():
-                self.source_filter.addItem(p['name'], p['id'])
-            self.source_filter.blockSignals(False)
+            self.discovery_panel.reload_sources()
+            self.discovery_panel.reset_view()
+        else:self.discovery_panel.token+=1
+        self.discovery_panel.setVisible(section=='discover')
+        self.search.setVisible(section!='discover')
         self.refresh()
 
     def tab_changed(self, index):
         self.subtab = max(index, 0)
+        if self.section=='discover' and index==1:
+            self.discovery_panel.sort.blockSignals(True);self.discovery_panel.sort.setCurrentIndex(self.discovery_panel.sort.findData('site_added'));self.discovery_panel.sort.blockSignals(False)
+            self.discovery_panel.change_sort(refresh=False)
         self.refresh()
 
     def effective_filters(self):
         filters = dict(self.filters)
-        filters.setdefault('sort',self.library.setting('catalog_sort','added'))
-        filters.setdefault('descending',self.library.setting('catalog_descending',True))
+        if self.section=='discover':
+            filters.setdefault('sort',self.discovery_panel.sort.currentData())
+            filters.setdefault('descending',self.discovery_panel.descending)
+        else:
+            filters.setdefault('sort',self.library.setting('catalog_sort','added'))
+            filters.setdefault('descending',self.library.setting('catalog_descending',True))
         if self.section in KINDS:
             filters.setdefault('kinds', [self.section])
         if self.section == 'home' and self.subtab == 3:
@@ -1357,7 +1374,7 @@ class MainWindow(QMainWindow):
             filters['continue'] = True
         if self.section == 'movie' and self.subtab == 1:
             filters['female_cast'] = True
-        if self.search.text().strip():
+        if self.search.text().strip() and not (self.section=='discover' and self.discovery_panel.online_results()):
             filters['query'] = self.search.text().strip()
         return filters
 
@@ -1403,8 +1420,10 @@ class MainWindow(QMainWindow):
         request={'section':self.section,'tab':self.subtab,'filters':self.effective_filters(),
                  'actor_min':self.actor_min.currentData(),'actor_sort':self.actor_sort.currentData(),
                  'year':getattr(self,'report_year',__import__('datetime').datetime.now().year)}
+        if self.section=='discover':request.update(self.discovery_panel.request_fields())
         if _data is None:
             self._browse_epoch+=1
+            self.discovery_images.refresh_visible()
             if self._restore_browse_state is not None and self._restore_browse_state.get('_epoch')!=self._browse_epoch:self._restore_browse_state=None
             if (not self.synchronous_small_catalog or self.jobs or
                 self.library.db.execute('SELECT COUNT(*) FROM works').fetchone()[0]>=250 or
@@ -1440,11 +1459,14 @@ class MainWindow(QMainWindow):
         self.view_mode.setVisible(not actresses and self.section != 'stats')
         for control in [self.catalog_sort,self.catalog_direction]:control.setVisible(not actresses and self.section not in {'stats','discover','recommend'} and not home)
         self.batch_select.setVisible(not actresses and self.section not in {'stats','discover'} and not home)
+        self.batch_action.setVisible(not actresses and self.section not in {'stats','discover'} and not home)
+        self.relocate_action.setVisible(self.section in KINDS)
         self.actor_min.setVisible(actresses)
         self.actor_sort.setVisible(actresses)
         self.actor_photo_action.setVisible(actresses)
         self.source_filter.setVisible(self.section == 'discover')
         self.category_filter.setVisible(self.section == 'discover')
+        self.discovery_panel.setVisible(self.section=='discover')
         self.tree.setVisible(self.section == 'other')
         self.stats_scroll.setVisible(self.section == 'stats')
         self.home_page.setVisible(home)
@@ -1472,21 +1494,10 @@ class MainWindow(QMainWindow):
             items = self.library.recommendations()
         elif self.section == 'discover':
             items = _data['items']
-            selected_category = self._restore_browse_state['category'] if self._restore_browse_state is not None else self.category_filter.currentData()
-            categories = sorted({category for w in items for category in w['metadata'].get('discovery_categories', [])})
-            self.category_filter.blockSignals(True)
-            self.category_filter.clear()
-            self.category_filter.addItem('全部分类', '')
-            for category in categories:
-                self.category_filter.addItem(category, category)
-            self.category_filter.setCurrentIndex(max(0,self.category_filter.findData(selected_category)))
-            self.category_filter.blockSignals(False)
-            items = [w for w in items if not self.category_filter.currentData() or self.category_filter.currentData() in w['metadata'].get('discovery_categories', [])]
-            items = [w for w in items if w['sources'] and (not self.source_filter.currentData() or any(s['plugin'] == self.source_filter.currentData() for s in w['sources']))]
-            if self.subtab == 2:
-                items = [w for w in items if w['watchlist']]
+            self.discovery_panel.set_facets(_data.get('facets',{}))
             for w in items:
-                w['_subtitle'] = ('已入库' if w['files'] else '未入库') + ' · ' + (w['sources'][0]['site_added'] or w['discovered'] or '')[:10]
+                source=next(iter(w['sources']),{})
+                w['_subtitle'] = ('已入库' if w['files'] else '未入库') + ' · ' + (source.get('site_added') or w['discovered'] or '')[:10]
         else:
             items = _data['items']
             if self.section=='other':self.build_tree(_data.get('tree'))
@@ -1494,7 +1505,7 @@ class MainWindow(QMainWindow):
                 items = [w for w in items if any(f['position'] > 0 and not f['completed'] for f in w['files'])]
             elif self.section == 'home' and self.subtab == 3:
                 items = [w for w in items if w['watchlist']]
-        view_key=json.dumps([self.section,self.subtab,self.effective_filters(),self.actor_min.currentData(),self.actor_sort.currentData(),self.view_mode.currentData()],sort_keys=True,ensure_ascii=False)
+        view_key=json.dumps([self.section,self.subtab,self.effective_filters(),self.discovery_panel.request_fields() if self.section=='discover' else {},self.actor_min.currentData(),self.actor_sort.currentData(),self.view_mode.currentData()],sort_keys=True,ensure_ascii=False)
         preserve=view_key==getattr(self,'_rendered_view_key',None);self._rendered_view_key=view_key
         self.current_items = items
         count=min(len(items),max(60,self.display_count) if preserve else 60)
@@ -1504,6 +1515,7 @@ class MainWindow(QMainWindow):
         self.empty.setText('这里还没有内容\n\n拖入真实视频文件夹，或点击“导入文件夹”开始。\n影片发现需先在设置中安装并配置插件。' if not items else '')
         self.empty.setVisible(not items)
         self.splitter.setVisible(bool(items))
+        self.discovery_images.refresh_visible()
 
     def _start_browse_read(self):
         if self._browse_job is not None or self._browse_pending is None or self._closing:return
@@ -1535,10 +1547,12 @@ class MainWindow(QMainWindow):
             item.setToolTip((data.get('title') or data.get('name', '')) + '\n' + '\n'.join(data.get('reasons', [])))
             self.cards.addItem(item)
         self.display_count = self.cards.count()
+        self.discovery_images.refresh_visible()
 
     def load_more(self, value):
         if value >= self.cards.verticalScrollBar().maximum() - 200 and self.display_count < len(self.current_items):
             self.append_cards()
+        self.discovery_images.refresh_visible()
 
     def open_item(self, item):
         if self.cards.property('batchMode'):return
@@ -1609,6 +1623,7 @@ class MainWindow(QMainWindow):
             'detail':self.detail_page.work_id if self.detail_page is not None else None,
             'detail_scroll':self.details_scroll.verticalScrollBar().value() if self.details_scroll is not None else 0,
             'source':self.source_filter.currentData(),'category':self.category_filter.currentData(),
+            'discovery':self.discovery_panel.snapshot(),
             'actor_min':self.actor_min.currentIndex(),'actor_sort':self.actor_sort.currentIndex()})
         # Keep data-only history bounded; no hidden pages or image widgets remain alive.
         del self.navigation_history[:-30]
@@ -1620,6 +1635,7 @@ class MainWindow(QMainWindow):
         state=self.navigation_history.pop()
         # A normal detail -> list return keeps the actual poster widgets and selection.
         same=(self.section==state['section'] and self.subtab==state['subtab'] and self.filters==state['filters'] and self.search.text()==state['search'])
+        if self.section=='discover':same=same and self.discovery_panel.snapshot()==state.get('discovery') and self.source_filter.currentData()==state['source'] and self.category_filter.currentData()==state['category']
         self._close_details()
         if not same:
             self.navigate(state['section'],preserve_history=True)
@@ -1629,6 +1645,7 @@ class MainWindow(QMainWindow):
                 control.blockSignals(True);control.setCurrentIndex(max(0,control.findData(state[key])));control.blockSignals(False)
             for control,key in [(self.actor_min,'actor_min'),(self.actor_sort,'actor_sort')]:
                 control.blockSignals(True);control.setCurrentIndex(state[key]);control.blockSignals(False)
+            if state['section']=='discover':self.discovery_panel.restore(state.get('discovery',{}))
             state['_epoch']=self._browse_epoch+1;self._restore_browse_state=state;self.refresh()
         self.heading.setText(state['heading'])
         if state['detail'] is not None:
@@ -1665,7 +1682,7 @@ class MainWindow(QMainWindow):
             credits=[str(actor[key]) for key in ('photo_attribution','photo_license','photo_page','photo_source_url') if actor.get(key)]
             if credits:menu.addAction('头像来源 / 许可…',lambda:QMessageBox.information(self,'头像来源 / 许可','\n'.join(dict.fromkeys(credits))))
         menu.addAction('查看详情', lambda: self.open_item(item))
-        if data.get('kind'):menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork(data['id']))
+        if data.get('kind') and data['kind']!='fans':menu.addAction('从本地 NFO 补充图片…',lambda:self.import_nfo_artwork(data['id']))
         if data.get('kind'):
             menu.addAction('取消收藏' if data.get('favorite') else '收藏', lambda: self.toggle_favorite(data['id']))
         if data.get('files'):
@@ -1730,6 +1747,8 @@ class MainWindow(QMainWindow):
 
     def search_all(self):
         query = self.search.text()
+        if self.section=='discover':
+            self.discovery_panel.name.setText(query);self.discovery_panel.apply_local();return
         if self.section not in {'recommend','discover'}:
             self.navigate('home')
             self.tabs.setCurrentIndex(2)
@@ -1756,12 +1775,15 @@ class MainWindow(QMainWindow):
             if not self.filters[key]:self.filters.pop(key,None)
         else:
             self.filters.pop(key,None)
-            if key=='query':self.search.clear()
+            if key=='query':
+                self.search.clear()
+                if self.section=='discover':self.discovery_panel.name.clear()
             if key=='watchlist' and self.section=='home' and self.subtab==3:self.tabs.setCurrentIndex(2)
         if self.section=='home' and self.subtab==2:self.heading.setText('媒体库')
         self.refresh()
 
     def clear_filters(self):
+        if self.section=='discover':self.discovery_panel.clear();return
         self.filters={};self.search.clear()
         if self.section=='home' and self.subtab in {1,3}:self.tabs.setCurrentIndex(2)
         self.refresh()
@@ -1791,7 +1813,9 @@ class MainWindow(QMainWindow):
                 filters=dialog.filters()
                 if self.section not in {'discover','recommend'}:
                     self.navigate('home');self.subtab=2;self.tabs.setCurrentIndex(2);self.heading.setText('媒体库')
-                self.filters=filters;self.search.setText(filters.get('query',''));self.refresh()
+                self.filters=filters;self.search.setText(filters.get('query',''))
+                if self.section=='discover':self.discovery_panel.sync_advanced_filters()
+                self.refresh()
             dialog.deleteLater()
         job=run_background(self,read,loaded,failed);dialog.finished.connect(finished);dialog.open()
 
@@ -1864,11 +1888,12 @@ class MainWindow(QMainWindow):
         def complete(result):
             self.status.setText(f"导入 {result['imported']} · NFO 更新 {result.get('nfo_updated',0)} · 重复 {result['duplicates']} · 失败 {len(result['errors'])} · 警告 {len(result['warnings'])}")
             if self.detail_page is None and (self.section,self.subtab)==origin and self.section!=kind:self.navigate(kind)
-            if kind != 'other':
+            if kind in {'movie','series','vr'}:
                 self.auto_scrape_import(path, kind)
         self.run_job('快速导入 · 时长与缺失图片稍后补充', lambda lib, p: lib.import_folder(path, kind, p, fast=True, cancelled=p.cancelled), complete)
 
     def auto_scrape_import(self, path, kind):
+        if kind not in {'movie','series','vr'}:return
         config = self.library.setting('partition:' + kind, {})
         plugin_id = config.get('plugin')
         if not plugin_id:
@@ -2330,17 +2355,19 @@ class MainWindow(QMainWindow):
         from .settings import Settings
         Settings(self).exec()
         if self._closing:return
+        if self.section=='discover':self.discovery_panel.reload_sources()
         self.refresh()
         if self.detail_page is not None:self.reload_details(self.detail_page.work_id)
 
     def closeEvent(self, event):
         self._closing = True
+        self.discovery_images.stop()
         if getattr(self,'import_form',None):self.import_form.reject()
         self.watch_scheduler.stop();self.remote.timer.stop();self.remote.clear()
         for title,function,callback,identifier,quiet in self.job_queue:
             if not quiet:self.task_journal.record(identifier,'background','cancelled',{'title':title},error='应用关闭，未执行队列任务')
         self.job_queue.clear()
-        if self.jobs or self._browse_job is not None or self._auxiliary_jobs:
+        if self.jobs or self._browse_job is not None or self._auxiliary_jobs or not self.discovery_images.idle:
             for worker in self._auxiliary_jobs:worker.requestInterruption()
             self._closing = True
             self._browse_pending=None
@@ -2351,6 +2378,7 @@ class MainWindow(QMainWindow):
             for job in self.jobs:
                 job.requestInterruption()
             event.ignore()
+            if not self.discovery_images.idle:QTimer.singleShot(100,self.close)
             return
         self.player.close()
         if not self.player.playback_journal.stop():
@@ -2375,6 +2403,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 if keep_open:
                     self._closing=False
+                    self.discovery_images.resume()
                     for timer in (self.scheduler,self.media_scheduler,self.watch_scheduler,self.remote.timer):timer.start()
                     self.status.setText('已取消退出，播放记录将在后台重试保存')
                 else:QTimer.singleShot(100,self.close)

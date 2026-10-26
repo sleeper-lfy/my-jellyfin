@@ -28,6 +28,22 @@ ID 为小写字母开头的 2–51 位字母、数字、连字符。`domains` �
 
 能力可选：`search`、`detail`、`discover`、`actors`。演员资料可以随 detail 返回，也可以实现独立 `actors` 搜索；独立演员记录使用下文格式，不是影片记录，不会创建一部同名影片。
 
+影片站点的在线搜索另可声明 `"search_filters": ["name", "tag"]`；未声明时按仅支持 `name` 处理。名称通过 `buildRequest(input).query` 传入，标签通过 `input.tag` 传入；两者同时填写时来源应真正将两个条件组合到站点查询。不要把 `discover` 的最新列表冒充搜索结果，也不要将不支持的标签参数忽略。内置 TVmaze 仅有名称搜索，填写站点标签时会明确显示不支持；Internet Archive 1.1.0 使用 Advanced Search 的 `title:"名称"` 与 `subject:"标签"` 条件，支持名称、标签或同时检索。站点支持标签搜索，与对已发现资料做本地标签筛选是两种功能。
+
+`search_sites(library, query, tag='', plugin_id='', progress=None)` 顺序调用已启用的搜索来源。结果包含 `ids/count/added/matched/local_matches/searched/errors`，每个来源错误为 `{plugin,name,message}`。至少一个来源成功时返回可用结果及部分错误；所有来源失败或均不支持所填条件时抛出带 `.result` 的 `DiscoverySearchError`，不会显示“搜索成功，0 条”。重试会创建新的独立任务。
+
+检索只保存未入库的发现资料。来源 ID、外部 ID 或标题与年份关联到本地影片时保留该作品 ID 作为命中，不执行资料、海报、个人评分或播放进度更新。保存前在短事务内重新检查本地关联，避免扫描导入同时进行时覆盖本地资料；Fans 和其他视频不能作为影视刮削目标。搜索不下载视频、不启动播放，也不逐条下载演员图和剧照。海报 URL 留在元数据中，由可见项按需加载小预览；每次图片请求都复用来源权限和代理，HTTP 请求不持有数据库写锁。
+
+局域网客户端使用鉴权异步接口：
+
+- `GET /api/discovery/providers` → `{items:[{id,name,supports_tags,search_filters}]}`，只列已启用且支持 search 的来源。
+- `POST /api/discovery/search`，正文 `{query,tag,plugin}` → `202 {task_id}`；名称与标签不能同时为空。`plugin` 留空表示所有已启用搜索来源。
+- `GET /api/discovery/search/{task_id}` → `{id,kind,status,payload,result,error,updated}`，状态为 queued/running/done/failed/cancelled。`result.ids` 可传给 `/api/discover?ids=...` 精确显示本次命中；明确空的 ids 集合不会变成所有发现资料。
+
+在线任务共用应用的后台并发预算，局域网站点搜索另限一个工作线程及最多四个未完成任务；队列满返回 429。任务状态通过现有 TaskJournal 异步写入，资料库读取和操作不会等待搜索的 HTTP 请求。未完成任务被关闭服务中断后可重新发起，错误不会被当作正常空结果。
+
+已安装旧版 Internet Archive 的用户可在 PC 发现面板明确执行“安装 / 更新站点来源”，无需卸载。界面先显示 TVmaze 或 Internet Archive 的完整域名权限，再从当前应用随附目录更新；已有代理、分类、启用状态、优先级及其他配置全部保留。底层 `builtin_search_plugin(id)` / `update_builtin_search_plugin(id)` 只接受 `tvmaze`、`internet-archive`，不能更新任意第三方插件，也不会自动启用新安装的插件。界面的“更新并启用”是用户选择后的独立配置动作；Android 可提示在 PC 配置来源。不会后台自动升级或扩大第三方来源权限。
+
 ## JavaScript 函数
 
 ```javascript

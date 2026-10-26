@@ -179,7 +179,7 @@ public class BrowseUiTest {
             findText(activity.findViewById(android.R.id.content),"Remote tag").performClick();
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);
             assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
-            assertTrue(((String)path.invoke(activity)).contains("tag=Remote%20tag"));
+            assertTrue(((String)path.invoke(activity)).contains("tag_q=Remote%20tag"));
             activity.onBackPressed();activity.onBackPressed();
             long deadline=System.currentTimeMillis()+6000;
             while(activity.findViewById(android.R.id.content).findViewWithTag("card:42")==null&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}

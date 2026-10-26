@@ -9,7 +9,7 @@ final class VideoNavigator {
     static final class Target {final long id;final int position;Target(long id,int position){this.id=id;this.position=position;}}
     static Target adjacent(Api api,long current,int direction,String path,int hint,BooleanSupplier cancelled)throws Exception{
         if(direction!=1&&direction!=-1)throw new IllegalArgumentException("Invalid navigation direction");
-        if(!(path.startsWith("/api/works?")||path.startsWith("/api/recommendations?")))throw new IllegalArgumentException("Invalid media list");
+        if(!(path.startsWith("/api/works?")||path.startsWith("/api/recommendations?")||path.startsWith("/api/discover?")))throw new IllegalArgumentException("Invalid media list");
         if(hint>=0){
             int offset=Math.max(0,hint-1);JSONArray rows=api.get(path+"&offset="+offset+"&limit=3").getJSONArray("items");
             if(cancelled.getAsBoolean())return null;

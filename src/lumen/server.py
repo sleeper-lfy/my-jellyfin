@@ -61,11 +61,13 @@ def parse_range(value, size):
 
 def public_work(work, detail=False):
     result = {key: work[key] for key in ['id','kind','title','year','rating','favorite','watchlist','disliked','liked','added']}
-    result.update(cover=f"/api/works/{work['id']}/cover" if work['thumbnail'] else None,
+    result.update(cover=f"/api/works/{work['id']}/cover" if work['thumbnail'] or
+                  work['sources'] and isinstance(work['metadata'].get('poster'),str) and work['metadata']['poster'] and 'poster' not in work['locked'] else None,
                   file_count=len(work['files']), tags=work['metadata'].get('tags', []),
                   position=max((f['position'] for f in work['files']),default=0))
     from .catalog import watch_state
     result['watch_state']=watch_state(work['files'])
+    if work['kind']=='fans':result['creator']=work['metadata'].get('creator') or work['title']
     result['community_rating']=next((source['rating'] for source in work.get('sources',[]) if source.get('rating') is not None),None)
     if detail:
         from .artwork import still_paths
@@ -100,6 +102,9 @@ class LanServer:
         self.discovery_port = discovery_port
         self.downloads = None
         self.remote = remote
+        self.discovery_jobs = None
+        self.cover_slots = threading.BoundedSemaphore(3)
+        self.active_covers = set()
         from concurrent.futures import ThreadPoolExecutor
         self.bookmark_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Bookmark')
         self.bookmark_slots=threading.BoundedSemaphore(8)
@@ -131,6 +136,8 @@ class LanServer:
             self.bookmark_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Bookmark')
         from .downloads import DownloadQueue
         self.downloads = DownloadQueue(self.directory,budget=self.budget)
+        from .discovery_search import DiscoverySearchJobs
+        self.discovery_jobs = DiscoverySearchJobs(self.directory, self.budget)
         service = self
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -168,7 +175,7 @@ class LanServer:
                     if not hmac.compare_digest(supplied.encode(), ('Bearer '+service.token).encode()):
                         raise ApiError(401,'访问密钥不正确，请在电脑端设置中查看')
                     parts = urlsplit(self.path)
-                    query = parse_qs(parts.query)
+                    query = parse_qs(parts.query,keep_blank_values=True)
                     path = parts.path
                     library = Library(service.directory, initialize=False)
                     body = {}
@@ -179,6 +186,14 @@ class LanServer:
                         body = json.loads(self.rfile.read(length))
                         if not isinstance(body,dict): raise ApiError(400,'请求内容须为对象')
                     if self.command in {'GET','HEAD'}:
+                        if path == '/api/discovery/providers':
+                            from .discovery_search import search_providers
+                            return self.send_json(200, {'items': search_providers(library)})
+                        match = re.fullmatch(r'/api/discovery/search/([a-f0-9]{32})', path)
+                        if match:
+                            state = service.discovery_jobs.status(library, match[1])
+                            if state is None: raise ApiError(404, '站点搜索任务不存在')
+                            return self.send_json(200, state)
                         if path == '/api/queue-titles':
                             ids=[int(v) for v in query.get('ids',[''])[0].split(',') if v]
                             if len(ids)>10000:raise ApiError(400,'队列过长')
@@ -205,17 +220,23 @@ class LanServer:
                         if path == '/api/info':
                             return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now()})
                         if path == '/api/filters':
-                            filters = self.filters(query)
-                            return self.send_json(200, library.filter_options(filters.get('kinds'),local=query.get('discover',['false'])[0]!='true'))
+                            discovered=query.get('discover',['false'])[0]=='true'
+                            filters = self.filters(query,discovery=discovered)
+                            if discovered:
+                                from .discovery_catalog import discovery_facets
+                                return self.send_json(200,discovery_facets(library,filters.get('kinds')))
+                            return self.send_json(200, library.filter_options(filters.get('kinds')))
                         if path in {'/api/works','/api/recommendations','/api/discover'}:
-                            filters = self.filters(query)
+                            filters = self.filters(query,discovery=path=='/api/discover')
                             if query.get('list',[''])[0]:
                                 row=library.db.execute('SELECT filters FROM lists WHERE name=?',(query['list'][0],)).fetchone()
                                 if not row:raise ApiError(404,'片单不存在')
                                 filters={**json.loads(row[0]),'local':True}
-                            if path=='/api/discover':filters['local']=False
-                            items = library.query(filters)
-                            if path=='/api/discover':items=[item for item in items if item['sources']]
+                            if path=='/api/discover':
+                                from .discovery_catalog import query_discovery
+                                items=query_discovery(library,filters,source=query.get('source',[''])[0],
+                                                      category=query.get('category',[''])[0],tag_query=query.get('tag_q',[''])[0])
+                            else:items = library.query(filters)
                             if path == '/api/recommendations':
                                 selected = {item['id'] for item in items}
                                 items = [item for item in library.recommendations() if item['id'] in selected]
@@ -251,8 +272,23 @@ class LanServer:
                         if match:
                             work = library.work(int(match[1]))
                             if match[2]:
-                                if not work['thumbnail']:raise ApiError(404,'暂无封面')
-                                target=Path(work['thumbnail']).resolve()
+                                cover = work['thumbnail']
+                                if not cover:
+                                    if not service.cover_slots.acquire(blocking=False):raise ApiError(503,'封面正在载入，请稍后重试')
+                                    with service.lock:
+                                        duplicate = work['id'] in service.active_covers
+                                        if not duplicate: service.active_covers.add(work['id'])
+                                    if duplicate:
+                                        service.cover_slots.release();raise ApiError(503,'此封面正在载入，请稍后重试')
+                                    try:
+                                        from .discovery_search import cache_discovery_cover
+                                        try:cover = cache_discovery_cover(library, work['id'])
+                                        except Exception:raise ApiError(404,'来源封面暂不可用')
+                                    finally:
+                                        with service.lock:service.active_covers.discard(work['id'])
+                                        service.cover_slots.release()
+                                if not cover:raise ApiError(404,'暂无封面')
+                                target=Path(cover).resolve()
                                 if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'封面路径不在缓存内')
                                 return self.send_file(target,'image/jpeg')
                             result=public_work(work,True)
@@ -284,6 +320,12 @@ class LanServer:
                                 return self.send_file(subtitles[index],types[subtitles[index].suffix.lower()])
                             return self.send_json(200,{'items':[{'name':p.name,'mime':types[p.suffix.lower()],'url':f'/api/files/{file["id"]}/subtitles/{i}'} for i,p in enumerate(subtitles)]})
                     else:
+                        if path == '/api/discovery/search':
+                            try:
+                                identifier = service.discovery_jobs.submit(body.get('query',''),body.get('tag',''),body.get('plugin',''))
+                            except OverflowError as error:raise ApiError(429,str(error))
+                            except RuntimeError as error:raise ApiError(503,str(error))
+                            return self.send_json(202,{'task_id':identifier})
                         if path=='/api/remote':
                             if not service.remote or not library.setting('remote_enabled',False):raise ApiError(403,'请在电脑设置中启用手机遥控')
                             if body.get('action')=='shutdown' and not library.setting('remote_shutdown_enabled',False):raise ApiError(403,'请在电脑设置中允许手机关机')
@@ -325,6 +367,9 @@ class LanServer:
                             return self.send_json(200,{'ok':True})
                         if path == '/api/play-queue':
                             return self.send_json(200,library.edit_queue(body.get('ids'),body.get('repeat')))
+                        if path == '/api/fans/merge':
+                            merged=library.merge_fans_folders(body.get('ids'),body.get('target_id'),creator=body.get('creator'))
+                            return self.send_json(200,{'ok':True,'result':merged,'work':public_work(library.work(merged['work_id']),detail=True)})
                         match=re.fullmatch(r'/api/works/(\d+)/watched',path)
                         if match:
                             library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
@@ -375,11 +420,11 @@ class LanServer:
                 finally:
                     if library: library.close()
 
-            def filters(self,query):
+            def filters(self,query,discovery=False):
                 filters={'query':query.get('q',[''])[0]}
                 kind=query.get('kind',[''])[0]
                 if kind:
-                    if kind not in {'movie','series','other','vr'}:raise ApiError(400,'无效媒体类型')
+                    if kind not in {'movie','series','other','vr','fans'}:raise ApiError(400,'无效媒体类型')
                     filters['kinds']=[kind]
                 if query.get('favorite',[''])[0].lower() in {'true','1'}:filters['favorite']=True
                 if query.get('tag', [''])[0]:
@@ -390,8 +435,15 @@ class LanServer:
                     year = int(query['year'][0])
                     if not 1800 <= year <= 2200: raise ApiError(400, '无效年份')
                     filters.update(year_min=year, year_max=year)
-                sort=query.get('sort',['added'])[0]
-                if sort not in {'added','title','year','rating','duration'}:raise ApiError(400,'无效排序')
+                sort=query.get('sort',['discovered' if discovery else 'added'])[0]
+                from .catalog import SORTS
+                from .discovery_catalog import DISCOVERY_SORTS
+                if sort not in (DISCOVERY_SORTS if discovery else SORTS):raise ApiError(400,'无效排序')
+                if 'ids' in query:
+                    raw=query['ids'][0]
+                    entries=raw.split(',') if raw else []
+                    if len(entries)>1000 or any(not value.isdecimal() or int(value)<=0 for value in entries):raise ApiError(400,'无效搜索结果编号')
+                    filters['ids']=list(dict.fromkeys(int(value) for value in entries))
                 state=query.get('watch_state',[''])[0]
                 if state not in {'','unwatched','progress','completed'}:raise ApiError(400,'无效观看状态')
                 filters.update(sort=sort,descending=query.get('direction',['desc'])[0]!='asc',watch_state=state)
@@ -483,6 +535,8 @@ class LanServer:
 
     def stop(self):
         self.closing.set()
+        if self.discovery_jobs:
+            self.discovery_jobs.stop();self.discovery_jobs = None
         self.bookmark_pool.shutdown(wait=False,cancel_futures=True)
         if self.remote:self.remote.clear()
         if self.downloads:

@@ -16,6 +16,7 @@ class ImportDialog(QDialog):
         for key,title in KINDS.items():self.kind.addItem(title,key)
         form.addRow('媒体类型',self.kind)
         self.message=QLabel('已有后台任务时会排队处理，仍可继续添加其他目录。');self.message.setWordWrap(True);layout.addWidget(self.message)
+        self.kind.currentIndexChanged.connect(lambda:self.message.setText('Fans 按总目录的第一层作者文件夹归组，包含作者下级目录的视频；不要求季集编号、不自动影视刮削。' if self.kind.currentData()=='fans' else '已有后台任务时会排队处理，仍可继续添加其他目录。'))
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);buttons.button(QDialogButtonBox.StandardButton.Ok).setText('开始导入 / 加入队列')
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
         buttons.accepted.connect(self.submit);buttons.rejected.connect(self.reject);layout.addWidget(buttons)

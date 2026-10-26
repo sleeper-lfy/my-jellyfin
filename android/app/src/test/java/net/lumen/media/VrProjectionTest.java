@@ -4,7 +4,7 @@ import static org.junit.Assert.*;
 public class VrProjectionTest {
     @Test public void onlyVrCategoryAutomaticallyEnablesVr() {
         assertTrue(VrProjection.autoEnable("vr"));
-        for(String kind:new String[]{"movie","series","other","",null})assertFalse(VrProjection.autoEnable(kind));
+        for(String kind:new String[]{"movie","series","fans","other","",null})assertFalse(VrProjection.autoEnable(kind));
     }
     @Test public void centerSelectsSeparateEyesAndCanSwap() {
         for(boolean fish:new boolean[]{false,true}) {

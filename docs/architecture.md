@@ -14,6 +14,8 @@
 | `ui.py` / `home.py` / `settings.py` / `theme.py` | 页面、海报绘制、详情、设置、线程任务和统一视觉规范 |
 | `catalog.py` / `catalog_ui.py` | 媒体库排序、观看状态、批量操作、队列编辑、校验后目录重定位、移出条目与全屏剧照 |
 | `browse.py` / `actor_ui.py` | 后台页面快照、推荐与发现入口、演员头像候选确认和更新 |
+| `discovery_catalog.py` / `discovery_search.py` / `discovery_ui.py` / `discovery_images.py` | 完整发现资料筛选排序、受限后台站点搜索、明确来源能力和可见封面懒加载 |
+| `fans.py` / `fans_ui.py` | 按作者文件夹归档、目录身份绑定、保留文件历史的逻辑合并 |
 | `playback_journal.py` / `diagnostics.py` | 播放累计快照后台保存、幂等恢复、界面卡顿堆栈及轮转日志 |
 | `backup.py` | SQLite 在线备份、格式/完整性检查、恢复前自动留存 |
 | `app.py` | 启动、数据路径、日志、单实例锁与离屏冒烟入口 |
