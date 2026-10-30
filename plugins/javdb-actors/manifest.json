@@ -1,0 +1,10 @@
+{
+  "api_version": 1,
+  "id": "javdb-actors",
+  "name": "JavDB · AV 女优头像",
+  "version": "1.0.0",
+  "description": "按姓名搜索 JavDB 演员资料并读取站点公开头像与别名。只读取姓名、别名和图片地址，不返回视频、磁力或下载链接；头像版权归来源，使用时须遵守所在地法律与站点条款；来源未提供的许可和署名不编造。JavDB 在部分网络下需要应用内配置代理。",
+  "capabilities": ["actors"],
+  "domains": ["javdb.com", "c0.jdbstatic.com"],
+  "base_url": "https://javdb.com"
+}

@@ -1,0 +1,10 @@
+{
+  "api_version": 1,
+  "id": "javrate-actors",
+  "name": "JavRate · AV 女优头像",
+  "version": "1.0.0",
+  "description": "按姓名搜索 JavRate 女优资料，读取公开头像，并将列表小图升级为同目录 _l 大图（实测 800×1280 至 1920×2882）。站点启用 Cloudflare，默认经 r.jina.ai 只读转发页面；不返回视频、磁力或下载链接。头像版权归来源，使用时须遵守所在地法律与站点条款；来源未提供的许可和署名不编造。Reader 需要应用内配置可用代理。",
+  "capabilities": ["actors"],
+  "domains": ["r.jina.ai", "www.javrate.com", "picture.avking.xyz"],
+  "base_url": "https://r.jina.ai"
+}

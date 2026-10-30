@@ -38,6 +38,7 @@ public class BeautySettingsTest {
             CheckBox enabled=(CheckBox)controls.stream().filter(v->v instanceof CheckBox).findFirst().get();
             SeekBar smoothing=(SeekBar)controls.stream().filter(v->v instanceof SeekBar&&"磨皮强度".contentEquals(v.getContentDescription())).findFirst().get();
             enabled.setChecked(true);smoothing.setProgress(75);dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             JSONObject saved=(JSONObject)get(activity,"filePreferences");assertTrue(saved.getJSONObject("beauty").getBoolean("enabled"));assertEquals(75,saved.getJSONObject("beauty").getInt("smoothing"));
             Method gl=PlayerActivity.class.getDeclaredMethod("usesGlVideo");gl.setAccessible(true);assertEquals(true,gl.invoke(activity));assertEquals(false,get(activity,"vrEnabled"));
             String shader=VrProjection.FRAGMENT.replace("BEAUTY_CORE",BeautySettings.shader(activity));

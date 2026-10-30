@@ -1,0 +1,10 @@
+{
+  "api_version": 1,
+  "id": "javbus-actors",
+  "name": "JavBus · AV 女优头像",
+  "version": "1.1.0",
+  "description": "按姓名搜索 JavBus 女优资料并读取站点公开头像。直连被站点浏览器验证（driver-verify）拦截时，自动改经 r.jina.ai（第三方 Reader 服务）读取。只读取姓名、别名与图片地址，不返回视频或下载链接；头像版权归来源，使用时须遵守所在地法律与站点条款；来源未提供的许可和署名不编造。",
+  "capabilities": ["actors"],
+  "domains": ["www.javbus.com", "javbus.com", "r.jina.ai"],
+  "base_url": "https://www.javbus.com"
+}
