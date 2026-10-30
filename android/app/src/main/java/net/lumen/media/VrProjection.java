@@ -27,8 +27,14 @@ public final class VrProjection {
         "#extension GL_OES_EGL_image_external : require\n" +
         "precision highp float; varying vec2 uv; uniform samplerExternalOES video;" +
         "uniform mat4 texMatrix; uniform vec2 angles; uniform float aspect; uniform float tanHalfFov;" +
-        "uniform float eye; uniform int fish; uniform vec2 texel;" +
+        "uniform float eye; uniform int fish; uniform vec2 texel; uniform bool flatVideo; uniform float videoAspect;" +
+        "uniform vec2 pixelStep; uniform vec4 sampleBounds; uniform vec2 beautyAmount;" +
+        "vec4 samplePixel(vec2 t){return texture2D(video,(texMatrix*vec4(clamp(t,sampleBounds.xy,sampleBounds.zw),0,1)).xy);}" +
+        "BEAUTY_CORE\n" +
         "void main(){" +
+        "if(flatVideo){vec2 p=uv*2.0-1.0;if(aspect>videoAspect)p.x*=aspect/videoAspect;else p.y*=videoAspect/aspect;" +
+        "if(abs(p.x)>1.0||abs(p.y)>1.0){gl_FragColor=vec4(0,0,0,1);return;}" +
+        "gl_FragColor=vec4(beauty(p*.5+.5,beautyAmount.x,beautyAmount.y),1);return;}" +
         "vec2 p=uv*2.0-1.0; vec3 d=normalize(vec3(p.x*aspect*tanHalfFov,p.y*tanHalfFov,1.0));" +
         "float cp=cos(angles.y),sp=sin(angles.y),cy=cos(angles.x),sy=sin(angles.x);" +
         "d=vec3(d.x,cp*d.y+sp*d.z,-sp*d.y+cp*d.z);" +
@@ -39,5 +45,5 @@ public final class VrProjection {
         "else{t=vec2(.5+atan(d.x,d.z)/3.14159265,.5-asin(clamp(d.y,-1.0,1.0))/3.14159265);}" +
         "t=clamp(t,texel,vec2(1.0)-texel);t.x=(t.x+eye)*.5;" +
         // Android SurfaceTexture transform accounts for decoder crop and Y orientation.
-        "t.y=1.0-t.y; gl_FragColor=texture2D(video,(texMatrix*vec4(t,0,1)).xy);}";
+        "t.y=1.0-t.y; gl_FragColor=vec4(beauty(t,beautyAmount.x,beautyAmount.y),1);}";
 }

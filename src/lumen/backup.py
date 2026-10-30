@@ -11,6 +11,10 @@ def restore_database(library, path):
     source = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
     staging=None
     try:
+        from .migrations import SCHEMA_VERSION
+        schema_version=source.execute('PRAGMA user_version').fetchone()[0]
+        if schema_version>SCHEMA_VERSION:
+            raise ValueError('备份来自较新客户端，请更新程序后恢复')
         if source.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
             raise ValueError('备份完整性检查失败')
         expected = {r[0]: r[1] for r in library.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table'")}
@@ -21,7 +25,7 @@ def restore_database(library, path):
         if set(actual)-set(expected) or missing-{'bookmarks','playback_preferences'} or any(actual[name]!=expected[name] and not (name=='works' and migrate_liked) for name in actual):
             raise ValueError('备份格式或版本不兼容')
         migrate_unified=not source.execute("SELECT 1 FROM settings WHERE key='personal_unified_v1'").fetchone()
-        if missing or migrate_liked or migrate_unified:
+        if schema_version<SCHEMA_VERSION or missing or migrate_liked or migrate_unified:
             # Migrate a copy; a user's original backup always remains unchanged.
             staging=tempfile.TemporaryDirectory(prefix='lumen-restore-')
             staged=Path(staging.name)/'library.sqlite'

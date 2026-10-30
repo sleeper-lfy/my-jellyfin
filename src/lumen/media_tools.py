@@ -19,8 +19,12 @@ def preferences(library, file_id, changes=None):
     row = library.db.execute('SELECT value FROM playback_preferences WHERE file_id=?', (file_id,)).fetchone()
     value = json.loads(row[0]) if row else {}
     if changes is not None:
-        if not isinstance(changes, dict) or not changes.keys() <= {'subtitle_delay','subtitle_size','subtitle_position','vr'}:
+        if not isinstance(changes, dict) or not changes.keys() <= {'subtitle_delay','subtitle_size','subtitle_position','vr','beauty'}:
             raise ValueError('无效播放设置')
+        if 'beauty' in changes:
+            from .beauty import validate
+            validate(changes['beauty'])
+            changes={**changes,'beauty':validate({**value.get('beauty',{}),**changes['beauty']})}
         for key in ('subtitle_delay','subtitle_size','subtitle_position'):
             if key not in changes: continue
             number = changes[key]

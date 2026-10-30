@@ -138,3 +138,34 @@ def test_followup_request_uses_same_permission_boundary(manager,library):
     script.write_text('function buildRequest(x){return {url:x.config.base_url};} function parseResponse(x){return {records:[],followups:[{url:"https://not-allowed.example/private"}]};}', encoding='utf-8')
     with pytest.raises(ValueError,match='权限'):manager.run('catalog-json','search',query='x')
     assert library.db.execute('SELECT status FROM tasks ORDER BY updated DESC LIMIT 1').fetchone()[0]=='failed'
+
+
+def test_fetch_follows_only_declared_host_redirects(library):
+    seen=[]
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append((self.path,self.headers.get('User-Agent')))
+            if self.path=='/moved':
+                self.send_response(302);self.send_header('Location','/final');self.end_headers()
+            elif self.path=='/final':
+                self.send_response(200);self.send_header('Content-Type','text/plain');self.end_headers();self.wfile.write(b'ok')
+            elif self.path=='/away':
+                self.send_response(302);self.send_header('Location','http://localhost:%d/final'%self.server.server_port);self.end_headers()
+            elif self.path=='/loop':
+                self.send_response(302);self.send_header('Location','/loop');self.end_headers()
+            else:
+                self.send_response(404);self.end_headers()
+        def log_message(self,*args):pass
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    base=f'http://127.0.0.1:{server.server_port}'
+    plugin={'domains':['127.0.0.1'],'config':{'proxy':''}}
+    manager=Plugins(library)
+    try:
+        assert manager.fetch(plugin,base+'/moved')==(b'ok','text/plain')
+        assert seen[0][0]=='/moved' and seen[1][0]=='/final'
+        assert seen[1][1].startswith('Mozilla/5.0')
+        with pytest.raises(ValueError,match='网络权限'):manager.fetch(plugin,base+'/away')
+        with pytest.raises(ValueError,match='重定向次数过多'):manager.fetch(plugin,base+'/loop')
+    finally:
+        server.shutdown();server.server_close();thread.join()

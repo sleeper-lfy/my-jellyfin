@@ -109,7 +109,8 @@ class HomePage(QScrollArea):
         self.rows=[]
         for title,items,landscape in sections:
             heading,cards=self.sections[title];landscape=landscape or self.window.view_mode.currentData()=='thumbnail'
-            cards.setFixedHeight(262 if landscape else 374)
+            width=self.window.library.setting('thumbnail_width' if landscape else 'poster_width',280 if landscape else 190)
+            cards.setFixedHeight(round((width-16)*(9/16 if landscape else 3/2))+114)
             update_poster_items(cards,[self.window.card_data(work,landscape) for work in items[:24]])
             heading.setVisible(bool(items));cards.setVisible(bool(items))
             if items:self.rows.append(cards)

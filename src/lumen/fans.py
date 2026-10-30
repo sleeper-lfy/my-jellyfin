@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import time
 import uuid
+from contextlib import nullcontext
 
 
 def folder_for(path, root):
@@ -159,12 +160,12 @@ def import_folder(library, root, progress=None, fast=False, cancelled=None, cand
     return result
 
 
-def merge_folders(library, work_ids, target_id, creator=None):
+def merge_folders(library, work_ids, target_id, creator=None, *, commit=True):
     if type(target_id) is not int or not isinstance(work_ids,list) or not work_ids or len(work_ids)>1000 or any(type(work_id) is not int for work_id in work_ids):
         raise ValueError('请选择有效的 Fans 作者条目')
     if creator is not None and (not isinstance(creator,str) or not creator.strip() or len(creator.strip())>200):raise ValueError('作者名称须为 1–200 个字符')
     ids=list(dict.fromkeys([target_id,*work_ids]))
-    with library.db:
+    with library.db if commit else nullcontext():
         if not library.db.in_transaction:library.db.execute('BEGIN IMMEDIATE')
         works=[library.work(work_id) for work_id in ids]
         if any(work['kind']!='fans' for work in works):raise ValueError('只能合并 Fans 作者目录，不能与影视或其他分类混合')

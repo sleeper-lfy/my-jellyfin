@@ -70,6 +70,8 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 ## Windows 安装与启动
 
+需要把当前源码重新打成 EXE 时，见 [一键打包文档](docs/one-click-exe.md)：准备好工具后，双击项目根目录 `Build-PC.cmd`，自动测试、构建和验证安装包。
+
 提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.11 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
 
 需要 Windows 10/11 x64、Python 3.12、FFmpeg 与 FFprobe（两个程序加入 PATH）。可通过已安装的 Winget 获取 Python/FFmpeg，或从各项目官方渠道安装；保持包签名/校验验证。
@@ -144,3 +146,7 @@ Windows 使用 libmpv 原生 GPU 播放，保留 Qt 控制栏，可开启高质�
 Android 0.4.1 改善全屏浮层控制，按视频显示比例自动横竖屏；VR 支持一键回正、双指／按钮缩放，以及蓝牙耳机、遥控器、手柄自定义映射，入口为播放设置 → 蓝牙 / 手柄映射。
 
 0.4.1 同时修复 PC 剧照与发现页资源展示，提供本地 NFO 图片“仅补充缺失／强制覆盖”，网页来源默认用无痕方式打开。大媒体库查询与图片解码放到后台，首页海报行不再拦截普通垂直滚轮。用法见 [NFO 迁移与图片更新](docs/jellyfin-migration.md)。
+
+数据库升级保护和诊断包见 [数据安全说明](docs/data-safety.md)；安装包自动验收和人工发布门槛见 [发布验收](docs/release-acceptance.md)。
+
+PC 支持按插件批量获取演员头像，以及将本地图片拖到演员卡片替换头像，详见 [演员头像](docs/actor-portraits.md)。

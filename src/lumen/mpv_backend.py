@@ -57,6 +57,7 @@ class MpvMedia(QObject):
         self._suspended=None
         self._seek_on_load=None
         self.enhanced=False
+        self.beauty_shader=None
         self.subtitle_style={}
         self.set_subtitle_style()
         self._state = QMediaPlayer.PlaybackState.StoppedState
@@ -158,7 +159,19 @@ class MpvMedia(QObject):
         self.engine.scale = 'spline36' if enabled else 'bilinear'
         self.engine.dscale = 'mitchell' if enabled else 'bilinear'
         self.engine.cscale = 'spline36' if enabled else 'bilinear'
-        self.engine.glsl_shaders = [str(Path(__file__).with_name('shaders') / 'gentle-sharpen.glsl')] if enabled else []
+        self.update_shaders()
+
+    def update_shaders(self):
+        if self.engine is None:return
+        shaders=[self.beauty_shader] if self.beauty_shader else []
+        if self.enhanced:shaders.append(str(Path(__file__).with_name('shaders')/'gentle-sharpen.glsl'))
+        self.engine.glsl_shaders=shaders
+
+    def set_beauty(self,value,directory):
+        from .beauty import validate,shader_file
+        value=validate(value)
+        self.beauty_shader=shader_file(directory,value) if value['enabled'] else None
+        self.update_shaders()
 
     def set_subtitle_style(self,delay=0,size=22,position=90):
         self.subtitle_style={'delay':delay,'size':size,'position':position}

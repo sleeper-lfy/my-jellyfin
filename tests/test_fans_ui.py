@@ -37,7 +37,8 @@ def test_fans_navigation_import_monitor_and_detail_never_offer_film_scraping(qap
     finally:window.close();settle(qapp,window)
 
 
-def test_fans_merge_dialog_merges_logical_author_and_preserves_file_ids(qapp,tmp_path):
+def test_fans_merge_dialog_merges_logical_author_and_preserves_file_ids(qapp,tmp_path,monkeypatch):
+    monkeypatch.setattr('lumen.merge_ui.MergePreview.exec',lambda self:1)
     window=MainWindow(tmp_path/'fans-merge-ui')
     target=add_work(window.library,'Author one',kind='fans',metadata={'creator':'Author one','fans_roots':['/media/one']})
     source=add_work(window.library,'Author one alternative',kind='fans',metadata={'creator':'Author one alternative','fans_roots':['/media/two']})

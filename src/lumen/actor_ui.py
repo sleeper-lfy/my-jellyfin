@@ -20,6 +20,11 @@ def show_actor_scraper(window,name=''):
     status=QLabel('搜索后点击正确的头像或姓名，更新该演员关联作品。已锁定的演员资料会保留。');status.setWordWrap(True);layout.addWidget(status)
     search=QPushButton('搜索演员头像');search.setObjectName('searchActorPhoto');layout.addWidget(search)
     install=QPushButton('安装 / 更新内置头像来源…');layout.addWidget(install)
+    batch=QPushButton('批量自动获取演员头像…');layout.addWidget(batch)
+    def open_batch():
+        from .actor_batch_ui import show_actor_batch
+        show_actor_batch(window)
+    batch.clicked.connect(open_batch)
     def reload_sources():
         selected=source.currentData();source.clear()
         for plugin in Plugins(window.library).installed():
@@ -28,10 +33,15 @@ def show_actor_scraper(window,name=''):
         search.setEnabled(source.count()>0)
         if not source.count():status.setText('请先安装并启用头像来源；也可在设置中安装支持 actors 的第三方插件。')
     def setup_source():
-        options=['TVmaze · 电视剧演员（api.tvmaze.com / static.tvmaze.com）','Wikimedia · 人物照片（www.wikidata.org / commons.wikimedia.org / upload.wikimedia.org）']
+        sources=[('TVmaze · 电视剧演员（api.tvmaze.com / static.tvmaze.com）','tvmaze'),
+                 ('Wikimedia · 人物照片（www.wikidata.org / commons.wikimedia.org / upload.wikimedia.org）','wikimedia-actors'),
+                 ('JavRate · AV 女优头像（r.jina.ai / www.javrate.com / picture.avking.xyz）','javrate-actors'),
+                 ('JavDB · AV 女优头像（javdb.com / c0.jdbstatic.com）','javdb-actors'),
+                 ('JavBus · AV 女优头像（www.javbus.com / javbus.com / r.jina.ai）','javbus-actors')]
+        options=[label for label,_ in sources]
         choice,ok=QInputDialog.getItem(dialog,'安装 / 更新并启用头像来源','来源及其网络主机权限',options,0,False)
         if not ok:return
-        plugin_id='tvmaze' if choice==options[0] else 'wikimedia-actors'
+        plugin_id=next(plugin_id for label,plugin_id in sources if label==choice)
         def update(library,progress):
             manager=Plugins(library);manager.update_builtin_actor_plugin(plugin_id);manager.configure(plugin_id,{'enabled':True})
             return {'updated':1}

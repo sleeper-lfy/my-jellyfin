@@ -37,11 +37,15 @@ public final class PlayerActivity extends Activity {
     private final AtomicBoolean pendingTick=new AtomicBoolean(false);
     private Api api;
     private MediaPlayer player;
+    private boolean playerGlRendering=false;
     private LibVLC vlc;
     private PlaybackBridge bridge;
     private VLCVideoLayout video;
     private VrVideoView vrVideo;
     private boolean vrEnabled=false, vrFish=false, vrHeadset=false, vrSwap=false, vrTracking=true;
+    private BeautySettings beauty=new BeautySettings(null);
+    private boolean beautyUnavailable=false;
+    private boolean usesGlVideo(){return vrEnabled||beauty.enabled&&!beautyUnavailable;}
     private FrameLayout root,overlay;
     private LinearLayout topBar,bottomBar,vrBar;
     private PlayerController controller;
@@ -55,7 +59,7 @@ public final class PlayerActivity extends Activity {
     private int orientationMode=0,videoOrientation=PlaybackPolicy.UNKNOWN;
     private int lastRequestedOrientation=Integer.MIN_VALUE;
     private final Runnable hideControls=()->showControls(false);
-    private final Runnable refreshSurfaces=()->{if(player!=null&&!vrEnabled)player.updateVideoSurfaces();};
+    private final Runnable refreshSurfaces=()->{if(player!=null&&!usesGlVideo())player.updateVideoSurfaces();};
     private SeekBar seek;
     private TextView time;
     private Button pause,previousVideo,nextVideo;
@@ -137,9 +141,9 @@ public final class PlayerActivity extends Activity {
         View touch=new View(this);root.addView(touch,new FrameLayout.LayoutParams(-1,-1));touch.setOnClickListener(v->showControls(!controlsVisible));
         touch.setOnTouchListener((view,event)->playbackTouch(view,event));
         vrVideo=new VrVideoView(this,new VrVideoView.Listener(){
-            public void ready(){if(started&&vrEnabled)startPlayback();}
-            public void lost(){if(vrEnabled&&player!=null)stopPlayback(false);}
-            public void failed(String reason){status.setText("VR 渲染失败："+reason);setVrEnabled(false);showControls(true);}
+            public void ready(){if(started&&usesGlVideo())startPlayback();}
+            public void lost(){if(usesGlVideo()&&player!=null)stopPlayback(false);}
+            public void failed(String reason){stopPlayback(false);beautyUnavailable=true;setVrEnabled(false);updateRenderMode();startPlayback();status.setText("GPU 滤镜不可用，已恢复普通播放："+reason);showControls(true);}
             public void tap(){showControls(!controlsVisible);}
             public void zoom(float fov){saveFov(fov);}
             public void viewChanged(){saveVrPreferences();}
@@ -313,11 +317,12 @@ public final class PlayerActivity extends Activity {
     }
 
     private void playbackSettings(){
-        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频","播放速度","自动播放下一集"},(d,index)->{
+        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频","播放速度","自动播放下一集","实时美颜"},(d,index)->{
             switch(index){case 0:tracks(false);break;case 1:tracks(true);break;case 2:decoder();break;case 3:orientationSettings();break;
                 case 4:vrSettings();break;case 5:controller.settings();break;case 6:stepVideo(1);break;case 7:nextWork(false);break;
                 case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepVideo(-1);break;case 13:new AlertDialog.Builder(this).setTitle("播放速度").setItems(new String[]{"0.5×","0.75×","1×","1.25×","1.5×","1.75×","2×"},(a,n)->{float rate=new float[]{.5f,.75f,1f,1.25f,1.5f,1.75f,2f}[n];getSharedPreferences("player",0).edit().putFloat("speed",rate).apply();if(player!=null)player.setRate(rate);}).show();break;
-                case 14:new AlertDialog.Builder(this).setTitle("自动播放下一集").setSingleChoiceItems(new String[]{"开启","关闭"},getSharedPreferences("player",0).getBoolean("auto_next",true)?0:1,(a,n)->{getSharedPreferences("player",0).edit().putBoolean("auto_next",n==0).apply();a.dismiss();}).show();break;}
+                case 14:new AlertDialog.Builder(this).setTitle("自动播放下一集").setSingleChoiceItems(new String[]{"开启","关闭"},getSharedPreferences("player",0).getBoolean("auto_next",true)?0:1,(a,n)->{getSharedPreferences("player",0).edit().putBoolean("auto_next",n==0).apply();a.dismiss();}).show();break;
+                case 15:beautySettings();break;}
         }).setNegativeButton("关闭",null).show();
     }
     private void orientationSettings(){
@@ -329,6 +334,10 @@ public final class PlayerActivity extends Activity {
         if(player==null)return;
         org.videolan.libvlc.interfaces.IMedia.VideoTrack track=player.getCurrentVideoTrack();
         if(track==null)return;
+        double aspect=track.height>0?(double)track.width/track.height:16.0/9;
+        if(track.sarDen>0&&track.sarNum>0)aspect*=((double)track.sarNum/track.sarDen);
+        if(track.orientation>=org.videolan.libvlc.interfaces.IMedia.VideoTrack.Orientation.LeftTop)aspect=1/aspect;
+        vrVideo.setDisplayAspect((float)aspect);
         videoOrientation=PlaybackPolicy.orientation(track.width,track.height,track.sarNum,track.sarDen,
             track.orientation>=org.videolan.libvlc.interfaces.IMedia.VideoTrack.Orientation.LeftTop);
         applyOrientation();
@@ -397,7 +406,7 @@ public final class PlayerActivity extends Activity {
         });
     }
     private void startPlayback() {
-        if(player!=null||file==null||!started||(vrEnabled&&vrVideo.videoTexture()==null))return;
+        if(player!=null||file==null||!started||(usesGlVideo()&&vrVideo.videoTexture()==null))return;
         ending=false;sequence=0;seekGuard=2;session=null;
         ready=false;buffering=true;lastPosition=resumeMs;
         try {
@@ -407,11 +416,12 @@ public final class PlayerActivity extends Activity {
                 (root.getHeight()>0?root.getHeight():getResources().getDisplayMetrics().heightPixels)*(100-filePreferences.optInt("subtitle_position",90))/100));
             vlc=new LibVLC(this,options);player=new MediaPlayer(vlc);
             player.setAudioOutputDevice("stereo");
-            if(vrEnabled){
+            if(usesGlVideo()){
+                playerGlRendering=true;
                 player.getVLCVout().setVideoSurface(vrVideo.videoTexture());
                 player.getVLCVout().setWindowSize(1920,1080);
                 player.getVLCVout().attachViews();
-            }else {player.attachViews(video,null,true,false);player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);}
+            }else {playerGlRendering=false;player.attachViews(video,null,true,false);player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);}
             Media media=new Media(vlc,Uri.parse(bridge.url(file.optString("stream"))));
             media.setHWDecoderEnabled(!software,false);
             media.addOption(":start-time="+(resumeMs/1000.0));
@@ -426,7 +436,7 @@ public final class PlayerActivity extends Activity {
                         ready=true;
                         for(int i=0;i<subtitles.length();i++)current.addSlave(Media.Slave.Type.Subtitle,Uri.parse(bridge.url(subtitles.optJSONObject(i).optString("url"))),i==0);
                     }
-                    if(vrEnabled){
+                    if(usesGlVideo()){
                         org.videolan.libvlc.interfaces.IMedia.VideoTrack track=current.getCurrentVideoTrack();
                         if(track!=null){int[] size=vrVideo.setVideoSize(track.width,track.height);current.getVLCVout().setWindowSize(size[0],size[1]);}
                     }
@@ -482,7 +492,7 @@ public final class PlayerActivity extends Activity {
         if(player!=null) {
             resumeMs=completed?0:positionMs();
             tick(true,completed);player.setEventListener(null);player.stop();
-            if(vrEnabled)player.getVLCVout().detachViews();else player.detachViews();
+            if(playerGlRendering)player.getVLCVout().detachViews();else player.detachViews();
             player.release();player=null;
         }
         if(bridge!=null){bridge.close();bridge=null;}
@@ -510,13 +520,11 @@ public final class PlayerActivity extends Activity {
     private void setVrEnabled(boolean enabled){
         if(vrEnabled==enabled)return;
         generation++;setNavigationPending(false);stopPlayback(false);
-        if(vrEnabled)vrVideo.onPause();
         vrEnabled=enabled;
-        video.setVisibility(enabled?View.GONE:View.VISIBLE);vrVideo.setVisibility(enabled?View.VISIBLE:View.GONE);
+        updateRenderMode();
         vrBar.setVisibility(enabled?View.VISIBLE:View.GONE);
         vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);
         vrVideo.recenter();
-        if(enabled&&started)vrVideo.onResume();
         setVrImmersive(enabled&&vrHeadset);
         startPlayback();
     }
@@ -561,18 +569,54 @@ public final class PlayerActivity extends Activity {
         }).setNegativeButton("取消",null).show();
     }
     private long durationFromFile(){return file==null?0:(long)(file.optDouble("duration")>0?file.optDouble("duration")*1000:864_000_000);}
+    private void updateRenderMode(){
+        if(vrVideo==null)return;
+        boolean before=vrVideo.getVisibility()==View.VISIBLE,after=usesGlVideo();
+        if(before&&!after&&started)vrVideo.onPause();
+        vrVideo.setFlatVideo(!vrEnabled);
+        video.setVisibility(after?View.GONE:View.VISIBLE);vrVideo.setVisibility(after?View.VISIBLE:View.GONE);
+        if(!before&&after&&started)vrVideo.onResume();
+    }
+    private void beautySettings(){
+        if(file==null){Toast.makeText(this,"请先打开视频",Toast.LENGTH_SHORT).show();return;}
+        LinearLayout fields=new LinearLayout(this);fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),dp(8),dp(20),dp(8));
+        CheckBox enabled=new CheckBox(this);enabled.setText("开启实时美颜");enabled.setChecked(beauty.enabled);fields.addView(enabled);
+        TextView smoothLabel=label("",14),brightLabel=label("",14);
+        SeekBar smoothing=new SeekBar(this),brighten=new SeekBar(this);smoothing.setMax(100);brighten.setMax(100);
+        smoothing.setContentDescription("磨皮强度");brighten.setContentDescription("肤色提亮");
+        smoothing.setProgress(Math.round(beauty.smoothing*100));brighten.setProgress(Math.round(beauty.brighten*100));
+        Runnable labels=()->{smoothLabel.setText("磨皮强度 · "+smoothing.getProgress());brightLabel.setText("肤色提亮 · "+brighten.getProgress());};labels.run();
+        SeekBar.OnSeekBarChangeListener change=new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar b){}public void onProgressChanged(SeekBar b,int n,boolean user){labels.run();}public void onStopTrackingTouch(SeekBar b){}};
+        smoothing.setOnSeekBarChangeListener(change);brighten.setOnSeekBarChangeListener(change);
+        fields.addView(smoothLabel);fields.addView(smoothing);fields.addView(brightLabel);fields.addView(brighten);
+        fields.addView(label("按当前视频记忆，不修改原视频。基于肤色估计，不含瘦脸、大眼；卡顿或色彩异常时关闭。普通视频首次开关美颜会切换渲染通道并保留播放位置。",13));
+        ScrollView scroll=new ScrollView(this);scroll.addView(fields);
+        new AlertDialog.Builder(this).setTitle("实时美颜").setView(scroll).setPositiveButton("应用",(dialog,which)->{
+            try{
+                boolean before=usesGlVideo(),paused=player!=null&&!player.isPlaying();
+                boolean after=vrEnabled||enabled.isChecked()&&!beautyUnavailable;
+                if(before!=after)stopPlayback(false);
+                JSONObject value=new JSONObject().put("enabled",enabled.isChecked()).put("smoothing",smoothing.getProgress()).put("brighten",brighten.getProgress());
+                filePreferences.put("beauty",value);beauty=new BeautySettings(value);vrVideo.setBeauty(beauty);changedPreferences();updateRenderMode();
+                if(before!=after){pauseAfterStyleChange=paused;startPlayback();}
+                if(beautyUnavailable&&beauty.enabled)Toast.makeText(this,"此设备 GPU 渲染不可用，美颜未启用",Toast.LENGTH_LONG).show();
+            }catch(Exception error){featureError(error);}
+        }).setNegativeButton("取消",null).show();
+    }
     private String preferenceKey(long id){return api.connection.base+"#"+id;}
     private JSONObject readPreferences(long id){
         JSONObject local=new JSONObject();try{local=new JSONObject(getSharedPreferences("media-preferences",0).getString(preferenceKey(id),"{}"));}catch(Exception ignored){}
         try{JSONObject remote=api.get("/api/files/"+id+"/preferences");if(remote.length()>0){
             JSONObject oldVr=local.optJSONObject("vr"),remoteVr=remote.optJSONObject("vr");
             if(oldVr!=null){if(remoteVr==null){remoteVr=new JSONObject();remote.put("vr",remoteVr);}for(String key:new String[]{"tracking_sensitivity","tracking_smoothing","tracking_invert_pitch"})if(!remoteVr.has(key)&&oldVr.has(key))remoteVr.put(key,oldVr.get(key));}
+            if(!remote.has("beauty")&&local.has("beauty"))remote.put("beauty",local.get("beauty"));
             local=remote;
         }}catch(Exception ignored){/* Per-file local settings also work with older servers. */}
         return local;
     }
     private double bounded(JSONObject value,String key,double fallback,double low,double high){double number=value.optDouble(key,fallback);return Double.isFinite(number)?Math.max(low,Math.min(high,number)):fallback;}
     private void applyFilePreferences(){
+        beauty=new BeautySettings(filePreferences.optJSONObject("beauty"));vrVideo.setBeauty(beauty);updateRenderMode();
         JSONObject vr=filePreferences.optJSONObject("vr");if(vr==null)vr=new JSONObject();android.content.SharedPreferences defaults=getSharedPreferences("playback",0);
         vrFish=vr.optBoolean("fish",defaults.getBoolean("vr_fish",false));vrHeadset=vr.optBoolean("headset",defaults.getBoolean("vr_headset",false));vrSwap=vr.optBoolean("swap",defaults.getBoolean("vr_swap",false));
         vrTracking=vr.optBoolean("tracking",defaults.getBoolean("vr_tracking",true));vrSwipeSeek=vr.optBoolean("swipe_seek",defaults.getBoolean("vr_swipe_seek",true));
@@ -718,9 +762,9 @@ public final class PlayerActivity extends Activity {
         }
         stepQueue(1,automatic);
     }
-    @Override protected void onStart(){super.onStart();started=true;if(controller!=null)controller.active(true);if(vrEnabled&&vrVideo!=null)vrVideo.onResume();if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
+    @Override protected void onStart(){super.onStart();started=true;if(controller!=null)controller.active(true);if(usesGlVideo()&&vrVideo!=null)vrVideo.onResume();if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
     @Override protected void onPause(){if(controller!=null)controller.active(false);if(player!=null){player.pause();tick(false,false);}super.onPause();}
     @Override protected void onResume(){super.onResume();if(controller!=null)controller.active(true);if(root!=null){setPlayerImmersive(immersive);showControls(true);}}
-    @Override protected void onStop(){flushPreferences();started=false;generation++;setNavigationPending(false);stopPlayback(false);if(vrEnabled&&vrVideo!=null)vrVideo.onPause();super.onStop();}
+    @Override protected void onStop(){flushPreferences();started=false;generation++;setNavigationPending(false);stopPlayback(false);if(usesGlVideo()&&vrVideo!=null)vrVideo.onPause();super.onStop();}
     @Override protected void onDestroy(){if(controller!=null)controller.release();handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
 }

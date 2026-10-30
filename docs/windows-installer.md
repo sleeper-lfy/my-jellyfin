@@ -12,7 +12,11 @@
 
 开发版目前未配置商业代码签名。Windows 原生构建/安装测试成功之前，不能把构建脚本或 Linux 产物当成已交付的安装包。
 
+正式发布需要绑定当前 EXE 的自动验收报告及人工验收记录，详见 [Windows 发布验收](release-acceptance.md)。未签字项目保持未验证，CI 成功不替代人工验收。
+
 ## Windows 本地构建
+
+日常使用请看 [一键生成 EXE 文档](one-click-exe.md)，根目录双击 `Build-PC.cmd` 即可串起下列三个步骤；可先用 `scripts/package-pc.ps1 -CheckOnly` 检查工具路径。
 
 安装 Python 3.12、FFmpeg 和 Inno Setup 6，随后在仓库目录运行：
 
@@ -23,5 +27,7 @@
 ```
 
 产物：`dist/installer/Lumen-Setup-x64.exe` 和 `.exe.sha256`。验证脚本会在独立测试目录静默安装、验证安装后的 UI 和插件 worker，再静默卸载；不会使用实际个人媒体库。
+
+使用已有 Python 环境（例如 Conda）时，可向 `build-windows.ps1` 和 `verify-installer-windows.ps1` 传入 `-PythonPath` 指定解释器；安装器编译器不在默认位置时，向 `build-installer-windows.ps1` 传入 `-CompilerPath` 指定 ISCC.exe。安装验证使用独立的卸载注册标识，不创建快捷方式，也不关闭已运行的客户端，避免影响当前机器已安装的版本。
 
 普通 push / pull request 仅运行源码测试，不打包、不更新 `target`、不发布 Release。明确请求打包后，手动运行 GitHub Windows 工作流并勾选 `package`，才执行上述过程并上传安装包 Artifact；同时勾选 `publish` 才会发布 Releases 并提交 `target`。失败时可在 Actions 下载 `windows-build-diagnostics` 检查安装日志和测试结果。工作流需要 `contents: write` 才能创建 Release 和提交安装包；仓库禁止工作流写入时，构建产物仍可从成功上传的 Actions Artifact 下载。

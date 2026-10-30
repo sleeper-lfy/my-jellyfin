@@ -43,6 +43,13 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     private volatile int maxTextureSize=4096;
     private volatile int videoWidth=1920, videoHeight=1080;
     private volatile boolean fish=false, headset=false, swap=false, tracking=true;
+    private volatile boolean flatVideo=false;
+    private volatile float displayAspect=16f/9f;
+    private volatile BeautySettings beauty=new BeautySettings(null);
+    private final String beautyCore;
+    public void setBeauty(BeautySettings value){beauty=value;requestRender();}
+    public void setFlatVideo(boolean value){flatVideo=value;updateSensor();requestRender();}
+    public void setDisplayAspect(float value){if(Float.isFinite(value)&&value>0)displayAspect=value;requestRender();}
     private volatile float yaw=0, pitch=0, sensorYaw=0, sensorPitch=0, fov=90;
     private boolean resumed=false;
     private final VrMotionFilter motion=new VrMotionFilter();
@@ -51,6 +58,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
 
     public VrVideoView(Context context, Listener listener) {
         super(context); this.listener=listener;
+        beautyCore=BeautySettings.shader(context);
         touchSlop=ViewConfiguration.get(context).getScaledTouchSlop();
         scaleGesture=new ScaleGestureDetector(context,new ScaleGestureDetector.SimpleOnScaleGestureListener(){
             @Override public boolean onScale(ScaleGestureDetector detector){
@@ -94,7 +102,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
     @Override public void onPause() { resumed=false;sensors.unregisterListener(this);super.onPause(); }
     private void updateSensor() {
         sensors.unregisterListener(this);
-        if(resumed && tracking && rotation!=null)sensors.registerListener(this,rotation,SensorManager.SENSOR_DELAY_GAME);
+        if(resumed && tracking && !flatVideo && rotation!=null)sensors.registerListener(this,rotation,SensorManager.SENSOR_DELAY_GAME);
         if(!tracking)sensorYaw=sensorPitch=0;
     }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
@@ -118,7 +126,7 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_CLAMP_TO_EDGE);
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_CLAMP_TO_EDGE);
             int vs=compile(GLES20.GL_VERTEX_SHADER,"attribute vec2 position; varying vec2 uv; void main(){uv=position*.5+.5;gl_Position=vec4(position,0,1);}");
-            int fs=compile(GLES20.GL_FRAGMENT_SHADER,VrProjection.FRAGMENT);
+            int fs=compile(GLES20.GL_FRAGMENT_SHADER,VrProjection.FRAGMENT.replace("BEAUTY_CORE",beautyCore));
             program=GLES20.glCreateProgram();GLES20.glAttachShader(program,vs);GLES20.glAttachShader(program,fs);GLES20.glLinkProgram(program);
             GLES20.glDeleteShader(vs);GLES20.glDeleteShader(fs);
             int[] ok=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,ok,0);
@@ -139,22 +147,29 @@ public final class VrVideoView extends GLSurfaceView implements GLSurfaceView.Re
         GLES20.glUniform2f(uniform("angles"),(float)Math.toRadians(yaw+sensorYaw),(float)Math.toRadians(VrProjection.clampPitch(pitch+sensorPitch)));
         GLES20.glUniform1f(uniform("tanHalfFov"),(float)Math.tan(Math.toRadians(fov/2)));
         GLES20.glUniform1i(uniform("fish"),fish?1:0);
+        GLES20.glUniform1i(uniform("flatVideo"),flatVideo?1:0);
+        GLES20.glUniform1f(uniform("videoAspect"),displayAspect);
+        BeautySettings filter=beauty;
+        GLES20.glUniform2f(uniform("beautyAmount"),filter.enabled?filter.smoothing:0,filter.enabled?filter.brighten:0);
+        GLES20.glUniform2f(uniform("pixelStep"),1f/Math.max(1,videoWidth),1f/Math.max(1,videoHeight));
         GLES20.glUniform2f(uniform("texel"),1f/Math.max(1,videoWidth/2),.5f/Math.max(1,videoHeight));
         int attr=GLES20.glGetAttribLocation(program,"position");GLES20.glEnableVertexAttribArray(attr);vertices.position(0);
         GLES20.glVertexAttribPointer(attr,2,GLES20.GL_FLOAT,false,0,vertices);
-        int eyes=headset?2:1;
+        int eyes=!flatVideo&&headset?2:1;
         for(int eye=0;eye<eyes;eye++) {
             int left=eye*width/eyes,right=(eye+1)*width/eyes;
             GLES20.glViewport(left,0,right-left,height);
             GLES20.glUniform1f(uniform("aspect"),(float)(right-left)/height);
             GLES20.glUniform1f(uniform("eye"),swap?1-eye:eye);
+            float start=flatVideo?0f:(swap?1-eye:eye)*.5f,end=flatVideo?1f:start+.5f;
+            GLES20.glUniform4f(uniform("sampleBounds"),start+.5f/videoWidth,.5f/videoHeight,end-.5f/videoWidth,1f-.5f/videoHeight);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
         }
         GLES20.glDisableVertexAttribArray(attr);
     }
     @Override public boolean onTouchEvent(MotionEvent event) {
         scaleGesture.onTouchEvent(event);
-        if(swipeSeeking)return listener.gesture(this,event);
+        if(flatVideo||swipeSeeking)return listener.gesture(this,event);
         if(event.getActionMasked()==MotionEvent.ACTION_DOWN){
             downX=touchX=event.getX();downY=touchY=event.getY();moved=false;return true;
         }

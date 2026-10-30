@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tomllib
 
 version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
@@ -13,6 +14,14 @@ revision = os.environ['SOURCE_COMMIT']
 assert subprocess.check_output(['git', 'rev-parse', tag + '^{}'], text=True).strip() == revision
 windows = Path('.local/release-windows/Lumen-Setup-x64.exe')
 android = Path('target/Lumen-android-debug.apk')
+# Human checks are bound to the exact installer, independently of CI success.
+sys.path.insert(0, str(Path('src').resolve()))
+from lumen.release_acceptance import validate, source_state
+acceptance_path = Path('docs/validation/windows-release-acceptance.json')
+acceptance = json.loads(acceptance_path.read_text(encoding='utf-8-sig'))
+validate(acceptance, windows, require_release=True)
+assert acceptance['version'] == version, 'Acceptance version mismatch'
+assert acceptance['source']['content_sha256'] == source_state(Path.cwd())['content_sha256'], 'Acceptance source mismatch'
 for archive in (windows, android):
     checksum = Path(str(archive) + '.sha256')
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == checksum.read_text(encoding='utf-8-sig').split()[0].lower(), archive

@@ -139,9 +139,35 @@ def poster_regions(rect):
 class PosterList(QListWidget):
     favoriteRequested=Signal(int)
     watchlistRequested=Signal(int)
+    actorPortraitDropped=Signal(object,str)
     def __init__(self, play, parent=None):
         super().__init__(parent)
         self.play = play
+
+    def portrait_drop_path(self,event):
+        urls=event.mimeData().urls()
+        if not self.property('actorPortraitDrop') or len(urls)!=1 or not urls[0].isLocalFile():return None
+        path=urls[0].toLocalFile()
+        return path if Path(path).suffix.lower() in {'.jpg','.jpeg','.png','.webp','.bmp','.gif','.tif','.tiff','.avif'} else None
+
+    def dragEnterEvent(self,event):
+        if self.portrait_drop_path(event):event.setDropAction(Qt.DropAction.CopyAction);event.accept()
+        else:super().dragEnterEvent(event)
+
+    def dragMoveEvent(self,event):
+        item=self.itemAt(event.position().toPoint())
+        data=item.data(Qt.ItemDataRole.UserRole) if item else {}
+        if self.portrait_drop_path(event) and data and 'work_ids' in data:
+            self.setCurrentItem(item);event.setDropAction(Qt.DropAction.CopyAction);event.accept()
+        else:event.ignore()
+
+    def dropEvent(self,event):
+        path=self.portrait_drop_path(event);item=self.itemAt(event.position().toPoint())
+        data=item.data(Qt.ItemDataRole.UserRole) if item else {}
+        if path and data and 'work_ids' in data:
+            event.setDropAction(Qt.DropAction.CopyAction);event.accept()
+            self.actorPortraitDropped.emit(data,path)
+        else:event.ignore()
 
     def wheelEvent(self,event):
         if not self.isWrapping():
@@ -260,7 +286,8 @@ class PosterDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
         data = index.data(Qt.ItemDataRole.UserRole) or {}
-        return QSize(280, 238) if data.get('_landscape') else QSize(190, 351)
+        width=data.get('_card_width',280 if data.get('_landscape') else 190)
+        return QSize(width,round((width-16)*(9/16 if data.get('_landscape') else 3/2))+90)
 
 
 class TagCompleter(QCompleter):
@@ -477,12 +504,13 @@ class MetadataLinks(QWidget):
 
 class CoverImage(QLabel):
     activated=Signal()
+    stepped=Signal(int)
 
     def __init__(self):
         super().__init__()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip('点击放大封面 · 滚轮缩放 / 拖动查看')
+        self.setToolTip('点击放大封面 · 左右方向键切图 · 滚轮缩放 / 拖动查看')
         self.setAccessibleName('放大封面')
 
     def mouseReleaseEvent(self,event):
@@ -491,6 +519,8 @@ class CoverImage(QLabel):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self,event):
+        if event.key() in (Qt.Key.Key_Left,Qt.Key.Key_Right):
+            self.stepped.emit(-1 if event.key()==Qt.Key.Key_Left else 1);event.accept();return
         if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter,Qt.Key.Key_Space):
             self.activated.emit();event.accept();return
         super().keyPressEvent(event)
@@ -515,15 +545,19 @@ class Details(QWidget):
         self.setMinimumHeight(760)
         top = QHBoxLayout();top.setSpacing(28)
         poster = self.poster = CoverImage()
-        poster.setFixedSize(210, 315)
+        poster_width=self.library.setting('poster_width',190)+20
+        poster.setFixedSize(poster_width, round(poster_width*1.5))
         poster.setAlignment(Qt.AlignmentFlag.AlignCenter)
         poster.setScaledContents(False)
         poster.setStyleSheet('background: #181818; border: none;')
-        self.poster_path=w['thumbnail']
+        self.poster_path=self.library.setting(f'artwork_{work_id}',{}).get('poster') or w['thumbnail']
         poster.activated.connect(self.view_cover)
+        poster.stepped.connect(self.step_cover)
         top.addWidget(poster,0,Qt.AlignmentFlag.AlignTop)
         info = QVBoxLayout();info.setSpacing(12)
-        heading=label(w['title'],'detailTitle');heading.setWordWrap(True);info.addWidget(heading)
+        heading=label(w['title'],'detailTitle');heading.setTextFormat(Qt.TextFormat.PlainText);heading.setWordWrap(True)
+        heading.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
+        heading.setFocusPolicy(Qt.FocusPolicy.StrongFocus);info.addWidget(heading)
         facts=QHBoxLayout();facts.setSpacing(16)
         if w['kind']!='fans':facts.addWidget(label(str(w['year'] or '年份待补充'),'subtitle'))
         facts.addWidget(label('Fans · 作者文件夹' if w['kind']=='fans' else KINDS[w['kind']],'subtitle'))
@@ -551,6 +585,9 @@ class Details(QWidget):
             self.management_menu.addAction('从 NFO 补充图片…',lambda:window.import_nfo_artwork(work_id))
             self.management_menu.addAction('刮削演员头像…',self.scrape_actor_photo)
         self.management_menu.addAction('重新截取封面…',self.recapture)
+        self.management_menu.addAction('选择海报 / 缩略图…',self.choose_artwork)
+        self.management_menu.addAction('恢复默认海报 / 缩略图',self.reset_artwork)
+        self.management_menu.addAction('图片大小…',window.choose_artwork_sizes)
         self.management_menu.addAction('整部标记已看',lambda:window.catalog_watch(work_id,'completed'))
         self.management_menu.addAction('整部重置进度',lambda:window.catalog_watch(work_id,'unwatched'))
         self.management_menu.addAction('从头播放',lambda:window.catalog_restart(work_id))
@@ -558,6 +595,9 @@ class Details(QWidget):
         self.management_menu.addAction('仅移出媒体库…',lambda:window.remove_catalog_work(work_id))
         if w['kind'] in {'movie','series','vr'}:self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
         if w['kind']=='fans':self.management_menu.addAction('合并同作者文件夹…',self.merge_fans_folders)
+        if w['kind'] in {'movie','series','vr','fans'}:
+            from .merge_ui import show_merge_history
+            self.management_menu.addAction('合并记录 / 撤销…',lambda:show_merge_history(self))
         self.dislike_action=self.management_menu.addAction(icon('ban'),'不感兴趣');self.dislike_action.setCheckable(True);self.dislike_action.setChecked(bool(w['disliked']));self.dislike_action.triggered.connect(lambda value:self.personal(disliked=value))
         more.setMenu(self.management_menu);actions.addWidget(more);actions.addStretch();info.addLayout(actions)
         def links(values,field):
@@ -636,17 +676,20 @@ class Details(QWidget):
         self.still_gallery.setViewMode(QListWidget.ViewMode.IconMode)
         self.still_gallery.setFlow(QListWidget.Flow.LeftToRight)
         self.still_gallery.setWrapping(False)
-        self.still_gallery.setIconSize(QSize(288,162))
-        self.still_gallery.setGridSize(QSize(308,192))
+        still_width=self.library.setting('thumbnail_width',280)+8
+        still_height=round(still_width*9/16)
+        self.still_gallery.setIconSize(QSize(still_width,still_height))
+        self.still_gallery.setGridSize(QSize(still_width+20,still_height+30))
         self.still_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.still_gallery.setFixedHeight(218)
+        self.still_gallery.setFixedHeight(still_height+56)
         self.still_gallery.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.still_gallery.horizontalScrollBar().valueChanged.connect(self.render_artwork)
         outer.insertWidget(4,self.still_gallery)
         self.still_gallery.itemClicked.connect(self.show_still)
+        self.still_gallery.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.still_gallery.customContextMenuRequested.connect(self.still_artwork_menu)
         self.set_stills(still_paths(w))
-        self.still_gallery.itemDoubleClicked.connect(self.fullscreen_stills)
-        outer.addWidget(button('全屏浏览剧照',lambda:self.fullscreen_stills(self.still_gallery.currentItem() or self.still_gallery.item(0))))
+        outer.addWidget(button('选择图片设为海报 / 缩略图…',self.choose_artwork))
         self.gallery_status=label('','subtitle')
         self.gallery_status.setWordWrap(True)
         outer.insertWidget(5,self.gallery_status)
@@ -689,6 +732,9 @@ class Details(QWidget):
         outer.addLayout(bottom)
         from .images import image_cache
         image_cache().changed.connect(self.render_artwork)
+        for text in self.findChildren(QLabel):
+            if text is not self.poster:
+                text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
         self.render_artwork()
 
     def refresh_bookmarks(self):
@@ -730,13 +776,6 @@ class Details(QWidget):
             image=cache.request(item.data(Qt.ItemDataRole.UserRole),self.still_gallery.iconSize()*self.devicePixelRatioF())
             if not image.isNull() and item.data(Qt.ItemDataRole.UserRole+2)!=image.cacheKey():
                 item.setIcon(QIcon(image));item.setData(Qt.ItemDataRole.UserRole+2,image.cacheKey())
-        if getattr(self,'expanded_still_path',None):
-            width=min(1400,max(320,self.width()-68));height=max(200,min(720,round(width*9/16)))
-            if self.expanded_still.height()!=height:self.expanded_still.setFixedHeight(height)
-            image=cache.request(self.expanded_still_path,QSize(width,height))
-            preview_key=(image.cacheKey(),width,height)
-            if not image.isNull() and getattr(self,'_preview_key',None)!=preview_key:
-                self.expanded_still.setPixmap(image.scaled(width,height,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));self._preview_key=preview_key
 
     def open_source(self, url):
         from .private_browser import open_private
@@ -748,14 +787,46 @@ class Details(QWidget):
     def fullscreen_stills(self,item):
         if item is None:return
         from .catalog_ui import StillViewer
-        viewer=StillViewer([self.still_gallery.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.still_gallery.count())],self.still_gallery.row(item),self);viewer.exec()
+        viewer=StillViewer([self.still_gallery.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.still_gallery.count())],self.still_gallery.row(item),self)
+        viewer.exec();viewer.deleteLater()
 
     def view_cover(self):
         if not self.poster_path:
             self.window.status.setText('此影片暂无封面，可从 NFO 补充或通过插件刮削。');return
         from .catalog_ui import StillViewer
-        viewer=StillViewer([self.poster_path],parent=self,title='封面')
+        from .artwork_ui import artwork_paths
+        paths=list(dict.fromkeys([self.poster_path,*artwork_paths(self.library,self.work)]))
+        viewer=StillViewer(paths,parent=self,title='封面')
         viewer.exec();viewer.deleteLater()
+
+    def step_cover(self,delta):
+        from .artwork_ui import artwork_paths
+        paths=artwork_paths(self.library,self.work)
+        if not paths:return
+        index=paths.index(self.poster_path) if self.poster_path in paths else 0
+        self.poster_path=paths[(index+delta)%len(paths)];self.render_artwork()
+
+    def still_artwork_menu(self,position):
+        item=self.still_gallery.itemAt(position)
+        if item is None:return
+        menu=QMenu(self)
+        menu.addAction('设为海报 / 缩略图…',lambda:self.choose_artwork(item.data(Qt.ItemDataRole.UserRole)))
+        menu.exec(self.still_gallery.viewport().mapToGlobal(position))
+
+    def choose_artwork(self,path=None):
+        from .artwork_ui import ArtworkDialog,save_artwork
+        dialog=ArtworkDialog(self.window,self.library.work(self.work_id),path if isinstance(path,str) else self.poster_path)
+        if dialog.exec():
+            work_id=self.work_id;window=self.window
+            source,role,anchor=dialog.sources.currentData(),dialog.role.currentData(),dialog.anchor.currentData()
+            def saved(_):
+                window.reload_details(work_id)
+            window.run_job('保存海报 / 缩略图',lambda lib,progress:save_artwork(lib,work_id,source,role,anchor),saved)
+        dialog.deleteLater()
+
+    def reset_artwork(self):
+        self.library.set_setting(f'artwork_{self.work_id}',{})
+        self.window.refresh();self.window.reload_details(self.work_id)
 
     def scrape_actor_photo(self):
         names=[actor['name'] for actor in self.work['metadata'].get('actors',[]) if actor.get('name')]
@@ -780,7 +851,6 @@ class Details(QWidget):
         visible=bool(self.still_gallery.count())
         self.gallery_heading.setVisible(visible)
         self.still_gallery.setVisible(visible)
-        if hasattr(self,'expanded_still'):self.expanded_still.hide();self.expanded_still.clear();self.expanded_still_path=None
         if hasattr(self,'poster_path'):self.render_artwork()
 
     def select_episode(self, item):
@@ -791,20 +861,7 @@ class Details(QWidget):
         self.gallery_status.setText(f'已载入 {self.still_gallery.count()} 张剧照 · 点击放大' if self.still_gallery.count() else '此集暂无可显示的剧照。')
 
     def show_still(self, item):
-        path=item.data(Qt.ItemDataRole.UserRole)
-        if getattr(self,'expanded_still_path',None)==path:return
-        first=not hasattr(self,'expanded_still') or self.expanded_still.isHidden()
-        if not hasattr(self,'expanded_still'):
-            self.expanded_still=QLabel();self.expanded_still.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.expanded_still.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
-            self.expanded_still.setMinimumWidth(0);self.expanded_still.setStyleSheet('background:#080808;')
-            self.expanded_still.setFixedHeight(max(200,min(720,round((self.width()-68)*9/16))))
-            self.layout().insertWidget(self.layout().indexOf(self.still_gallery)+1,self.expanded_still)
-        self.expanded_still_path=path
-        if self.expanded_still.pixmap().isNull():self.expanded_still.setText('正在加载剧照…')
-        self.render_artwork();self.expanded_still.show()
-        if first and self.window.details_scroll is not None:
-            QTimer.singleShot(0,lambda:self.window.details_scroll.ensureWidgetVisible(self.expanded_still,0,16) if self.window.detail_page is self else None)
+        self.fullscreen_stills(item)
 
     def choose_download_folder(self):
         from .downloads import download_folder,set_download_folder
@@ -957,23 +1014,8 @@ class Details(QWidget):
         dialog.exec()
 
     def merge_duplicate(self):
-        candidates = [w for w in self.library.query({'kinds':[self.work['kind']], 'local':False}) if w['id'] != self.work_id]
-        if not candidates:
-            QMessageBox.information(self, '合并作品', '没有其他相同类型的作品可合并。')
-            return
-        names = [f"#{w['id']} · {w['title']} ({w['year'] or '未知年份'}) · {len(w['files'])} 个文件" for w in candidates]
-        choice, ok = QInputDialog.getItem(self, '选择重复作品', '将其文件、来源和历史合并到当前作品', names, 0, False)
-        if not ok:
-            return
-        source = candidates[names.index(choice)]
-        if QMessageBox.question(self, '确认合并', f"将“{source['title']}”合并到“{self.work['title']}”？\n不会移动或删除视频文件。重复的个人评分以当前作品为准，文件、来源与历史归为一个作品，随机队列也会去重。") != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self.library.merge_works(source['id'], self.work_id)
-            self.window.refresh()
-            self.accept()
-        except Exception as exc:
-            QMessageBox.warning(self, '合并失败', str(exc))
+        from .merge_ui import merge_catalog_work
+        return merge_catalog_work(self)
 
     def scrape(self):
         available = [p for p in Plugins(self.library).installed() if p['config'].get('enabled') and ('search' in p['capabilities'] or 'detail' in p['capabilities'])]
@@ -1041,6 +1083,10 @@ class Details(QWidget):
                 thumbnail(f['path'], target, f['duration'], second)
                 with lib.db:
                     lib.db.execute('UPDATE works SET thumbnail=? WHERE id=?', (str(target), self.work_id))
+                    selected=lib.setting(f'artwork_{self.work_id}',{})
+                    selected['thumbnail']=str(target)
+                    lib.db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)',
+                                   (f'artwork_{self.work_id}',json.dumps(selected,ensure_ascii=False)))
             self.window.run_job('重新截取封面', generate)
             self.accept()
 
@@ -1176,6 +1222,8 @@ class MainWindow(QMainWindow):
         self.view_mode.setCurrentIndex(max(0, self.view_mode.findData(self.library.setting('view_mode', 'poster'))))
         self.view_mode.currentIndexChanged.connect(self.change_view_mode)
         self.toolbar.addWidget(self.view_mode)
+        self.artwork_size_action=button('图片大小…',self.choose_artwork_sizes)
+        self.toolbar.addWidget(self.artwork_size_action)
         self.catalog_sort=QComboBox()
         for text,key in [('入库时间','added'),('名称','title'),('年份','year'),('个人评分','rating'),('时长','duration')]:self.catalog_sort.addItem(text,key)
         self.catalog_sort.setCurrentIndex(max(0,self.catalog_sort.findData(self.library.setting('catalog_sort','added'))))
@@ -1198,6 +1246,8 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.actor_sort)
         self.actor_photo_action=button('刮削演员头像…',self.scrape_actor_photo)
         self.toolbar.addWidget(self.actor_photo_action)
+        self.actor_batch_action=button('批量获取头像…',self.batch_actor_photos)
+        self.toolbar.addWidget(self.actor_batch_action)
         self.source_filter = QComboBox()
         self.category_filter = QComboBox()
         self.category_filter.addItem('全部分类', '')
@@ -1213,6 +1263,7 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.tree)
         self.cards = PosterList(self.play_work)
         self.cards.favoriteRequested.connect(self.toggle_favorite)
+        self.cards.actorPortraitDropped.connect(self.replace_actor_portrait)
         self.cards.watchlistRequested.connect(lambda work_id:self.toggle_card_personal(work_id,'watchlist'))
         self.cards.setObjectName('posters')
         self.cards.setViewMode(QListWidget.ViewMode.IconMode)
@@ -1399,19 +1450,36 @@ class MainWindow(QMainWindow):
                         self.library.db.execute('UPDATE import_cache SET pending=2 WHERE file_id=?',(file['id'],))
         self.refresh()
 
+    def choose_artwork_sizes(self):
+        dialog=QDialog(self);dialog.setWindowTitle('图片大小');layout=QFormLayout(dialog)
+        poster=QSpinBox();poster.setRange(120,300);poster.setSuffix(' px');poster.setValue(self.library.setting('poster_width',190))
+        thumb=QSpinBox();thumb.setRange(200,480);thumb.setSuffix(' px');thumb.setValue(self.library.setting('thumbnail_width',280))
+        layout.addRow('海报卡片宽度（2:3）',poster);layout.addRow('缩略图卡片宽度（16:9）',thumb)
+        layout.addRow(QLabel('详情封面与剧照随对应尺寸调整；保存后立即生效。'))
+        reset=button('恢复默认大小',lambda:(poster.setValue(190),thumb.setValue(280)));layout.addRow(reset)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText('保存')
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
+        buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);layout.addRow(buttons)
+        if dialog.exec():
+            self.library.set_setting('poster_width',poster.value());self.library.set_setting('thumbnail_width',thumb.value())
+            self.refresh();self.cards.doItemsLayout()
+            if self.detail_page:self.reload_details(self.detail_page.work_id)
+        dialog.deleteLater()
+
     def card_data(self, data, landscape=False):
         record = {key:data[key] for key in ('id','kind','title','name','year','thumbnail','photo_cache','average','count','rated','favorite','watchlist','rating','_subtitle','reasons') if key in data}
         if 'work_ids' in data:record['work_ids']=[]
         record['files']=[{key:file[key] for key in ('id','work_id','path','digest','duration','position','completed','season','episode') if key in file} for file in data.get('files',[])]
         record['sources']=[{'rating':source.get('rating')} for source in data.get('sources',[])]
         record['_landscape'] = bool(data.get('kind')) and (landscape or self.view_mode.currentData() == 'thumbnail')
+        record['_card_width']=self.library.setting('thumbnail_width' if record['_landscape'] else 'poster_width',280 if record['_landscape'] else 190)
         if record['_landscape']:
-            for file in data.get('files', []):
-                local=data.get('metadata',{}).get('nfo_thumbnails',{}).get(str(file['id']))
-                frame = Path(local) if local else self.library.directory / 'cache' / (file['digest'] + '.jpg')
-                if frame.exists():
-                    record['_cover'] = str(frame)
-                    break
+            from .artwork import thumbnail_path
+            record['_cover']=thumbnail_path(self.library,data)
+        selected=self.library.setting(f'artwork_{data.get("id")}',{}) if data.get('kind') else {}
+        custom=selected.get('thumbnail' if record['_landscape'] else 'poster')
+        if custom and Path(custom).is_file():record['_cover']=custom
         return record
 
     def refresh(self, *_, _data=None):
@@ -1457,6 +1525,7 @@ class MainWindow(QMainWindow):
         for index in range(4):
             self.toolbar.itemAt(index).widget().setVisible((self.section == 'discover') if index == 3 else index!=2 and self.section not in {'discover','stats'})
         self.view_mode.setVisible(not actresses and self.section != 'stats')
+        self.artwork_size_action.setVisible(not actresses and self.section != 'stats')
         for control in [self.catalog_sort,self.catalog_direction]:control.setVisible(not actresses and self.section not in {'stats','discover','recommend'} and not home)
         self.batch_select.setVisible(not actresses and self.section not in {'stats','discover'} and not home)
         self.batch_action.setVisible(not actresses and self.section not in {'stats','discover'} and not home)
@@ -1464,6 +1533,9 @@ class MainWindow(QMainWindow):
         self.actor_min.setVisible(actresses)
         self.actor_sort.setVisible(actresses)
         self.actor_photo_action.setVisible(actresses)
+        self.actor_batch_action.setVisible(actresses)
+        self.cards.setProperty('actorPortraitDrop',actresses)
+        self.cards.setAcceptDrops(actresses)
         self.source_filter.setVisible(self.section == 'discover')
         self.category_filter.setVisible(self.section == 'discover')
         self.discovery_panel.setVisible(self.section=='discover')
@@ -1511,7 +1583,7 @@ class MainWindow(QMainWindow):
         count=min(len(items),max(60,self.display_count) if preserve else 60)
         update_poster_items(self.cards,[self.card_data(item) for item in items[:count]],preserve)
         self.display_count=self.cards.count()
-        self.subtitle.setText(f"{len(items)} {'位女演员' if actresses else '部作品'}  ·  " + ('个人评分的算术平均 · 未评分不计入' if actresses else '点击查看详情 · 右键快速播放'))
+        self.subtitle.setText(f"{len(items)} {'位女演员' if actresses else '部作品'}  ·  " + ('拖入图片到演员卡片可替换头像 · 未评分不计入均分' if actresses else '点击查看详情 · 右键快速播放'))
         self.empty.setText('这里还没有内容\n\n拖入真实视频文件夹，或点击“导入文件夹”开始。\n影片发现需先在设置中安装并配置插件。' if not items else '')
         self.empty.setVisible(not items)
         self.splitter.setVisible(bool(items))
@@ -1702,6 +1774,21 @@ class MainWindow(QMainWindow):
         item=self.cards.currentItem();record=item.data(Qt.ItemDataRole.UserRole) if item else {}
         from .actor_ui import show_actor_scraper
         show_actor_scraper(self,record.get('name',''))
+
+    def batch_actor_photos(self):
+        from .actor_batch_ui import show_actor_batch
+        return show_actor_batch(self)
+
+    def replace_actor_portrait(self,record,path):
+        actor=next((dict(item) for item in self.current_items if item.get('name')==record.get('name')
+                    and item.get('id')==record.get('id') and 'work_ids' in item),None)
+        if actor is None:
+            self.status.setText('演员列表已变化，请刷新后重新拖入图片');return
+        from .actor_portrait import replace_local_portrait
+        def saved(result):
+            self.status.setText(f"已替换 {result['name']} 的头像 · 同步 {result['updated']} 部作品")
+            if self.detail_page:self.reload_details(self.detail_page.work_id)
+        self.run_job('替换演员头像',lambda library,progress:replace_local_portrait(library,actor,path,cancelled=progress.cancelled),saved)
 
     def catalog_watch(self,work_id,state,file_id=None):
         self.library.set_watched(work_id,state,file_id);self.refresh()
@@ -1907,7 +1994,7 @@ class MainWindow(QMainWindow):
                     continue
                 try:
                     candidates = plugin.run(plugin_id, 'search', query=w['title'])
-                    matches = [m for m in candidates if m.get('kind','movie') == kind and m['title'].casefold() == w['title'].casefold() and (not w['year'] or m.get('year') == w['year'])]
+                    matches = [m for m in candidates if (m.get('kind','movie') == kind or kind=='vr' and m.get('kind','movie')=='movie') and m['title'].casefold() == w['title'].casefold() and (not w['year'] or m.get('year') == w['year'])]
                     if len(matches) != 1:
                         raise ValueError(f'匹配不唯一（{len(candidates)} 个候选），请在详情中确认')
                     plugin.merge(plugin_id, matches[0], w['id'])

@@ -24,6 +24,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Restore persistent development signing key when configured
+        env:
+          SIGNING_KEY: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        shell: bash
+        run: |
+          if [ -n "$SIGNING_KEY" ]; then
+            mkdir -p .local
+            printf '%s' "$SIGNING_KEY" | base64 --decode > .local/android-debug.keystore
+            echo "LUMEN_ANDROID_KEYSTORE=$GITHUB_WORKSPACE/.local/android-debug.keystore" >> "$GITHUB_ENV"
+          fi
       - name: Validate explicit packaging request
         if: inputs.publish && !inputs.package
         run: exit 1

@@ -1,0 +1,14 @@
+{
+  "v0.4.9": {
+    "commit": "e65658d0b817b4e9aa97e92a406f78b47edc74a5",
+    "historical_core_sha256": "4afd422c269558fc881ba419f01a3c7ee173eea6c3adb2816d012acceea8bbe5",
+    "fixture_sha256": "19a582246544b940af9a08c2ce37a9589a91b7cc465f9ff064f675311ccf6a1a",
+    "description": "Created using the unmodified historical Library.__init__ and setting methods; synthetic nonprivate media rows."
+  },
+  "v0.4.10": {
+    "commit": "7444f9422bbc6c08924d744637c747fd8ab14eb9",
+    "historical_core_sha256": "c03709aa05083991ddc1d1245d33db3e2724d887f5946b50138e257d302b01de",
+    "fixture_sha256": "19a582246544b940af9a08c2ce37a9589a91b7cc465f9ff064f675311ccf6a1a",
+    "description": "Created using the unmodified historical Library.__init__ and setting methods; synthetic nonprivate media rows."
+  }
+}

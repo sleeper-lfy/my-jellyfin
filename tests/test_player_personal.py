@@ -27,7 +27,7 @@ def test_likes_are_favorites_exclusive_and_persistent(library):
 
 def test_old_database_and_old_backup_migrate_without_changing_original(tmp_path):
     folder=tmp_path/'old';lib=Library(folder);work=add_work(lib,'Old favorite');lib.update_personal(work,favorite=True,rating=7);lib.close()
-    database=folder/'library.sqlite';db=sqlite3.connect(database);db.execute('ALTER TABLE works DROP COLUMN liked');db.commit();db.close()
+    database=folder/'library.sqlite';db=sqlite3.connect(database);db.execute('ALTER TABLE works DROP COLUMN liked');db.execute('PRAGMA user_version=0');db.commit();db.close()
     backup=tmp_path/'old-backup.sqlite';backup.write_bytes(database.read_bytes())
     migrated=Library(folder);assert migrated.work(work)['favorite']==1 and migrated.work(work)['liked']==1
     migrated.update_personal(work,liked=True);restore_database(migrated,backup)
@@ -67,6 +67,7 @@ def test_independent_legacy_preferences_merge_once_and_backup_stays_unchanged(tm
         lib.db.execute('UPDATE works SET favorite=0,liked=1,rating=8 WHERE id=?',(positive,))
         lib.db.execute('UPDATE works SET favorite=1,liked=0,disliked=1 WHERE id=?',(negative,))
         lib.db.execute("DELETE FROM settings WHERE key='personal_unified_v1'")
+        lib.db.execute("PRAGMA user_version=0")
     backup=tmp_path/'independent.sqlite';lib.backup(backup);lib.close()
     lib=Library(folder);assert lib.work(positive)['favorite']==lib.work(positive)['liked']==1
     assert lib.work(positive)['rating']==8 and lib.work(negative)['favorite']==0 and lib.work(negative)['disliked']==1

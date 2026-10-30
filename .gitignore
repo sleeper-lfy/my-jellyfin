@@ -6,6 +6,7 @@ build/
 dist/
 *.spec
 .local/
+/pc-build.local.json
 
 android/.gradle/
 android/local.properties

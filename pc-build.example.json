@@ -1,0 +1,7 @@
+{
+  "PythonPath": "E:\\environment\\miniconda3\\envs\\lumen\\python.exe",
+  "CompilerPath": "E:\\workspaces\\my-jellyfin\\.local\\tools\\innosetup\\ISCC.exe",
+  "SevenZipPath": "E:\\workspaces\\my-jellyfin\\.local\\tools\\7zip\\7z.exe",
+  "FFmpegDirectory": "E:\\environment\\ffmpeg\\bin",
+  "PipIndexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple"
+}

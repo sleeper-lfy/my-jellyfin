@@ -33,7 +33,9 @@ with tempfile.TemporaryDirectory(prefix='lumen-maintenance-') as directory:
         target=root/f'still-{index}.jpg';picture(target,width,height,f'剧照示例 {index+1}','#275a72');shots.append(str(target))
     metadata=work['metadata'];metadata['nfo_stills']=shots;metadata['nfo_backdrop']=shots[0]
     with window.library.db:window.library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata),work['id']))
-    window.open_details(work['id'],fetch=False);spin(.3);window.detail_page.show_still(window.detail_page.still_gallery.item(0));spin(.4)
-    window.grab().save(str(output/'fix-still-preview-pc.png'))
+    window.open_details(work['id'],fetch=False);spin(.3)
+    from lumen.catalog_ui import StillViewer
+    viewer=StillViewer(shots,parent=window.detail_page);spin(.4)
+    viewer.grab().save(str(output/'still-popup-pc.png'));viewer.close()
     updater=window.updater();updater.show();spin(.3);updater.dialog.grab().save(str(output/'fix-pc-updates.png'));updater.dialog.close()
     window.close();spin(.4)

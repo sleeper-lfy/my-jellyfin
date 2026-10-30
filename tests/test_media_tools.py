@@ -105,7 +105,7 @@ def test_old_backup_is_migrated_in_a_copy(library,video_factory,tmp_path):
     from lumen.backup import restore_database
     library.import_folder(video_factory('Old backup.mp4').parent,'movie',fast=True)
     backup=tmp_path/'old.sqlite';library.backup(backup)
-    db=sqlite3.connect(backup);db.execute('DROP TABLE bookmarks');db.execute('DROP TABLE playback_preferences');db.commit();db.close()
+    db=sqlite3.connect(backup);db.execute('DROP TABLE bookmarks');db.execute('DROP TABLE playback_preferences');db.execute('PRAGMA user_version=0');db.commit();db.close()
     original=backup.read_bytes();work=library.query()[0];library.update_personal(work['id'],favorite=True)
     restore_database(library,backup)
     assert not library.work(work['id'])['favorite'] and backup.read_bytes()==original

@@ -229,6 +229,21 @@ class Player(QDialog):
         self.enhance.toggled.connect(self.set_enhancement)
         tracks.addWidget(QLabel('播放内核：libmpv' if self.mpv_backend else '播放内核：Qt 兼容模式'))
         tracks.addWidget(self.enhance)
+        self.beauty_enabled=QCheckBox('实时美颜（肤色区域磨皮 / 提亮）')
+        self.beauty_enabled.setEnabled(self.mpv_backend)
+        self.beauty_enabled.setToolTip('默认关闭，不修改视频。肤色估计可能影响相近颜色；不是人脸识别。Qt 兼容内核不支持。')
+        tracks.addWidget(self.beauty_enabled)
+        beauty_form=QFormLayout()
+        self.beauty_smoothing=QSpinBox();self.beauty_smoothing.setRange(0,100);self.beauty_smoothing.setValue(35)
+        self.beauty_brighten=QSpinBox();self.beauty_brighten.setRange(0,100);self.beauty_brighten.setValue(15)
+        for label,control in [('磨皮强度',self.beauty_smoothing),('肤色提亮',self.beauty_brighten)]:
+            control.setEnabled(self.mpv_backend);beauty_form.addRow(label,control)
+        tracks.addLayout(beauty_form)
+        tracks.addWidget(QLabel('按当前视频记忆。卡顿或色彩异常时关闭；不包含瘦脸、大眼。'))
+        self.beauty_timer=QTimer(self);self.beauty_timer.setSingleShot(True);self.beauty_timer.setInterval(150)
+        self.beauty_timer.timeout.connect(self.save_beauty)
+        self.beauty_enabled.toggled.connect(lambda:self.save_beauty())
+        for control in (self.beauty_smoothing,self.beauty_brighten):control.valueChanged.connect(lambda:self.beauty_timer.start())
         compatibility = QCheckBox('兼容播放模式（重启应用后生效）')
         compatibility.setChecked(self.library.setting('player_compat', False))
         compatibility.setToolTip('显卡或 OpenGL 不兼容时启用，使用原有播放方式。')
@@ -287,6 +302,26 @@ class Player(QDialog):
                 self.library.set_setting('player_enhance', enabled)
             except (ValueError, RuntimeError) as exc:
                 self.set_error('画质增强未启用：' + str(exc))
+
+    def load_beauty(self):
+        self.beauty_timer.stop()
+        from .beauty import validate
+        value=validate(self.subtitle_preferences.get('beauty',{}))
+        for control,key in ((self.beauty_enabled,'enabled'),(self.beauty_smoothing,'smoothing'),(self.beauty_brighten,'brighten')):
+            control.blockSignals(True)
+            control.setChecked(value[key]) if key=='enabled' else control.setValue(round(value[key]))
+            control.blockSignals(False)
+        if self.mpv_backend:self.media.set_beauty(value,self.library.directory/'cache'/'beauty')
+
+    def save_beauty(self):
+        self.beauty_timer.stop()
+        if not self.file or not self.mpv_backend:return
+        from .media_tools import preferences
+        value={'enabled':self.beauty_enabled.isChecked(),'smoothing':self.beauty_smoothing.value(),'brighten':self.beauty_brighten.value()}
+        try:
+            self.media.set_beauty(value,self.library.directory/'cache'/'beauty')
+            self.subtitle_preferences=preferences(self.library,self.file['id'],{'beauty':value})
+        except (ValueError,RuntimeError,OSError) as exc:self.set_error('美颜设置未应用：'+str(exc))
 
     def shutdown_mpv(self):
         if self.mpv_backend:
@@ -448,6 +483,7 @@ class Player(QDialog):
             self.queuePrevious.emit()
 
     def open_file(self, file):
+        if self.beauty_timer.isActive():self.save_beauty()
         self.finish()
         if not Path(file['path']).is_file():
             self.file=None
@@ -462,6 +498,7 @@ class Player(QDialog):
         for control,key,default in ((self.subtitle_delay,'subtitle_delay',0),(self.subtitle_size,'subtitle_size',22),(self.subtitle_position,'subtitle_position',90)):
             control.blockSignals(True);control.setValue(self.subtitle_preferences.get(key,default));control.blockSignals(False)
         self.apply_subtitle_preferences()
+        self.load_beauty()
         work = self.library.work(file['work_id'])
         self.title.setToolTip(work['title'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' and file['season'] is not None and file['episode'] is not None else ''))
@@ -781,6 +818,7 @@ class Player(QDialog):
             super().keyPressEvent(event)
 
     def finish(self):
+        if hasattr(self,'beauty_timer') and self.beauty_timer.isActive():self.save_beauty()
         self._open_generation += 1
         if self.session:
             self.sample()

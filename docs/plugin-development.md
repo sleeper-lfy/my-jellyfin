@@ -8,6 +8,9 @@
 - `plugins/tvmaze`：用户指定的优先站点；电视剧搜索、详情（含演员）、最新剧集索引发现。
 - `plugins/internet-archive`：可选公开影片目录；只读取元数据和图片，不下载视频。
 - `plugins/wikimedia-actors`：独立女演员头像搜索，Wikidata 女性人物 + Wikimedia Commons 公开肖像；保留文件页、许可和署名。没有照片或资料的演员不会编造头像。
+- `plugins/javbus-actors`：按姓名搜索 JavBus 女优头像；只读取公开姓名、别名与图片地址，不返回视频或下载链接。默认声明 `www.javbus.com` / `javbus.com` / `r.jina.ai`，直连被站点浏览器验证拦截时自动经 r.jina.ai 读取；头像许可与署名以来源页面为准，插件不编造。
+- `plugins/javdb-actors`：按姓名搜索 JavDB 演员资料，读取公开头像和逗号分隔的别名；占位头像不当作真实头像，`gender` 不据姓名推断。只读取元数据与头像，不返回视频、磁力或下载链接。部分网络需在应用内配置代理。
+- `plugins/javrate-actors`：按姓名搜索 JavRate 女优资料，默认经 `r.jina.ai` 绕过站点的 Cloudflare 验证，读取公开头像并将列表 `_s.webp` 升级为同目录 `_l.webp` 大图；只读取元数据与头像，不返回视频、磁力或下载链接。Reader 需要应用内配置可用代理。
 
 ## manifest.json
 
@@ -72,7 +75,9 @@ return {
 
 `context` 可选，为后续请求携带 JSON 上下文；宿主将其作为该次 `parseResponse(input).context` 传回。上下文不提供额外权限，也不参与 URL 去重；同一 URL 仍只请求一次。Wikimedia 插件用它将人物标识与 Commons 图片解析结果关联，每次任务至多搜索 6 个候选，保持在上述预算内。
 
-普通响应最大 4 MB，图片 10 MB；单次 HTTP 读超时 20 秒，流读取预算 30 秒；保持 TLS 校验，不跟随 HTTP 重定向。站点需要跳转时配置最终域名和 URL，不能关闭校验。仅支持 GET；不支持任意自定义执行命令、视频资源下载或文件写入。
+普通响应最大 4 MB，图片 10 MB；单次 HTTP 读超时 20 秒，流读取预算 30 秒；保持 TLS 校验，只跟随声明域名内最多 3 次重定向，跨域跳转拒绝。站点需要跳到未声明域名时配置最终域名和 URL，不能关闭校验。仅支持 GET；不支持任意自定义执行命令、视频资源下载或文件写入。
+
+宿主优先调用系统 `curl` 发送插件请求（Windows 10/11 自带，Linux/macOS 通常已安装），没有 curl 时回退 httpx。使用 curl 是为了兼容按 TLS 指纹拦截 Python 客户端的站点；两种方式共用相同的精确域名、协议、代理、TLS 校验、大小和请求预算，curl 不跟随重定向，跳转仍由宿主逐次校验。宿主请求携带常见浏览器的 `User-Agent`、`Accept` 和 `Accept-Language`，不执行交互式验证。
 
 ## 标准影片记录
 
@@ -128,6 +133,12 @@ return {
 
 `id/name/url` 必填，`photo` 允许缺省或 null；没有头像的候选不能用于更新。`gender` 为 female/male/unknown；`aliases` 为至多 100 个姓名。头像和元数据请求遵守 manifest 精确域名、代理、TLS、大小和时间限制。内置 TVmaze 1.2.0 新增 `/search/people` 搜索；Wikimedia 插件使用 Wikidata `wbsearchentities`、`wbgetentities` 以及 Commons `imageinfo`，只返回已声明为女性人物且有公开肖像的候选。站点搜索结果可能包含同名人物，必须由用户确认，不按首条结果自动替换。
 
+JavBus 插件（`javbus-actors`）请求 `/searchstar/<姓名>`，优先解析搜索结果中的头像；结果只有演员链接时再逐条请求演员页读取头像，每次任务最多返回 12 个候选。站点把搜索重定向到唯一演员页时，插件会按演员页解析；直连被站点浏览器验证（`/doc/driver-verify`）拦截时，自动改为经 `r.jina.ai`（第三方 Reader 服务，有频率限制）读取同一地址并解析其 Markdown 输出，验证页再次出现时如实报错。它只返回头像地址和来源页，不提供许可或署名，界面不会补造这些字段。宿主只跟随声明域名内的有限重定向；跨域跳转、需要登录或站点换到未声明域名时须在插件配置中填写最终地址，否则如实失败。该来源只用于元数据与头像，不返回视频、磁力或下载链接。
+
+JavDB 插件（`javdb-actors`）请求 `/search?f=actor&q=<姓名>`，解析演员卡片的 `/actors/<id>`、`<strong>` 姓名、`title` 中的逗号分隔别名和 `c0.jdbstatic.com` 头像。`actor_unknow` 占位图不会当作真实头像，候选仍返回但 `photo` 为空；来源没有性别字段，`gender` 保存为 `unknown`，不从姓名推断。JavDB 在部分网络下直连超时或被 TLS 指纹拦截，需在应用设置中配置代理（环境变量不生效）；Cloudflare 挑战页会明确报错，不伪造结果。
+
+JavRate 插件（`javrate-actors`）请求 `/actor/list/<姓名小写>`，默认经 `r.jina.ai` 转发并解析其 Markdown：只读取“共找到AV女優”到“查找:”之间的结果卡片，排除“本月出道女優”等侧栏；卡片提供 `/actor/detail/<id>.html`、姓名和 `picture.avking.xyz` 头像。列表用的 `_s.webp` 会升级为同目录 `_l.webp`（实测 800×1280 到 1920×2882），比 JavDB 的 200×200 头像清晰。0 结果返回空；Reader 限流、Cloudflare 拦截或需要代理时会明确报错，不伪造候选。`r.jina.ai` 为第三方只读转发服务，搜索请求会经过它。
+
 确认后调用 `Plugins.merge_actor(plugin_id, candidate, actor_name, replace=False)`，其中 `actor_name` 是本地演员姓名或本地别名。默认补充缺失缓存，`replace=True` 覆盖已有头像；更新该姓名在全库未锁定演员字段中的所有匹配项，保留原演员姓名、别名、其他影片资料。锁定 `actors` 的作品始终跳过。下载及解码在数据库写事务之前进行，并在写入时重新读取资料，避免网络慢时锁住其他写入或覆盖期间的人工编辑。图片按比例缩小到最长边 1200 后缓存。返回 `{updated, skipped, name}`。
 
 本地数据保留 `photo_source/photo_source_id/photo_source_url`，以及来源提供的 `photo_page/photo_license/photo_attribution`。Commons 文件的许可各不相同，使用图片时应同时保留署名及许可来源。头像缓存以图片内容 SHA-256 命名，`photo_revision` 保存该内容散列。局域网详情 `actors[].photo` 返回带内容修订参数的鉴权缓存地址 `/api/works/{work_id}/actors/{index}/photo?v=内容散列`；同一个来源 URL 的图片被更新时，手机会加载新图片而非命中旧头像缓存。生成详情响应不读取图片文件。不暴露本地路径；缓存目录之外的文件拒绝读取。
@@ -138,14 +149,14 @@ return {
 
 ## 代理和分类
 
-设置默认代理为空表示直连；支持 `http://`、`https://`、`socks5://`、`socks5h://`。单插件 `inherit` 继承默认，空值强制直连。搜索、详情、演员附加请求、海报和演员图片走相同代理。TLS 校验开启，系统环境代理不自动覆盖用户显式的直连选择。
+设置默认代理为空表示直连；支持 `http://`、`https://`、`socks5://`、`socks5h://`。单插件 `inherit` 继承默认，空值强制直连。搜索、详情、演员附加请求、海报和演员图片走相同代理。TLS 校验开启；系统环境代理不自动覆盖用户显式的直连选择，`HTTP_PROXY` 等环境变量对宿主请求不生效，需在应用内配置代理。宿主请求携带常见浏览器的 `User-Agent`、`Accept` 与 `Accept-Language` 头，以兼容按客户端特征拦截的站点；宿主不执行站点的交互式验证，验证页会如实失败。
 
 分类配置可逗号分隔，同脚本依次抓取各分类；发现页可按来源和分类过滤。TVmaze 默认/`latest` 从公共更新索引中取最新分配的 12 个剧集 ID，再获取含演员的详情；数字分类对应站点索引页。**ID 顺序不是网站收录日期**：TVmaze 不提供该日期时保存 null；上映日期取 premiered，首次发现为本地时间戳。推荐不冒充最新排序。Internet Archive 分类为 collection 名，默认 feature_films。
 
 ## 运行验证
 
 ```powershell
-.venv\Scripts\python -m pytest -q tests/test_plugins.py tests/test_extended.py
+.venv\Scripts\python -m pytest -q tests/test_actor_plugins.py tests/test_plugins.py tests/test_extended.py
 ```
 
 测试使用真实本地 HTTP 服务和明确标注的协议测试记录，验证隔离、域名控制、解析、来源去重、锁定及失败日志。产品空库没有演示数据。云环境真实站点访问受网络策略限制时，记录 403，不能用协议测试代替在线成功。

@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import sqlite3
 import sys
 from .core import data_directory
 
@@ -81,7 +82,15 @@ def main():
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(None, 'Lumen 已运行', '同一数据目录只允许一个应用实例，请切换到已打开的窗口。')
         return 1
-    window = MainWindow(directory)
+    try:
+        window = MainWindow(directory)
+    except (ValueError, OSError, sqlite3.Error) as error:
+        logging.exception('Cannot open library')
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(None, '资料库未能打开', str(error) + '\n\n请使用匹配版本的客户端或恢复备份。升级前备份保存在数据目录的 backups 文件夹。')
+        watchdog.stop()
+        lock.unlock()
+        return 1
     window.show()
     if sys.platform=='win32' and getattr(sys,'frozen',False) and not args.smoke:
         QTimer.singleShot(15000,lambda:window.updater().startup())

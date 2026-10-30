@@ -7,8 +7,8 @@ android {
         applicationId 'net.lumen.media'
         minSdk 26
         targetSdk 35
-        versionCode 14
-        versionName '0.4.11'
+        versionCode 15
+        versionName '0.4.12'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -30,6 +30,17 @@ android {
         }
     }
     packaging { jniLibs { useLegacyPackaging true } }
+    signingConfigs {
+        debug {
+            def persistentKey = System.getenv('LUMEN_ANDROID_KEYSTORE')
+            if (persistentKey) {
+                storeFile file(persistentKey)
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
     buildTypes { release { minifyEnabled false } }
 }
 dependencies {

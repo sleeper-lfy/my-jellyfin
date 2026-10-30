@@ -37,7 +37,7 @@ def manager_for(library):
     manager.configure('catalog-json',{'enabled':True});return manager
 
 
-def test_plugin_stills_cache_gallery_and_authenticated_lan(qapp,library,image_site):
+def test_plugin_stills_cache_gallery_and_authenticated_lan(qapp,library,image_site,monkeypatch):
     base,counts=image_site;manager=manager_for(library)
     metadata={'id':'gallery','title':'Gallery Sample','url':base+'/detail','stills':[base+'/image',base+'/image'],
               'download_method':'magnet','download_url':[{'url':'magnet:?xt=urn:btih:'+'a'*40,'description':'sample magnet'},
@@ -59,10 +59,21 @@ def test_plugin_stills_cache_gallery_and_authenticated_lan(qapp,library,image_si
     finally:server.stop()
     window=MainWindow(library.directory);window.open_details(work_id)
     assert window.detail_page.still_gallery.count()==1
-    window.detail_page.show_still(window.detail_page.still_gallery.item(0))
     from PySide6.QtCore import QEventLoop,QTimer
-    wait=QEventLoop();QTimer.singleShot(250,wait.quit);wait.exec();qapp.processEvents()
-    assert not window.detail_page.expanded_still.pixmap().isNull()
+    from lumen.catalog_ui import StillViewer
+    loaded=[]
+    def create_viewer(*args,**kwargs):
+        viewer=StillViewer(*args,**kwargs)
+        timer=QTimer(viewer)
+        def close_preview():
+            if viewer.scene.items():
+                timer.stop();loaded.append(True);viewer.reject()
+        timer.timeout.connect(close_preview);timer.start(20)
+        QTimer.singleShot(4000,viewer.reject)
+        return viewer
+    monkeypatch.setattr('lumen.catalog_ui.StillViewer',create_viewer)
+    window.detail_page.show_still(window.detail_page.still_gallery.item(0))
+    assert loaded==[True]
     window.close()
 
 

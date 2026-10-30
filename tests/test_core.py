@@ -125,6 +125,10 @@ def test_actresses_average_aliases_and_versions(library):
         library.update_personal(work_id,rating=score)
         ids.append(work_id)
     with library.db:
+        # The representative credit follows newest work order. Make that order
+        # explicit instead of depending on whether inserts cross a clock tick.
+        for index,identifier in enumerate(ids):
+            library.db.execute('UPDATE works SET added=? WHERE id=?',(f'2026-01-01T00:00:0{index}',identifier))
         library.db.execute('INSERT INTO files(work_id,path,digest,root,duration) VALUES (?,?,?,?,?)',(ids[0],'/media/alternate.mkv','alternate','/media',1000))
     wall = library.actresses()
     assert len(wall) == 2

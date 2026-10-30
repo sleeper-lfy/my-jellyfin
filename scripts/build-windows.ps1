@@ -1,15 +1,18 @@
+param([string]$PythonPath = '')
 $ErrorActionPreference = 'Stop'
 $env:PYTHONUTF8 = '1'
 Set-Location (Join-Path $PSScriptRoot '..')
-if (-not (Test-Path '.venv\Scripts\python.exe')) {
+if (-not $PythonPath -and -not (Test-Path '.venv\Scripts\python.exe')) {
     py -3.12 -m venv .venv
     if ($LASTEXITCODE -ne 0) { throw 'Python 3.12 venv creation failed' }
 }
-$LumenPython = '.venv\Scripts\python.exe'
+$LumenPython = if ($PythonPath) { $PythonPath } else { '.venv\Scripts\python.exe' }
 & $LumenPython -m pip install -r requirements.lock
 if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
 & $LumenPython -m pip install --no-deps -e .
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+& $LumenPython -m lumen.release_acceptance begin --report .local/pc-acceptance.json
+if ($LASTEXITCODE -ne 0) { throw 'Acceptance initialization failed' }
 $LumenFfmpeg = (Get-Command ffmpeg.exe -ErrorAction Stop).Source
 $LumenFfprobe = (Get-Command ffprobe.exe -ErrorAction Stop).Source
 # Chocolatey exposes shims on PATH; bundle the actual executables, not machine-specific shims.

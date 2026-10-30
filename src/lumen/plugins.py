@@ -5,12 +5,21 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 import httpx
 from .core import identity, now, check_cancelled, ImportCancelled
 
 CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
+
+# Some sites redirect non-browser clients to a verification page. These are plain
+# request headers; interactive challenges still fail instead of being bypassed.
+BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7',
+}
 
 
 def validate_actor(item):
@@ -123,7 +132,7 @@ class Plugins:
     @staticmethod
     def builtin_actor_plugin(plugin_id):
         """Locate a shipped provider; callers must show its permissions first."""
-        return Plugins._builtin_plugin_folder(plugin_id, {'tvmaze', 'wikimedia-actors'})
+        return Plugins._builtin_plugin_folder(plugin_id, {'tvmaze', 'wikimedia-actors', 'javbus-actors', 'javdb-actors', 'javrate-actors'})
 
     @staticmethod
     def builtin_search_plugin(plugin_id):
@@ -199,28 +208,106 @@ class Plugins:
                 raise RuntimeError(output['error'])
             return output['result']
 
-    def fetch(self, plugin, url, image=False):
+    @staticmethod
+    def _approved_url(plugin, url):
         parsed = urlparse(url)
         if parsed.scheme not in {'https', 'http'} or parsed.hostname not in plugin['domains'] or parsed.username or parsed.password:
-            raise ValueError('插件请求不在声明的网络权限内')
+            raise ValueError('插件请求不在声明的网络权限内：' + url[:200])
+
+    @staticmethod
+    def _curl_binary():
+        found = shutil.which('curl')
+        if found:
+            return found
+        if sys.platform == 'win32':
+            candidate = Path(r'C:\Windows\System32\curl.exe')
+            if candidate.is_file():
+                return str(candidate)
+        return None
+
+    def fetch(self, plugin, url, image=False):
         proxy = plugin['config'].get('proxy', 'inherit')
         if proxy == 'inherit':
             proxy = self.library.setting('proxy', '')
         if proxy and urlparse(proxy).scheme not in {'http', 'https', 'socks5', 'socks5h'}:
             raise ValueError('代理协议须为 HTTP、HTTPS 或 SOCKS5')
         maximum = 10_000_000 if image else 4_000_000
+        curl = self._curl_binary()
+        if curl:
+            return self._fetch_curl(plugin, url, proxy, maximum, curl)
+        return self._fetch_httpx(plugin, url, proxy, maximum)
+
+    def _fetch_httpx(self, plugin, url, proxy, maximum):
+        current = url
         with httpx.Client(proxy=proxy or None, trust_env=False, timeout=20, follow_redirects=False) as client:
-            with client.stream('GET', url, headers={'User-Agent': 'Lumen/0.1 (personal media library)'}) as response:
-                response.raise_for_status()
-                if response.is_redirect:
-                    raise ValueError('重定向被拒绝，请配置最终站点地址')
-                data = bytearray()
-                deadline = time.monotonic() + 30
-                for block in response.iter_bytes():
-                    data.extend(block)
-                    if len(data) > maximum or time.monotonic() > deadline:
-                        raise ValueError('响应大小或时间超限')
-                return bytes(data), response.headers.get('content-type', '')
+            for redirects in range(4):
+                self._approved_url(plugin, current)
+                with client.stream('GET', current, headers=BROWSER_HEADERS) as response:
+                    if response.status_code in {301, 302, 303, 307, 308}:
+                        location = response.headers.get('location', '')
+                        if not location:
+                            raise ValueError('重定向缺少目标地址')
+                        if redirects >= 3:
+                            raise ValueError('重定向次数过多（最多 3 次）')
+                        current = urljoin(current, location)
+                        continue
+                    response.raise_for_status()
+                    data = bytearray()
+                    deadline = time.monotonic() + 30
+                    for block in response.iter_bytes():
+                        data.extend(block)
+                        if len(data) > maximum or time.monotonic() > deadline:
+                            raise ValueError('响应大小或时间超限')
+                    return bytes(data), response.headers.get('content-type', '')
+        raise ValueError('重定向次数过多（最多 3 次）')
+
+    def _fetch_curl(self, plugin, url, proxy, maximum, curl):
+        """Use the system curl when available: some sites reject Python's TLS fingerprint."""
+        current = url
+        for redirects in range(4):
+            self._approved_url(plugin, current)
+            with tempfile.TemporaryDirectory(prefix='plugin-http-', dir=self.library.directory) as directory:
+                body_path, header_path = Path(directory) / 'body', Path(directory) / 'headers'
+                command = [curl, '-q', '-sS', '--proto', '=http,https', '--connect-timeout', '10', '--max-time', '20',
+                           '--max-filesize', str(maximum), '--compressed',
+                           '-D', str(header_path), '-o', str(body_path),
+                           '-w', '%{http_code}\n%{content_type}\n%{redirect_url}',
+                           '-A', BROWSER_HEADERS['User-Agent'],
+                           '-H', 'Accept: ' + BROWSER_HEADERS['Accept'],
+                           '-H', 'Accept-Language: ' + BROWSER_HEADERS['Accept-Language']]
+                command += ['--proxy', proxy] if proxy else ['--noproxy', '*']
+                command.append(current)
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=25, stdin=subprocess.DEVNULL,
+                                            creationflags=0x08000000 if sys.platform == 'win32' else 0)
+                except subprocess.TimeoutExpired:
+                    raise ValueError('插件请求超时')
+                if result.returncode:
+                    detail = (result.stderr or result.stdout or '').strip().splitlines()
+                    if result.returncode == 63:
+                        raise ValueError('响应大小超限')
+                    raise ValueError('插件请求失败（curl exit=%d）：%s' % (result.returncode, detail[-1][:300] if detail else '无输出'))
+                info = result.stdout.strip().splitlines()
+                status = int(info[0]) if info and info[0].strip().isdigit() else 0
+                content_type = info[1].strip() if len(info) > 1 else ''
+                if status in {301, 302, 303, 307, 308}:
+                    location = ''
+                    for line in header_path.read_bytes().decode('latin-1', 'replace').splitlines():
+                        if line.lower().startswith('location:'):
+                            location = line.split(':', 1)[1].strip()
+                    if not location:
+                        raise ValueError('重定向缺少目标地址')
+                    if redirects >= 3:
+                        raise ValueError('重定向次数过多（最多 3 次）')
+                    current = urljoin(current, location)
+                    continue
+                if status >= 400 or status == 0:
+                    raise ValueError('插件请求返回 HTTP %d' % status)
+                data = body_path.read_bytes() if body_path.is_file() else b''
+                if len(data) > maximum:
+                    raise ValueError('响应大小超限')
+                return data, content_type
+        raise ValueError('重定向次数过多（最多 3 次）')
 
     def run(self, plugin_id, operation, *, cancelled=None, **parameters):
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
@@ -279,7 +366,7 @@ class Plugins:
             self.library.task(task_id, 'scrape', 'cancelled' if isinstance(exc, ImportCancelled) else 'failed', payload, error=str(exc))
             raise
 
-    def merge_actor(self, plugin_id, metadata, actor_name, *, replace=False):
+    def merge_actor(self, plugin_id, metadata, actor_name, *, replace=False, exact_name=False, work_ids=None, cancelled=None):
         """Cache a confirmed portrait once, then update matching local cast entries.
 
         Run this on a worker: downloading/decoding happens before any write
@@ -295,11 +382,17 @@ class Plugins:
             raise ValueError('所选演员没有头像')
         wanted = actor_name.strip().casefold()
         def matches(actor):
-            return wanted in {str(name).strip().casefold() for name in [actor.get('name', ''), *actor.get('aliases', [])]}
+            names=[actor.get('name', '')] if exact_name else [actor.get('name', ''), *actor.get('aliases', [])]
+            return wanted in {str(name).strip().casefold() for name in names}
         eligible = []
         skipped = 0
         # Stream cast metadata: a large library need not hold every NFO in RAM.
-        for row in self.library.db.execute('SELECT id,metadata,locked FROM works'):
+        rows=self.library.db.execute('SELECT id,metadata,locked FROM works') if work_ids is None else (
+            self.library.db.execute('SELECT id,metadata,locked FROM works WHERE id=?',(identifier,)).fetchone()
+            for identifier in dict.fromkeys(work_ids))
+        for row in rows:
+            check_cancelled(cancelled)
+            if row is None:continue
             details = json.loads(row['metadata'])
             if not any(matches(actor) for actor in details.get('actors', [])):
                 continue
@@ -313,7 +406,9 @@ class Plugins:
             eligible.append(row['id'])
         if not eligible:
             return {'updated': 0, 'skipped': skipped, 'name': actor_name}
+        check_cancelled(cancelled)
         data, content_type = self.fetch(plugin, metadata['photo'], image=True)
+        check_cancelled(cancelled)
         if not content_type.lower().startswith('image/'):
             raise ValueError('演员头像响应类型错误')
         from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QSaveFile
@@ -335,8 +430,10 @@ class Plugins:
         if not output.open(QIODevice.OpenModeFlag.WriteOnly) or not picture.save(output, 'JPG') or not output.commit():
             raise ValueError('演员头像缓存未能保存')
         updated = 0
+        check_cancelled(cancelled)
         with self.library.db:
             for work_id in eligible:
+                check_cancelled(cancelled)
                 # Read again after the network request, preserving concurrent edits.
                 row = self.library.db.execute('SELECT metadata,locked FROM works WHERE id=?', (work_id,)).fetchone()
                 if not row or 'actors' in json.loads(row['locked']):
@@ -348,6 +445,7 @@ class Plugins:
                         continue
                     actor.update(photo=metadata['photo'], photo_cache=str(path), photo_revision=revision, photo_source=plugin_id,
                                  photo_source_id=str(metadata['id']), photo_source_url=metadata['url'])
+                    actor.pop('photo_local',None)
                     import html
                     import re
                     for field in ('photo_page', 'photo_license', 'photo_attribution'):
@@ -374,14 +472,15 @@ class Plugins:
         existing = self.library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?', (plugin_id, str(metadata['id']))).fetchone()
         if existing and self.library.work(existing[0])['kind'] in {'other', 'fans'}:
             raise ValueError('该来源关联其他视频或 Fans 作品，不执行影视刮削')
+        kind = metadata.get('kind', 'movie')
+        target_id = work_id or (existing[0] if existing else None)
+        if target_id and self.library.work(target_id)['kind']=='vr' and kind=='movie':
+            kind='vr';metadata={**metadata,'kind':'vr'}
         if existing and work_id and existing[0] != work_id:
             source = self.library.work(existing[0])
             if source['files']:
                 raise ValueError('该来源已经关联另一部本地媒体，请人工核对，未自动合并')
-            self.library.merge_works(existing[0], work_id, commit=False)
-        kind = metadata.get('kind', 'movie')
-        if work_id and self.library.work(work_id)['kind']=='vr' and kind=='movie':
-            kind='vr';metadata={**metadata,'kind':'vr'}
+            self.library.merge_works(existing[0], work_id, commit=False, allow_movie_vr=True)
         key = identity(metadata['title'], metadata.get('year'), kind)
         matching = self.library.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
         if not matching:
@@ -445,8 +544,11 @@ class Plugins:
         if not cache_images:
             return work_id
         # Images use exactly the same network policy and proxy as metadata.
+        custom=self.library.setting(f'artwork_{work_id}',{}).get('poster')
+        keep_poster=('poster' in protected or bool(item['metadata'].get('nfo_poster') and not replace_nfo)
+                     or bool(custom and Path(custom).is_file()))
         for image_url, actor in [(metadata.get('poster'), None), *[(a.get('photo'), a) for a in merged.get('actors', [])]]:
-            if not image_url or actor is None and item['metadata'].get('nfo_poster') and not replace_nfo:
+            if not image_url or actor is None and keep_poster:
                 continue
             try:
                 data, content_type = self.fetch(plugin, image_url, image=True)
@@ -499,6 +601,17 @@ class Plugins:
             merged['stills_cache']=[cached[url] for url in dict.fromkeys(merged.get('stills',[])) if url in cached]
         with self.library.db:
             self.library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(merged,ensure_ascii=False),work_id))
+        if not keep_poster:
+            try:
+                from .artwork import scraped_poster_path
+                current=self.library.work(work_id)
+                poster=scraped_poster_path(self.library,current,current['thumbnail'])
+                if poster and poster!=current['thumbnail']:
+                    with self.library.db:
+                        self.library.db.execute('UPDATE works SET thumbnail=? WHERE id=?',(poster,work_id))
+            except Exception as exc:
+                import uuid
+                self.library.task(uuid.uuid4().hex,'image','failed',{'plugin':plugin_id,'role':'poster-from-still'},error=str(exc))
         return work_id
 
     def refresh(self, plugin_id, category=None):

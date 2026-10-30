@@ -69,6 +69,7 @@ jobs:
             dist/Lumen-windows-x64.zip
             dist/installer/Lumen-Setup-x64.exe
             dist/installer/Lumen-Setup-x64.exe.sha256
+            dist/installer/acceptance.json
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -76,6 +77,8 @@ jobs:
           path: |
             .local/installer-test.log
             .local/test-results.xml
+            .local/pc-acceptance.json
+            .local/installer-verification.json
           if-no-files-found: ignore
 
   publish-target:
@@ -98,7 +101,9 @@ jobs:
       - name: Package into target
         env:
           SOURCE_COMMIT: ${{ github.sha }}
-        run: python scripts/package-installer-target.py .local/windows-artifact/installer/Lumen-Setup-x64.exe target --revision "$SOURCE_COMMIT"
+        run: |
+          PYTHONPATH=src python -m lumen.release_acceptance check --report docs/validation/windows-release-acceptance.json --installer .local/windows-artifact/installer/Lumen-Setup-x64.exe --require-release
+          python scripts/package-installer-target.py .local/windows-artifact/installer/Lumen-Setup-x64.exe target --revision "$SOURCE_COMMIT"
       - name: Publish single-file installer download
         env:
           GH_TOKEN: ${{ github.token }}

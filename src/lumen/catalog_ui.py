@@ -76,16 +76,41 @@ class _PictureRead(QRunnable):
         self.result.loaded.emit(self.ticket,picture)
 
 
+class _PictureView(QGraphicsView):
+    """A click dismisses the viewer; dragging still pans a zoomed picture."""
+    def __init__(self, viewer):
+        super().__init__(viewer)
+        self.viewer=viewer;self.press_position=None;self.dragged=False
+
+    def mousePressEvent(self,event):
+        if event.button()==Qt.MouseButton.LeftButton:
+            self.press_position=event.position().toPoint();self.dragged=False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self,event):
+        if self.press_position is not None and (event.position().toPoint()-self.press_position).manhattanLength()>=QApplication.startDragDistance():
+            self.dragged=True
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self,event):
+        dismiss=event.button()==Qt.MouseButton.LeftButton and self.press_position is not None and not self.dragged
+        if self.press_position is not None and (event.position().toPoint()-self.press_position).manhattanLength()>=QApplication.startDragDistance():
+            dismiss=False
+        self.press_position=None
+        super().mouseReleaseEvent(event)
+        if dismiss:self.viewer.reject()
+
+
 class StillViewer(QDialog):
     def __init__(self, paths, index=0, parent=None,title='剧照'):
-        super().__init__(parent);self.paths=list(paths);self.index=max(0,min(index,len(self.paths)-1));self.setWindowTitle(title+' · 滚轮缩放 / 拖动查看 / Esc 关闭')
+        super().__init__(parent);self.paths=list(paths);self.index=max(0,min(index,len(self.paths)-1));self.setWindowTitle(title+' · 左右切换 / 点击图片或 Esc 关闭')
         self._ticket=0;self._active=False;self._pending=None;self._closed=False
         self.result=_PictureResult();self.result.loaded.connect(self.picture_loaded)
         app=QApplication.instance()
         if not hasattr(app,'lumen_gallery_pool'):
             app.lumen_gallery_pool=QThreadPool(app);app.lumen_gallery_pool.setMaxThreadCount(1)
         self.pool=app.lumen_gallery_pool
-        layout=QVBoxLayout(self);self.view=QGraphicsView();self.scene=QGraphicsScene(self.view);self.view.setScene(self.scene)
+        layout=QVBoxLayout(self);self.view=_PictureView(self);self.scene=QGraphicsScene(self.view);self.view.setScene(self.scene)
         self.view.setStyleSheet('QGraphicsView { background: #080808; border: none; }')
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag);layout.addWidget(self.view)
         self.status=QLabel();self.status.setFixedHeight(28);layout.addWidget(self.status)
@@ -94,6 +119,7 @@ class StillViewer(QDialog):
             b=QPushButton(title);b.clicked.connect(callback);row.addWidget(b)
             if title in ('上一张','下一张'):b.setEnabled(len(self.paths)>1)
         for key,delta in [('Left',-1),('Right',1)]:QShortcut(QKeySequence(key),self,activated=lambda d=delta:self.step(d))
+        QShortcut(QKeySequence('Escape'),self,activated=self.reject)
         self.view.wheelEvent=self.zoom;self.showFullScreen();self.load()
     def zoom(self,event):
         factor=1.2 if event.angleDelta().y()>0 else 1/1.2
@@ -121,7 +147,7 @@ class StillViewer(QDialog):
             else:
                 self.scene.clear();self.view.resetTransform()
                 self.scene.addPixmap(QPixmap.fromImage(picture));self.scene.setSceneRect(self.scene.itemsBoundingRect());self.fit()
-                self.status.setText(f'{self.index+1} / {len(self.paths)} · 滚轮缩放 / 拖动查看 / Esc 关闭')
+                self.status.setText(f'{self.index+1} / {len(self.paths)} · ← → 切换 / 滚轮缩放 / 拖动查看 / 点击图片或 Esc 关闭')
         self.start_read()
 
     def done(self,result):

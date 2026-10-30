@@ -1,6 +1,6 @@
 ; Build from the verified Windows onedir bundle; never package Linux binaries.
 #ifndef AppVersion
-  #define AppVersion "0.4.11"
+  #define AppVersion "0.4.12"
 #endif
 #ifndef BundleDir
   #define BundleDir "..\dist\Lumen"
@@ -10,7 +10,9 @@
 #endif
 
 [Setup]
-AppId={{71850B7D-D7CF-4D25-80BC-8705FB77C116}
+; Verification uses an isolated uninstall key; ordinary installs keep the stable AppId.
+AppId={{71850B7D-D7CF-4D25-80BC-8705FB77C116}{param:LumenVerification|}
+UsePreviousLanguage=no
 AppName=Lumen
 AppVersion={#AppVersion}
 AppPublisher=Lumen

@@ -36,6 +36,8 @@ class Settings(QDialog):
         form.addRow(button('目录监控与媒体库体检…',window.library_tools))
         form.addRow(button('备份本地数据库…', self.backup))
         form.addRow(button('恢复数据库备份…', self.restore))
+        from .support_bundle import show_export
+        form.addRow(button('导出诊断包（先预览）…', lambda: show_export(window)))
         note = label('备份包含资料、评分、队列和历史，不包含视频、图片缓存及插件。\n完整迁移请同时备份数据目录及原视频目录。恢复前自动保留当前数据库副本。')
         note.setWordWrap(True)
         form.addRow(note)

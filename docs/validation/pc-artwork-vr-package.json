@@ -1,0 +1,43 @@
+{
+  "built_at": "2026-10-26T21:25:00.832813+08:00",
+  "version": "0.4.11",
+  "delivery": "local PC build with artwork features and VR scraper fix",
+  "source_head": "83bac53ef4d1ef922d6c9ef9e8153f96ab1fc97f",
+  "includes_uncommitted_changes": true,
+  "published_release": false,
+  "tests": {
+    "tests": 336,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "checks": {
+    "packaged_ui": true,
+    "bundled_mpv_and_shader": true,
+    "isolated_plugin_worker": true,
+    "portable_zip_crc": true,
+    "artwork_and_vr_fix_in_frozen_archive": true,
+    "installer_install_start_uninstall": true,
+    "existing_client_and_registration_unchanged": true
+  },
+  "artifacts": [
+    {
+      "path": "dist/installer/Lumen-Setup-x64.exe",
+      "bytes": 207685056,
+      "sha256": "45e4a170754f0375853649cfc97492837afd290b858c8b8c8a4271a79f3c585e"
+    },
+    {
+      "path": "dist/Lumen-windows-x64.zip",
+      "bytes": 303008167,
+      "sha256": "f54bcae8947e45b58153b8ab879e7c96de79fe0b3150e9d3b636353cfe01ae7a"
+    }
+  ],
+  "source_sha256": {
+    "src/lumen/artwork_ui.py": "69a64992b297cc587075af4afebda9bfb38afd76c6d71cf6048baf99fe92a57f",
+    "src/lumen/core.py": "f21b9f078f52fa32bba0425d50c43894b38c4905267ba88763f30f27b7696d77",
+    "src/lumen/plugins.py": "206d289740e06d446fc81c075a314430d79c81be02cea84819ffee46f2fde16b",
+    "src/lumen/ui.py": "c7dc535551b4f4c4b4a5d4d5400bfcf52a06f9216067dbd85e9a4bb2c9f0f4c7",
+    "src/lumen/home.py": "9fa4c2b5e4ece5ef43ce013c1ecfd69737d6ce8d13a62dd7f58db4e1a728c787",
+    "installer/Lumen.iss": "841fe6a311a16f38443c06e44ef1f8f1f714831e40252e71b458bb3046bf7e10"
+  }
+}

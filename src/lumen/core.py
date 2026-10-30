@@ -160,68 +160,12 @@ class Library(CatalogActions):
         (self.directory / 'cache').mkdir(exist_ok=True)
         self.db = sqlite3.connect(self.directory / 'library.sqlite', timeout=timeout)
         self.db.row_factory = sqlite3.Row
-        # Reapplying journal_mode and CREATE/INSERT on every connection can wait
-        # for an importer holding the write lock, even for an otherwise read-only
-        # screen. Current databases need no write transaction when reopened.
-        if self.db.execute('PRAGMA journal_mode').fetchone()[0].lower() != 'wal':
-            self.db.execute('PRAGMA journal_mode=WAL')
-        self.db.execute('PRAGMA foreign_keys=ON')
-        if not initialize:return
-        tables={row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        required={'works','files','import_cache','sources','name_keys','external_ids','sessions','activity','tasks','settings','lists','playback_preferences','bookmarks'}
-        if required <= tables and 'liked' in {row['name'] for row in self.db.execute('PRAGMA table_info(works)')} and self.setting('personal_unified_v1',False):
-            return
-        self.db.executescript('''
-        CREATE TABLE IF NOT EXISTS works (
-          id INTEGER PRIMARY KEY, identity TEXT UNIQUE NOT NULL, kind TEXT NOT NULL,
-          title TEXT NOT NULL, year INTEGER, metadata TEXT NOT NULL DEFAULT '{}',
-          rating INTEGER CHECK(rating BETWEEN 1 AND 10), favorite INTEGER NOT NULL DEFAULT 0,
-          watchlist INTEGER NOT NULL DEFAULT 0, disliked INTEGER NOT NULL DEFAULT 0,
-          locked TEXT NOT NULL DEFAULT '[]', added TEXT NOT NULL, discovered TEXT, thumbnail TEXT);
-        CREATE TABLE IF NOT EXISTS files (
-          id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id), path TEXT UNIQUE NOT NULL,
-          digest TEXT NOT NULL, root TEXT NOT NULL, season INTEGER, episode INTEGER,
-          duration REAL NOT NULL, position REAL NOT NULL DEFAULT 0, completed INTEGER NOT NULL DEFAULT 0);
-        CREATE INDEX IF NOT EXISTS files_work ON files(work_id);
-        CREATE INDEX IF NOT EXISTS files_digest ON files(digest);
-        CREATE INDEX IF NOT EXISTS works_kind ON works(kind,year);
-        CREATE TABLE IF NOT EXISTS import_cache (
-          file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
-          size INTEGER NOT NULL, modified INTEGER NOT NULL, quick TEXT NOT NULL,
-          full TEXT, sidecars TEXT NOT NULL DEFAULT '', pending INTEGER NOT NULL DEFAULT 0);
-        CREATE INDEX IF NOT EXISTS import_quick ON import_cache(quick,size);
-        CREATE TABLE IF NOT EXISTS sources (
-          work_id INTEGER REFERENCES works(id), plugin TEXT NOT NULL, site TEXT NOT NULL,
-          source_id TEXT NOT NULL, url TEXT NOT NULL, updated TEXT NOT NULL, site_added TEXT,
-          rating REAL, UNIQUE(plugin,source_id));
-        CREATE TABLE IF NOT EXISTS name_keys (key TEXT PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id));
-        CREATE TABLE IF NOT EXISTS external_ids (kind TEXT NOT NULL, namespace TEXT NOT NULL, value TEXT NOT NULL, work_id INTEGER NOT NULL REFERENCES works(id), UNIQUE(kind,namespace,value));
-        INSERT OR IGNORE INTO name_keys SELECT identity,id FROM works;
-        CREATE TABLE IF NOT EXISTS sessions (
-          id TEXT PRIMARY KEY, file_id INTEGER REFERENCES files(id), started TEXT NOT NULL,
-          ended TEXT, watched REAL NOT NULL DEFAULT 0);
-        CREATE TABLE IF NOT EXISTS activity (
-          session_id TEXT REFERENCES sessions(id), day TEXT NOT NULL, watched REAL NOT NULL,
-          PRIMARY KEY(session_id,day));
-        CREATE TABLE IF NOT EXISTS tasks (
-          id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL,
-          result TEXT NOT NULL DEFAULT '{}', error TEXT, updated TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS lists (name TEXT PRIMARY KEY, filters TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS playback_preferences (
-          file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE, value TEXT NOT NULL DEFAULT '{}');
-        CREATE TABLE IF NOT EXISTS bookmarks (
-          id TEXT PRIMARY KEY, file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-          position REAL NOT NULL, title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', image TEXT, created TEXT NOT NULL);
-        CREATE INDEX IF NOT EXISTS bookmarks_file ON bookmarks(file_id,position);
-        ''')
-        if 'liked' not in {row['name'] for row in self.db.execute('PRAGMA table_info(works)')}:
-            self.db.execute('ALTER TABLE works ADD COLUMN liked INTEGER NOT NULL DEFAULT 0 CHECK(liked IN (0,1))')
-        if not self.setting('personal_unified_v1',False):
-            with self.db:
-                self.db.execute('UPDATE works SET favorite=CASE WHEN disliked THEN 0 ELSE MAX(favorite,liked) END,liked=CASE WHEN disliked THEN 0 ELSE MAX(favorite,liked) END')
-                self.db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',('personal_unified_v1','true'))
-        self.db.commit()
+        from .migrations import initialize_database
+        try:
+            initialize_database(self.db, self.directory, initialize=initialize)
+        except BaseException:
+            self.db.close()
+            raise
 
     def close(self):
         self.db.close()
@@ -243,7 +187,7 @@ class Library(CatalogActions):
         item['liked'] = item['favorite']
         item['locked'] = json.loads(item['locked'])
         item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
-        if item['kind']=='fans':
+        if item['kind'] in {'fans','vr'}:
             from .series import natural_key
             item['files'].sort(key=lambda file:natural_key(file['path']))
         for file in item['files']:
@@ -270,11 +214,12 @@ class Library(CatalogActions):
         with self.db:
             self.db.execute('UPDATE works SET ' + ','.join(f'{key}=?' for key in fields) + ' WHERE id=?', (*fields.values(), work_id))
 
-    def merge_works(self, source_id, target_id, commit=True):
+    def merge_works(self, source_id, target_id, commit=True, *, allow_movie_vr=False):
         if source_id == target_id:
             return target_id
         source, target = self.work(source_id), self.work(target_id)
-        if source['kind'] != target['kind'] or source['kind'] == 'other':
+        cross_movie = source['kind'] != target['kind'] and {source['kind'],target['kind']} == {'movie','vr'}
+        if source['kind'] == 'other' or source['kind'] != target['kind'] and not (allow_movie_vr and cross_movie):
             raise ValueError('仅可合并相同类型的影视或 Fans 条目')
         merged = {**source['metadata'], **target['metadata']}
         if source['kind']=='fans':
@@ -296,8 +241,22 @@ class Library(CatalogActions):
                  (target if target['favorite'] or target['disliked'] else source)['disliked'],
                  (target if target['favorite'] or target['disliked'] else source)['favorite'],
                  min([d for d in [target['discovered'],source['discovered']] if d] or [None]),target['thumbnail'] or source['thumbnail'],target_id))
-            self.db.execute('UPDATE name_keys SET work_id=? WHERE work_id=?', (target_id,source_id))
-            self.db.execute('UPDATE external_ids SET work_id=? WHERE work_id=?', (target_id,source_id))
+            if cross_movie:
+                # A discovered movie may be attached to a local VR movie. Keep all
+                # identity indexes in the destination category, including refreshes.
+                external = self.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(source_id,)).fetchall()
+                for namespace,value in external:
+                    owner=self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?',(target['kind'],namespace,value)).fetchone()
+                    if owner and owner[0] not in {source_id,target_id}:
+                        raise ValueError('外部标识已关联另一部作品，请人工核对')
+                self.db.execute('DELETE FROM name_keys WHERE work_id=?',(source_id,))
+                for title in [source['title'],*source['metadata'].get('aliases',[])]:
+                    self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(identity(title,source['year'],target['kind']),target_id))
+                self.db.execute('DELETE FROM external_ids WHERE work_id=?',(source_id,))
+                self.db.executemany('INSERT OR IGNORE INTO external_ids VALUES (?,?,?,?)',[(target['kind'],namespace,value,target_id) for namespace,value in external])
+            else:
+                self.db.execute('UPDATE name_keys SET work_id=? WHERE work_id=?', (target_id,source_id))
+                self.db.execute('UPDATE external_ids SET work_id=? WHERE work_id=?', (target_id,source_id))
             self.db.execute('DELETE FROM works WHERE id=?', (source_id,))
             queue = self.setting('queue')
             if queue:
@@ -375,10 +334,13 @@ class Library(CatalogActions):
                 if time.monotonic() - last_scan >= .25:
                     report(0, 0, f'扫描文件夹，已找到 {len(paths)} 个视频', candidate, False)
                     last_scan = time.monotonic()
-            if kind == 'series':
+            if kind in {'series','vr'}:
                 from .series import SeriesPlan, natural_key
                 paths.sort(key=natural_key)
-                series_plan = SeriesPlan(self, paths, root, directory_cache, report, cancelled,partial=candidates is not None,fast=fast,signatures=signatures)
+                if kind == 'series':series_plan = SeriesPlan(self, paths, root, directory_cache, report, cancelled,partial=candidates is not None,fast=fast,signatures=signatures)
+                else:
+                    from .vr_folders import VRFolderPlan
+                    vr_plan = VRFolderPlan(self, paths, cancelled)
             else:
                 paths.sort()
             if fast:
@@ -392,6 +354,9 @@ class Library(CatalogActions):
                     stat = path.stat()
                     signature = nfo.sidecar_signature(path, root, kind, directory_cache, signatures) if fast else ''
                     existing_file = self.db.execute('SELECT id,work_id FROM files WHERE path=?',(str(path),)).fetchone()
+                    if kind == 'vr':
+                        group = vr_plan.group(path)
+                        existing_file = vr_plan.reconcile(self,path,existing_file,results['warnings'])
                     if kind == 'series':
                         group = series_plan.group(path)
                         if existing_file and series_plan.existing[path]['kind'] == 'series':
@@ -443,6 +408,8 @@ class Library(CatalogActions):
                         report(index, len(paths), '分析媒体', path)
                         duration = probe(path, cancelled=cancelled) if cancelled else probe(path)
                     parsed = parse_name(path, kind)
+                    if kind == 'vr':
+                        parsed.update(title=group['folder'].name)
                     if kind == 'series':
                         group = series_plan.group(path)
                         year = re.search(r'(?<!\d)(19\d{2}|20\d{2})(?!\d)', group['folder'].name)
@@ -450,7 +417,7 @@ class Library(CatalogActions):
                                       season=series_plan.numbers[path][0], episode=series_plan.numbers[path][1])
                     if local['work']:
                         parsed.update({k:v for k,v in local['work']['metadata'].items() if k in {'title','year'}})
-                    key = group['key'] if kind == 'series' else identity(parsed['title'], parsed['year'], kind) if kind != 'other' else 'file:' + digest
+                    key = group['key'] if kind in {'series','vr'} else identity(parsed['title'], parsed['year'], kind) if kind != 'other' else 'file:' + digest
                     cover = self.directory / 'cache' / (digest + '.jpg')
                     try:
                         if not fast and not cover.exists():
@@ -462,13 +429,15 @@ class Library(CatalogActions):
                         results['warnings'].append({'path': str(path), 'reason': '缩略图: ' + str(exc)})
                     with self.db:
                         known = self.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
-                        if kind == 'series' and not known and group['known'] is not None: known = (group['known'],)
+                        if kind in {'series','vr'} and not known and group['known'] is not None: known = (group['known'],)
                         linked = set()
                         for namespace,value in (local['work'] or {}).get('metadata',{}).get('external_ids',{}).items():
                             row = self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?',(kind,namespace,value)).fetchone()
                             if row: linked.add(row[0])
                         if len(linked)>1 or linked and known and known[0] not in linked:
                             raise ValueError('NFO 外部标识与已有作品冲突，请人工核对')
+                        if kind == 'vr' and linked and not known:
+                            raise ValueError('NFO 外部标识已关联其他目录，请人工核对后合并')
                         if linked: known = (next(iter(linked)),)
 
                         if known:
@@ -478,9 +447,9 @@ class Library(CatalogActions):
                                             (key, kind, parsed['title'], parsed['year'], now(), str(cover) if cover.exists() else None))
                             work_id = self.db.execute('SELECT id FROM works WHERE identity=?', (key,)).fetchone()[0]
                             self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (key,work_id))
-                        if kind == 'series':
+                        if kind in {'series','vr'}:
                             self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (key,work_id))
-                            self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (identity(parsed['title'],parsed['year'],kind),work_id))
+                            if kind == 'series':self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (identity(parsed['title'],parsed['year'],kind),work_id))
                             group['known'] = work_id
                         if cover.exists():
                             self.db.execute('UPDATE works SET thumbnail=COALESCE(thumbnail,?) WHERE id=?', (str(cover),work_id))
@@ -643,7 +612,7 @@ class Library(CatalogActions):
             item['liked'] = item['favorite']
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
-            if item['kind']=='fans':
+            if item['kind'] in {'fans','vr'}:
                 from .series import natural_key
                 item['files'].sort(key=lambda file:natural_key(file['path']))
             for file in item['files']:
@@ -751,7 +720,7 @@ class Library(CatalogActions):
             if len(ratings) < minimum:
                 continue
             a.update(count=len(a['_works']), rated=len(ratings), average=sum(ratings) / len(ratings) if ratings else None,
-                     work_ids=list(a['_works']))
+                     work_ids=list(a['_works']), portrait_names=sorted(a['_names']))
             del a['_names'], a['_works']
             result.append(a)
         return sorted(result, key=lambda a: a['name'].casefold() if order == 'name' else -(a.get(order) if a.get(order) is not None else -1))

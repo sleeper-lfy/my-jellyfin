@@ -39,6 +39,330 @@ def candidate():
             'url': 'https://www.tvmaze.com/people/9/person', 'photo': 'https://static.tvmaze.com/person.jpg'}
 
 
+JAVBUS_SEARCH = '''<html><body>
+<div class="item"><a class="movie-box" href="/star/abc123"><div class="photo-frame">
+<img src="/pics/actress/abc123_a.jpg" title="Sample Performer"></div>
+<div class="photo-info"><span>Sample Performer</span></div></a></div>
+<div class="item"><a class="movie-box" href="https://www.javbus.com/star/def456">
+<img src="https://www.javbus.com/pics/actress/def456_a.jpg" alt="Second Performer"></a></div>
+<a href="/star/abc123"><img src="/pics/actress/abc123_a.jpg" alt="Duplicate"></a>
+</body></html>'''
+
+JAVBUS_TEXT_ONLY = '''<html><body>
+<a href="/star/ghi789">Third Performer</a>
+</body></html>'''
+
+JAVBUS_STAR = '''<html><body>
+<div class="avatar-box"><img src="/pics/actress/ghi789_a.jpg" title="Third Performer"></div>
+</body></html>'''
+
+JAVBUS_REDIRECTED_STAR = '''<html><head>
+<link rel="canonical" href="https://www.javbus.com/star/xyz789">
+<title>Sample Performer - JavBus</title></head><body>
+<div class="avatar-box"><img src="/pics/actress/xyz789_a.jpg" title="Sample Performer"></div>
+</body></html>'''
+
+JAVDB_SEARCH = '''<html><body>
+<div id="actors" class="actors">
+  <div class="box actor-box">
+    <a href="/actors/G9P5" title="麻里梨夏, 涼野しずく, 成海うるみ">
+      <figure class="image"><img class="avatar" src="https://c0.jdbstatic.com/avatars/g9/G9P5.jpg" /></figure>
+      <strong>麻里梨夏</strong>
+    </a>
+  </div>
+  <div class="box actor-box">
+    <a href="/actors/g0qVA" title="麻里梨夏">
+      <figure class="image"><img class="avatar" src="https://c0.jdbstatic.com/images/actor_unknow.jpg" /></figure>
+      <strong>麻里梨夏</strong>
+    </a>
+  </div>
+</div>
+</body></html>'''
+
+
+def test_javbus_actor_parses_redirected_single_star_page(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    monkeypatch.setattr(manager, 'fetch', lambda *args, **kwargs: (JAVBUS_REDIRECTED_STAR.encode('utf-8'), 'text/html'))
+    rows = manager.run('javbus-actors', 'actors', query='Sample Performer')
+    assert len(rows) == 1
+    assert rows[0]['id'] == 'javbus:xyz789'
+    assert rows[0]['name'] == 'Sample Performer'
+    assert rows[0]['url'] == 'https://www.javbus.com/star/xyz789'
+    assert rows[0]['photo'] == 'https://www.javbus.com/pics/actress/xyz789_a.jpg'
+
+
+def test_javbus_actor_search_parses_portraits_and_ignores_duplicates(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    calls = []
+
+    def fetch(plugin, url, image=False):
+        calls.append(url)
+        return JAVBUS_SEARCH.encode('utf-8'), 'text/html'
+
+    monkeypatch.setattr(manager, 'fetch', fetch)
+    rows = manager.run('javbus-actors', 'actors', query='Sample Performer')
+    assert len(calls) == 1
+    assert urlsplit(calls[0]).path == '/searchstar/Sample%20Performer'
+    assert [row['id'] for row in rows] == ['javbus:abc123', 'javbus:def456']
+    assert rows[0]['name'] == 'Sample Performer'
+    assert rows[0]['gender'] == 'female'
+    assert rows[0]['url'] == 'https://www.javbus.com/star/abc123'
+    assert rows[0]['photo'] == 'https://www.javbus.com/pics/actress/abc123_a.jpg'
+    assert rows[0]['photo_page'] == rows[0]['url']
+    assert 'title' not in rows[0]
+    assert library.db.execute('SELECT COUNT(*) FROM works').fetchone()[0] == 0
+
+
+def test_javbus_actor_follows_star_page_when_search_has_no_portrait(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    calls = []
+
+    def fetch(plugin, url, image=False):
+        calls.append(url)
+        if '/searchstar/' in url:
+            return JAVBUS_TEXT_ONLY.encode('utf-8'), 'text/html'
+        return JAVBUS_STAR.encode('utf-8'), 'text/html'
+
+    monkeypatch.setattr(manager, 'fetch', fetch)
+    rows = manager.run('javbus-actors', 'actors', query='Third')
+    assert calls == ['https://www.javbus.com/searchstar/Third', 'https://www.javbus.com/star/ghi789']
+    assert len(rows) == 1 and rows[0]['id'] == 'javbus:ghi789'
+    assert rows[0]['name'] == 'Third Performer'
+    assert rows[0]['photo'] == 'https://www.javbus.com/pics/actress/ghi789_a.jpg'
+
+
+def test_javbus_actor_does_not_fabricate_without_results(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    monkeypatch.setattr(manager, 'fetch', lambda *args, **kwargs: ('<div>not found</div>'.encode('utf-8'), 'text/html'))
+    assert manager.run('javbus-actors', 'actors', query='Nobody') == []
+
+
+def test_javbus_actor_reports_browser_verification_page(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    page = ('<html><head><title>Verification</title></head><body>'
+            '<script>location="/doc/driver-verify?referer=x"</script></body></html>')
+    calls = []
+
+    def fetch(plugin, url, image=False):
+        calls.append(url)
+        return page.encode('utf-8'), 'text/html'
+
+    monkeypatch.setattr(manager, 'fetch', fetch)
+    with pytest.raises(RuntimeError, match='浏览器验证'):
+        manager.run('javbus-actors', 'actors', query='Sample')
+    assert calls[1].startswith('https://r.jina.ai/https://www.javbus.com/searchstar/')
+
+
+READER_SEARCH = '''Title: Search Result
+URL Source: https://www.javbus.com/searchstar/Sample
+
+Markdown Content:
+
+[Sample Performer](https://www.javbus.com/star/abc123)
+
+![Sample Performer](https://www.javbus.com/pics/actress/abc123_a.jpg)
+
+[Second Performer](https://www.javbus.com/star/def456)
+
+![Second Performer](https://www.javbus.com/pics/actress/def456_a.jpg)
+'''
+
+READER_LINKS_ONLY = '''Title: Search Result
+URL Source: https://www.javbus.com/searchstar/Sample
+
+Markdown Content:
+
+[Third Performer](https://www.javbus.com/star/ghi789)
+'''
+
+READER_STAR = '''Title: Third Performer
+URL Source: https://www.javbus.com/star/ghi789
+
+Markdown Content:
+
+![Third Performer](https://www.javbus.com/pics/actress/ghi789_a.jpg)
+'''
+
+
+def test_javbus_actor_reader_fallback_pairs_images_with_links(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    calls = []
+
+    def fetch_verify(plugin, url, image=False):
+        calls.append(url)
+        if '/searchstar/' in url and 'r.jina.ai' not in url:
+            return ('<div>driver-verify</div>'.encode('utf-8'), 'text/html')
+        return READER_SEARCH.encode('utf-8'), 'text/plain'
+
+    monkeypatch.setattr(manager, 'fetch', fetch_verify)
+    rows = manager.run('javbus-actors', 'actors', query='Sample')
+    assert calls[0].startswith('https://www.javbus.com/searchstar/')
+    assert calls[1].startswith('https://r.jina.ai/https://www.javbus.com/searchstar/')
+    assert [row['id'] for row in rows] == ['javbus:abc123', 'javbus:def456']
+    assert rows[0]['photo'] == 'https://www.javbus.com/pics/actress/abc123_a.jpg'
+    assert rows[0]['name'] == 'Sample Performer'
+
+
+def test_javbus_actor_reader_follows_star_page_for_portrait(library, monkeypatch):
+    manager = provider(library, 'javbus-actors')
+    calls = []
+
+    def fetch(plugin, url, image=False):
+        calls.append(url)
+        if 'r.jina.ai' not in url:
+            return ('<html>driver-verify</html>'.encode('utf-8'), 'text/html')
+        if '/searchstar/' in url:
+            return READER_LINKS_ONLY.encode('utf-8'), 'text/plain'
+        return READER_STAR.encode('utf-8'), 'text/plain'
+
+    monkeypatch.setattr(manager, 'fetch', fetch)
+    rows = manager.run('javbus-actors', 'actors', query='Third')
+    assert len(calls) == 3
+    assert calls[1] == 'https://r.jina.ai/https://www.javbus.com/searchstar/Third'
+    assert calls[2] == 'https://r.jina.ai/https://www.javbus.com/star/ghi789'
+    assert len(rows) == 1 and rows[0]['id'] == 'javbus:ghi789'
+    assert rows[0]['name'] == 'Third Performer'
+    assert rows[0]['photo'] == 'https://www.javbus.com/pics/actress/ghi789_a.jpg'
+
+
+def test_javbus_actor_manifest_declares_only_actor_capability(library):
+    manager = Plugins(library)
+    manifest = manager.install(Path(__file__).parents[1] / 'plugins' / 'javbus-actors')
+    assert manifest['capabilities'] == ['actors']
+    assert set(manifest['domains']) == {'www.javbus.com', 'javbus.com', 'r.jina.ai'}
+
+
+def test_javbus_actor_is_an_allowed_builtin_actor_source(library):
+    manager = Plugins(library)
+    manager.update_builtin_actor_plugin('javbus-actors')
+    item = manager.installed()[0]
+    assert item['id'] == 'javbus-actors'
+    assert not item['config']['enabled']
+
+
+def test_javdb_actor_search_parses_aliases_and_placeholder(library, monkeypatch):
+    manager = provider(library, 'javdb-actors')
+    calls = []
+
+    def fetch(plugin, url, image=False):
+        calls.append(url)
+        return JAVDB_SEARCH.encode('utf-8'), 'text/html; charset=utf-8'
+
+    monkeypatch.setattr(manager, 'fetch', fetch)
+    rows = manager.run('javdb-actors', 'actors', query='麻里梨夏')
+    query = parse_qs(urlsplit(calls[0]).query)
+    assert urlsplit(calls[0]).path == '/search' and query['f'] == ['actor'] and query['q'] == ['麻里梨夏']
+    assert len(rows) == 2
+    first = rows[0]
+    assert first['id'] == 'javdb:G9P5'
+    assert first['name'] == '麻里梨夏'
+    assert first['gender'] == 'unknown'
+    assert first['aliases'] == ['涼野しずく', '成海うるみ']
+    assert first['url'] == 'https://javdb.com/actors/G9P5'
+    assert first['photo'] == 'https://c0.jdbstatic.com/avatars/g9/G9P5.jpg'
+    assert first['photo_page'] == first['url']
+    assert 'title' not in first
+    assert rows[1]['id'] == 'javdb:g0qVA' and not rows[1].get('photo')
+    assert library.db.execute('SELECT COUNT(*) FROM works').fetchone()[0] == 0
+
+
+def test_javdb_actor_search_reports_cloudflare_challenge(library, monkeypatch):
+    manager = provider(library, 'javdb-actors')
+    page = '<html><head><title>Just a moment...</title></head><body>__cf_chl</body></html>'
+    monkeypatch.setattr(manager, 'fetch', lambda *args, **kwargs: (page.encode('utf-8'), 'text/html'))
+    with pytest.raises(RuntimeError, match='Cloudflare'):
+        manager.run('javdb-actors', 'actors', query='Sample')
+
+
+def test_javdb_actor_search_returns_empty_without_actor_cards(library, monkeypatch):
+    manager = provider(library, 'javdb-actors')
+    monkeypatch.setattr(manager, 'fetch', lambda *args, **kwargs: ('<div class="empty">no result</div>'.encode('utf-8'), 'text/html'))
+    assert manager.run('javdb-actors', 'actors', query='Nobody') == []
+
+
+def test_javdb_actor_manifest_and_builtin_allowlist(library):
+    manager = Plugins(library)
+    manifest = manager.install(Path(__file__).parents[1] / 'plugins' / 'javdb-actors')
+    assert manifest['capabilities'] == ['actors']
+    assert set(manifest['domains']) == {'javdb.com', 'c0.jdbstatic.com'}
+    manager.update_builtin_actor_plugin('javdb-actors')
+    item = manager.installed()[0]
+    assert item['id'] == 'javdb-actors' and not item['config']['enabled']
+
+
+JAVRATE_SEARCH = '''Title: 女優A片在綫免費播放 | Javrate
+URL Source: https://www.javrate.com/actor/list/%E9%BA%BB%E9%87%8C%E6%A2%A8%E5%A4%8F
+
+Markdown Content:
+# 全部AV女優 名字包含 『麻里梨夏』的
+
+共找到AV女優1人
+
+[![Image 14: 麻里梨夏](https://picture.avking.xyz/compressed/20230522/fb513b24-1f08-4802-aa05-c7d5baa66304_s.webp) ### 麻里梨夏 7部AV 33 歲 148 cm 85-56-84 | D 罩杯 美人](https://www.javrate.com/actor/detail/3b580139-90be-4514-8cc9-24ecaaf6b356.html "麻里梨夏")
+
+查找:
+
+## 本月出道女優
+
+[![Image 15: 喜多美愛梨 封面](https://picture.avking.xyz/compressed/20261022/cc9016a8-54b3-435d-9f4d-2d17428b4fe6_thumbnail.webp) ### 喜多美愛梨 43 歲](https://www.javrate.com/actor/detail/a1cad6bf-910c-4716-a9db-3b543fe3f406.html "喜多美愛梨")
+'''
+
+
+def test_javrate_actor_search_upgrades_portrait_and_ignores_sidebar(library, monkeypatch):
+    manager = provider(library, 'javrate-actors')
+    calls = []
+
+    def fetch(plugin, url, image=False):
+        calls.append(url)
+        return JAVRATE_SEARCH.encode('utf-8'), 'text/plain; charset=utf-8'
+
+    monkeypatch.setattr(manager, 'fetch', fetch)
+    rows = manager.run('javrate-actors', 'actors', query='麻里梨夏')
+    assert calls == ['https://r.jina.ai/https://www.javrate.com/actor/list/%E9%BA%BB%E9%87%8C%E6%A2%A8%E5%A4%8F']
+    assert len(rows) == 1
+    row = rows[0]
+    assert row['id'] == 'javrate:3b580139-90be-4514-8cc9-24ecaaf6b356'
+    assert row['name'] == '麻里梨夏'
+    assert row['gender'] == 'female'
+    assert row['aliases'] == []
+    assert row['photo'] == 'https://picture.avking.xyz/compressed/20230522/fb513b24-1f08-4802-aa05-c7d5baa66304_l.webp'
+    assert row['url'] == 'https://www.javrate.com/actor/detail/3b580139-90be-4514-8cc9-24ecaaf6b356.html'
+    assert row['photo_page'] == row['url']
+    assert library.db.execute('SELECT COUNT(*) FROM works').fetchone()[0] == 0
+
+
+def test_javrate_build_request_supports_direct_base(library):
+    manager = provider(library, 'javrate-actors')
+    request = manager.javascript('javrate-actors', 'buildRequest', {
+        'operation': 'actors', 'config': {'base_url': 'https://www.javrate.com'}, 'query': 'Sample Name'})
+    assert request['url'] == 'https://www.javrate.com/actor/list/sample%20name'
+
+
+def test_javrate_actor_returns_empty_for_zero_results(library, monkeypatch):
+    manager = provider(library, 'javrate-actors')
+    page = '# 全部AV女優 名字包含 『Nobody』的\n共找到AV女優0人\n查找:\n'
+    monkeypatch.setattr(manager, 'fetch', lambda *args, **kwargs: (page.encode('utf-8'), 'text/plain'))
+    assert manager.run('javrate-actors', 'actors', query='Nobody') == []
+
+
+def test_javrate_reader_failure_is_reported(library, monkeypatch):
+    manager = provider(library, 'javrate-actors')
+    page = 'Title: Just a moment...\nMarkdown Content:\nCloudflare 403 Forbidden'
+    monkeypatch.setattr(manager, 'fetch', lambda *args, **kwargs: (page.encode('utf-8'), 'text/plain'))
+    with pytest.raises(RuntimeError, match='JavRate'):
+        manager.run('javrate-actors', 'actors', query='Sample')
+
+
+def test_javrate_actor_manifest_and_builtin_allowlist(library):
+    manager = Plugins(library)
+    manifest = manager.install(Path(__file__).parents[1] / 'plugins' / 'javrate-actors')
+    assert manifest['capabilities'] == ['actors']
+    assert set(manifest['domains']) == {'r.jina.ai', 'www.javrate.com', 'picture.avking.xyz'}
+    manager.update_builtin_actor_plugin('javrate-actors')
+    item = manager.installed()[0]
+    assert item['id'] == 'javrate-actors' and not item['config']['enabled']
+
+
 def test_tvmaze_people_search_has_independent_schema(library, monkeypatch):
     manager = provider(library)
     response = [{'person': {'id': 9, 'name': 'Sample Actor', 'gender': 'Female', 'url': 'https://www.tvmaze.com/people/9/person',
