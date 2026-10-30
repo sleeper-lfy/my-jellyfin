@@ -150,3 +150,7 @@ Android 0.4.1 改善全屏浮层控制，按视频显示比例自动横竖屏；
 数据库升级保护和诊断包见 [数据安全说明](docs/data-safety.md)；安装包自动验收和人工发布门槛见 [发布验收](docs/release-acceptance.md)。
 
 PC 支持按插件批量获取演员头像，以及将本地图片拖到演员卡片替换头像，详见 [演员头像](docs/actor-portraits.md)。
+
+PC / Android 实时视频美颜支持本地 GPU 磨皮和肤色提亮，默认关闭，详见 [使用说明](docs/video-beauty.md)。0.4.12 首次以测试预发布提供，设备验收范围和手机签名变化见 [版本说明](docs/releases/0.4.12.md)。
+
+[下载 0.4.12 测试预发布（Windows + Android）](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1)。稳定最新版仍为 0.4.11。

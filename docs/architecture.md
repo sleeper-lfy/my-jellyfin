@@ -11,6 +11,7 @@
 | `plugins.py` | 插件安装配置、权限校验、宿主 HTTP/代理、受限多请求编排、来源合并和缓存 |
 | `js_worker.py` | 独立进程 QJSEngine，无 Python/文件系统/网络桥接，父进程超时终止 |
 | `player.py` / `subtitles.py` | libmpv / Qt 兼容播放、倍速、恢复、音轨、内嵌字幕与外挂字幕、真实时间采样、剧内连播 |
+| `beauty.py` / `shaders/beauty-core.glsl` | 校验逐视频美颜设置、生成 libmpv 着色器，与 Android OES 通道共享肤色估计和双边平滑核心 |
 | `ui.py` / `home.py` / `settings.py` / `theme.py` | 页面、海报绘制、详情、设置、线程任务和统一视觉规范 |
 | `catalog.py` / `catalog_ui.py` | 媒体库排序、观看状态、批量操作、队列编辑、校验后目录重定位、移出条目与全屏剧照 |
 | `browse.py` / `actor_ui.py` | 后台页面快照、推荐与发现入口、演员头像候选确认和更新 |

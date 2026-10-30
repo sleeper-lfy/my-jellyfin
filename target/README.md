@@ -1,5 +1,7 @@
 # 可下载安装包 · Lumen 0.4.11
 
+**0.4.12 实时美颜测试预发布已单独提供 [Windows EXE / Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1)**，附校验和及验证报告。此目录保留下面的 0.4.11 稳定版备份，不要将旧分片误认为美颜版本。测试 APK 签名已变更，安装方式见 [0.4.12 说明](../docs/releases/0.4.12.md)。
+
 [v0.4.11 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.11) 已发布，两个安装包均已通过公开下载重新校验。[更新说明](../docs/releases/0.4.11.md)。
 
 - [Windows 完整 EXE](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.11/Lumen-Setup-x64.exe)：Windows 10/11 x64。
