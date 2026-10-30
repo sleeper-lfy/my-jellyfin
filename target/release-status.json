@@ -1,10 +1,23 @@
 {
   "tag": "v0.4.12-preview.1",
   "source_commit": "f7e054988d3def0199ac2bcfc1141214165e01e4",
-  "workflow_commit": "f7e054988d3def0199ac2bcfc1141214165e01e4",
-  "windows": "failure",
-  "publish": "skipped",
-  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41101180894",
   "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1",
-  "diagnostics": ""
+  "kind": "test-prerelease",
+  "windows": "success",
+  "android": "success",
+  "publish": "success",
+  "manual_acceptance": "unverified",
+  "verified_at": "2026-10-30T17:47:18.392498+00:00",
+  "evidence": "docs/validation/beauty-preview.json",
+  "automatic_stable_tag_workflow": {
+    "tag": "v0.4.12-preview.1",
+    "source_commit": "f7e054988d3def0199ac2bcfc1141214165e01e4",
+    "workflow_commit": "f7e054988d3def0199ac2bcfc1141214165e01e4",
+    "windows": "failure",
+    "publish": "skipped",
+    "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41101180894",
+    "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1",
+    "diagnostics": ""
+  },
+  "note": "Published prebuilt, verified test assets; target binary backups remain stable 0.4.11."
 }

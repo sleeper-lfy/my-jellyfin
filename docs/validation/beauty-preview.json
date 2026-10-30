@@ -93,6 +93,6 @@
   },
   "duplicate_stable_tag_workflow": {
     "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41101180894",
-    "status": "force-cancellation requested; not used for published assets"
+    "status": "automatic workflow recorded Windows failure and skipped publication; manually verified prerelease assets unaffected"
   }
 }
