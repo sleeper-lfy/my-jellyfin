@@ -10,15 +10,16 @@ TAG = 'v0.4.12-preview.2'
 NAME = 'Lumen 0.4.12 测试预发布 2（Windows + Android）'
 PRERELEASE = True
 TARGET = 'main'
-ASSETS = ['Lumen-Setup-x64.exe.part001', 'Lumen-Setup-x64.exe.part002', 'Lumen-Setup-x64.exe.part003',
-          'Lumen-Setup-x64.exe.sha256', 'Lumen-android-debug.apk', 'Lumen-android-debug.apk.sha256']
+ASSETS = ['Lumen-Setup-x64.exe', 'Lumen-Setup-x64.exe.sha256', 'Lumen-android-debug.apk', 'Lumen-android-debug.apk.sha256']
 
 BODY = '''测试预发布，面向愿意试用的用户；真机音频、DPI、旧版升级与真实插件站点仍未验证，完成验收后会在 GitHub 发布正式版并同步本站。
 
 相对 v0.4.12-preview.1 的变化：
 
 - 更新检测与安装包下载切换到 Gitee Releases，PC 支持分卷安装包下载后合并校验，不再依赖 GitHub
-- Windows 安装包不再捆绑 FFmpeg（192MB → 137MB）：启动时引导使用本机 FFmpeg（配置目录 / PATH），或联网自动下载一次（SHA-256 锁定的 gyan.dev essentials 9.0.2）
+- Windows 安装包不再捆绑 FFmpeg：启动时引导使用本机 FFmpeg（配置目录 / PATH），或联网自动下载一次（SHA-256 锁定的 gyan.dev essentials 9.0.2）
+- 安装包移除内嵌 WebEngine（Chromium）等未使用的 Qt 模块（192MB → 84MB），功能不受影响
+- APK 仅保留 ARM 架构（96MB → 47MB）；x86 架构仅模拟器使用
 - 右键菜单新增“删除本地文件”：列出清单、确认后删除视频及同名字幕 / NFO / 图片并移出媒体库；文件离线或播放中时中止
 - 批量拖入文件夹可统一选择刮削器与整理目标目录，自动匹配默认采用搜索到的第一个结果（优先精确匹配）
 - 播放控制栏新增“增强 / 美颜”一级开关（PC），Android 播放栏新增“美颜”按钮
@@ -28,8 +29,8 @@ BODY = '''测试预发布，面向愿意试用的用户；真机音频、DPI、�
 
 SHA-256：
 
-- Lumen-Setup-x64.exe：8c130241226697946fb3b2197a2fb5c38c9582dfb8a43e82ffddb82e63e4add1（分卷 part001–003，合并后校验）
-- Lumen-android-debug.apk：36971ce42221c217a7900e64c2c35bfbe5bfc8f2781e543c5138a85e6d342ecd'''
+- Lumen-Setup-x64.exe：f8844300d97b133a7270b769c5774d67cc56a7f13474f58bc0d56807a65fe197（单文件 84MB，无需合并分卷）
+- Lumen-android-debug.apk：9ffbe62a6efa835a8bf4c36067e80fd578ceac7b1f1301744281bf9144dd4e10'''
 
 
 def token():
