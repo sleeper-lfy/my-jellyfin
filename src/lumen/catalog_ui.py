@@ -2,7 +2,7 @@
 from pathlib import Path
 from PySide6.QtCore import Qt,QObject,Signal,QRunnable,QThreadPool,QSize
 from PySide6.QtGui import QImage,QPixmap,QShortcut,QKeySequence
-from PySide6.QtWidgets import (QApplication,QLabel,QDialog,QVBoxLayout,QHBoxLayout,QPushButton,QListWidget,QListWidgetItem,QComboBox,QAbstractItemView,QMessageBox,QInputDialog,QFileDialog,QGraphicsView,QGraphicsScene)
+from PySide6.QtWidgets import (QApplication,QLabel,QDialog,QVBoxLayout,QHBoxLayout,QPushButton,QListWidget,QListWidgetItem,QComboBox,QAbstractItemView,QMessageBox,QInputDialog,QGraphicsView,QGraphicsScene)
 
 
 def queue_editor(window):
@@ -53,10 +53,11 @@ def batch_menu(window):
 
 
 def relocate(window):
-    old=QFileDialog.getExistingDirectory(window,'选择原目录（已离线可取消后输入路径）')
+    from .dialogs import existing_directory
+    old=existing_directory(window,'选择原目录（已离线可取消后输入路径）')
     if not old:old,ok=QInputDialog.getText(window,'原目录','输入媒体库记录中的原目录路径');
     if not old:return
-    new=QFileDialog.getExistingDirectory(window,'选择新媒体目录')
+    new=existing_directory(window,'选择新媒体目录')
     if not new:return
     window.run_job('校验并重定位媒体',lambda lib,progress:lib.relocate_root(old,new,progress))
 

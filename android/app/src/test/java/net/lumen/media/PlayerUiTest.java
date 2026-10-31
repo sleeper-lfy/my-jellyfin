@@ -18,7 +18,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowAlertDialog;
 import org.robolectric.android.controller.ActivityController;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -126,6 +128,63 @@ public class PlayerUiTest {
                 controller.active(false);assertFalse(controller.key(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT)));
                 assertFalse(session.isActive());
             }finally{controller.release();activity.getSharedPreferences("controller_bindings",0).edit().clear().apply();}
+        }
+    }
+
+    @Test public void beautyControlIsFirstLevelAndOpensBeautySettings()throws Exception{
+        try(ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            PlayerActivity activity=lifecycle.get();
+            call(activity,"buildPlayerUi",android.content.SharedPreferences.class,activity.getSharedPreferences("playback",0));
+            Button beauty=(Button)field(activity,"beautyControl");
+            LinearLayout playback=(LinearLayout)beauty.getParent();
+            assertEquals("美颜",beauty.getText().toString());
+            int full=-1;
+            for(int i=0;i<playback.getChildCount();i++){Button child=(Button)playback.getChildAt(i);if("全屏".equals(child.getText().toString()))full=i;}
+            assertTrue("美颜按钮应位于一级播放栏且在全屏之前",full>=0&&playback.indexOfChild(beauty)<full);
+            java.lang.reflect.Field settings=PlayerActivity.class.getDeclaredField("beauty");
+            settings.setAccessible(true);
+            settings.set(activity,new BeautySettings(new org.json.JSONObject().put("enabled",true)));
+            java.lang.reflect.Method refresh=PlayerActivity.class.getDeclaredMethod("refreshBeauty");
+            refresh.setAccessible(true);refresh.invoke(activity);
+            assertEquals("美颜",beauty.getText().toString());
+            assertEquals(0xFF00A4DC,beauty.getTextColors().getDefaultColor());
+            assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
+            java.lang.reflect.Field file=PlayerActivity.class.getDeclaredField("file");
+            file.setAccessible(true);file.set(activity,new org.json.JSONObject().put("id",1L));
+            beauty.performClick();
+            AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("实时美颜",shadowOf(dialog).getTitle());
+            dialog.dismiss();
+        }
+    }
+
+    @Test @Config(sdk={26,35}) public void densePlayerRowsKeepEveryButtonInsideItsShare()throws Exception{
+        try(ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            PlayerActivity activity=lifecycle.get();
+            call(activity,"buildPlayerUi",android.content.SharedPreferences.class,activity.getSharedPreferences("playback",0));
+            FrameLayout root=(FrameLayout)field(activity,"root");
+            for(int[] size:new int[][]{{360,800},{320,640}}){
+                int width=Math.round(size[0]*activity.getResources().getDisplayMetrics().density);
+                int height=Math.round(size[1]*activity.getResources().getDisplayMetrics().density);
+                for(int pass=0;pass<3;pass++){
+                    root.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
+                    root.layout(0,0,width,height);
+                }
+                Button beauty=(Button)field(activity,"beautyControl");
+                assertRowFitsShare((LinearLayout)beauty.getParent());
+                Button favorite=(Button)field(activity,"personalFavorite");
+                assertRowFitsShare((LinearLayout)favorite.getParent());
+            }
+        }
+    }
+
+    private void assertRowFitsShare(LinearLayout row){
+        assertNotNull(row);
+        int share=(row.getWidth()-row.getPaddingLeft()-row.getPaddingRight())/row.getChildCount();
+        for(int i=0;i<row.getChildCount();i++){
+            View child=row.getChildAt(i);
+            assertEquals("主题按钮默认 88dp 最小宽度会把密集行撑变形",0,child.getMinimumWidth());
+            assertTrue("按钮超出均分宽度会挤压整行",child.getMeasuredWidth()<=share+1);
         }
     }
 }

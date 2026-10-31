@@ -74,3 +74,25 @@ def test_independent_legacy_preferences_merge_once_and_backup_stays_unchanged(tm
     lib.update_personal(positive,favorite=False);lib.close();lib=Library(folder);assert lib.work(positive)['favorite']==0
     restore_database(lib,backup);assert lib.work(positive)['favorite']==1 and lib.work(positive)['rating']==8
     original=sqlite3.connect(backup);assert original.execute('SELECT favorite,liked FROM works WHERE id=?',(positive,)).fetchone()==(0,1);original.close();lib.close()
+
+
+def test_picture_toggles_are_first_level_and_stay_in_sync(qapp,library):
+    player=Player(library)
+    try:
+        row=player.control_row
+        widgets=[row.itemAt(i).widget() for i in range(row.count()) if row.itemAt(i).widget()]
+        labels=[w.text() for w in widgets if hasattr(w,'text')]
+        assert {'增强','美颜'} <= set(labels)
+        assert labels.index('增强') < labels.index('⚙') and labels.index('美颜') < labels.index('⚙')
+        assert player.enhance_control.isEnabled() == player.mpv_backend == player.beauty_control.isEnabled()
+        if player.mpv_backend:
+            player.enhance_control.setChecked(True)
+            assert player.enhance.isChecked() and library.setting('player_enhance') is True
+            player.enhance.setChecked(False)
+            assert not player.enhance_control.isChecked()
+            player.beauty_control.setChecked(True)
+            assert player.beauty_enabled.isChecked()
+            player.beauty_enabled.setChecked(False)
+            assert not player.beauty_control.isChecked()
+    finally:
+        player.close()

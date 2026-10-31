@@ -87,8 +87,9 @@ def export_report(report, destination):
 
 
 def show_export(window):
-    from PySide6.QtWidgets import QDialog, QVBoxLayout, QPlainTextEdit, QFileDialog, QMessageBox
+    from PySide6.QtWidgets import QDialog, QVBoxLayout, QPlainTextEdit, QMessageBox
     from .background import run_background
+    from .dialogs import save_file_name
     from .ui import button
     directory = window.library.directory
     backend = 'libmpv' if window.player.mpv_backend else 'Qt Multimedia'
@@ -103,7 +104,7 @@ def show_export(window):
         layout.addWidget(text)
 
         def save():
-            path, _ = QFileDialog.getSaveFileName(dialog, '保存诊断包', 'Lumen-diagnostics.zip', 'ZIP (*.zip)')
+            path = save_file_name(dialog, '保存诊断包', 'Lumen-diagnostics.zip', 'ZIP (*.zip)')
             if not path:
                 return
             try:

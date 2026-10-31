@@ -63,6 +63,7 @@ public final class PlayerActivity extends Activity {
     private SeekBar seek;
     private TextView time;
     private Button pause,previousVideo,nextVideo;
+    private Button beautyControl;
     private Button personalRating,personalFavorite,personalDisliked;
     private boolean personalDialogOpen=false;
     private final java.util.Set<Long> personalPending=new java.util.HashSet<>();
@@ -121,7 +122,9 @@ public final class PlayerActivity extends Activity {
         button.setOnClickListener(v->{showControls(true);action.run();scheduleHide();});return button;
     }
     private Button addButton(LinearLayout layout,String label,Runnable action){
-        Button button=button(label,action);layout.addView(button,new LinearLayout.LayoutParams(0,dp(48),1));return button;
+        // Dense rows share one slot each: smaller text and padding keep every label on one line.
+        Button button=button(label,action);button.setTextSize(13);button.setPadding(dp(2),0,dp(2),0);
+        layout.addView(button,new LinearLayout.LayoutParams(0,dp(48),1));return button;
     }
     private GradientDrawable shade(boolean top){
         return new GradientDrawable(top?GradientDrawable.Orientation.TOP_BOTTOM:GradientDrawable.Orientation.BOTTOM_TOP,
@@ -184,6 +187,7 @@ public final class PlayerActivity extends Activity {
         pause=addButton(playback,"播放",()->performAction(ControllerBindings.Action.TOGGLE));
         addButton(playback,"+10 秒",()->performAction(ControllerBindings.Action.FORWARD));
         nextVideo=addButton(playback,"",()->stepVideo(1));MediaStyle.icon(nextVideo,"next",false);nextVideo.setCompoundDrawablePadding(0);nextVideo.setContentDescription("下个视频");nextVideo.setTooltipText("下个视频 / 下一集");
+        beautyControl=addButton(playback,"美颜",this::beautySettings);beautyControl.setContentDescription("实时美颜");
         addButton(playback,"全屏",()->{setPlayerImmersive(!immersive);showControls(true);});bottomBar.addView(playback);
         vrBar=new LinearLayout(this);
         addButton(vrBar,"回正",()->performAction(ControllerBindings.Action.RECENTER));
@@ -576,6 +580,15 @@ public final class PlayerActivity extends Activity {
         vrVideo.setFlatVideo(!vrEnabled);
         video.setVisibility(after?View.GONE:View.VISIBLE);vrVideo.setVisibility(after?View.VISIBLE:View.GONE);
         if(!before&&after&&started)vrVideo.onResume();
+        refreshBeauty();
+    }
+    private void refreshBeauty(){
+        if(beautyControl==null)return;
+        // The label stays short so the dense playback row never wraps; state lives in color and description.
+        boolean on=beauty.enabled&&!beautyUnavailable;
+        beautyControl.setText("美颜");
+        beautyControl.setTextColor(on?0xFF00A4DC:Color.WHITE);
+        beautyControl.setContentDescription(on?"实时美颜，已开启":"实时美颜");
     }
     private void beautySettings(){
         if(file==null){Toast.makeText(this,"请先打开视频",Toast.LENGTH_SHORT).show();return;}

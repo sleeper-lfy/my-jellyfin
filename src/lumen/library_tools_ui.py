@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog,QVBoxLayout,QHBoxLayout,QLabel,QListWidget,QPushButton,QFileDialog,QInputDialog,QCheckBox,QSpinBox,QPlainTextEdit,QTabWidget,QWidget,QMessageBox
+from PySide6.QtWidgets import QDialog,QVBoxLayout,QHBoxLayout,QLabel,QListWidget,QPushButton,QInputDialog,QCheckBox,QSpinBox,QPlainTextEdit,QTabWidget,QWidget,QMessageBox
 from .media_tools import audit_library
 
 
@@ -32,7 +32,8 @@ class LibraryTools(QDialog):
         kinds=KINDS
         for entry in self.folders:self.list.addItem(('启用' if entry.get('enabled',True) else '暂停')+' · '+kinds.get(entry['kind'],entry['kind'])+' · '+entry['path'])
     def add(self):
-        path=QFileDialog.getExistingDirectory(self,'选择监控目录')
+        from .dialogs import existing_directory
+        path=existing_directory(self,'选择监控目录')
         if not path:return
         from .ui import KINDS
         names={title:kind for kind,title in KINDS.items()}
@@ -59,5 +60,6 @@ class LibraryTools(QDialog):
             lines.extend('相同 SHA-256 文件：'+str(row['file_ids']) for row in value.get('duplicates',[]))
             self.report.setPlainText('\n\n'.join(lines))
     def export(self):
-        path,_=QFileDialog.getSaveFileName(self,'导出体检报告','lumen-library-health.json','JSON (*.json)')
+        from .dialogs import save_file_name
+        path=save_file_name(self,'导出体检报告','lumen-library-health.json','JSON (*.json)')
         if path:Path(path).write_text(json.dumps(self.library.setting('last_audit',{}),ensure_ascii=False,indent=2),encoding='utf-8')

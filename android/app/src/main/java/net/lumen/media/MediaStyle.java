@@ -27,7 +27,7 @@ final class MediaStyle {
         int border=selected?(heart?Color.rgb(147,72,96):Color.rgb(43,111,134)):Color.rgb(58,58,68);
         view.setBackgroundTintList(null);view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x25ffffff),surface(context,color,primary?0:border,8),null));
         view.setSelected(selected);view.setTextColor(selected?(heart?0xffffb5cc:0xffa5e5f5):Color.WHITE);
-        view.setPadding(dp(context,12),dp(context,6),dp(context,12),dp(context,6));view.setMinWidth(0);view.setMinimumHeight(dp(context,48));
+        view.setPadding(dp(context,12),dp(context,6),dp(context,12),dp(context,6));view.setMinWidth(0);view.setMinimumWidth(0);view.setMinimumHeight(dp(context,48));
     }
     static void icon(Button button,String name,boolean selected){
         Symbol icon=new Symbol(name,name.equals("play")?Color.WHITE:selected?(name.equals("heart")?HEART:name.equals("star")?0xffe7c567:name.equals("ban")?0xffef8b87:ACCENT):0xffddddE5,selected);

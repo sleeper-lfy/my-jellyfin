@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, QEvent, QSizeF, QSize
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QFileDialog, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox,QGraphicsDropShadowEffect
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QComboBox, QWidget, QGridLayout, QGraphicsView, QGraphicsScene, QFrame, QStyle, QCheckBox, QApplication, QDoubleSpinBox,QSpinBox,QFormLayout,QPlainTextEdit,QInputDialog,QListWidget,QListWidgetItem,QScrollArea,QMenu,QLineEdit,QDialogButtonBox,QGraphicsDropShadowEffect
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QIcon, QColor, QCursor, QRegion
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -181,6 +181,7 @@ class Player(QDialog):
         full.clicked.connect(self.toggle_fullscreen)
         row.addWidget(full)
         bottom.addLayout(row)
+        self.control_row = row
         overlay_layout.addWidget(self.footer)
         # The controls must follow the actual client rectangle, independently
         # of the video scene and its size hints when switching DPI/fullscreen.
@@ -244,6 +245,22 @@ class Player(QDialog):
         self.beauty_timer.timeout.connect(self.save_beauty)
         self.beauty_enabled.toggled.connect(lambda:self.save_beauty())
         for control in (self.beauty_smoothing,self.beauty_brighten):control.valueChanged.connect(lambda:self.beauty_timer.start())
+        # First-level picture toggles mirror the switches inside 播放设置.
+        self.enhance_control=QPushButton(icon('sparkle'),'增强')
+        self.enhance_control.setCheckable(True);self.enhance_control.setChecked(self.enhance.isChecked())
+        self.enhance_control.setEnabled(self.mpv_backend)
+        self.enhance_control.setToolTip('画质增强：高质量缩放 + 轻度锐化（不是 AI 超分辨率）')
+        self.enhance_control.setAccessibleName('画质增强')
+        self.enhance_control.toggled.connect(self.enhance.setChecked)
+        self.enhance.toggled.connect(self.enhance_control.setChecked)
+        self.beauty_control=QPushButton(icon('beauty'),'美颜')
+        self.beauty_control.setCheckable(True);self.beauty_control.setEnabled(self.mpv_backend)
+        self.beauty_control.setToolTip('实时美颜开关（肤色磨皮 / 提亮）· 强度在播放设置中调整')
+        self.beauty_control.setAccessibleName('实时美颜')
+        self.beauty_control.toggled.connect(self.beauty_enabled.setChecked)
+        self.beauty_enabled.toggled.connect(self.beauty_control.setChecked)
+        self.control_row.insertWidget(self.control_row.indexOf(settings),self.enhance_control)
+        self.control_row.insertWidget(self.control_row.indexOf(self.enhance_control)+1,self.beauty_control)
         compatibility = QCheckBox('兼容播放模式（重启应用后生效）')
         compatibility.setChecked(self.library.setting('player_compat', False))
         compatibility.setToolTip('显卡或 OpenGL 不兼容时启用，使用原有播放方式。')
@@ -312,6 +329,7 @@ class Player(QDialog):
             control.setChecked(value[key]) if key=='enabled' else control.setValue(round(value[key]))
             control.blockSignals(False)
         if self.mpv_backend:self.media.set_beauty(value,self.library.directory/'cache'/'beauty')
+        self.beauty_control.setChecked(value['enabled'])
 
     def save_beauty(self):
         self.beauty_timer.stop()
@@ -648,7 +666,8 @@ class Player(QDialog):
             self.set_error('外挂字幕未载入：' + str(exc))
 
     def choose_subtitle(self):
-        path, _ = QFileDialog.getOpenFileName(self, '选择外挂字幕', '', '字幕 (*.srt *.ass *.ssa *.vtt)')
+        from .dialogs import open_file_name
+        path = open_file_name(self, '选择外挂字幕', '', '字幕 (*.srt *.ass *.ssa *.vtt)')
         if path:
             self.load_subtitle(path)
 

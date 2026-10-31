@@ -6,6 +6,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AutoCompleteTextView;
 import android.widget.ArrayAdapter;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.ScrollView;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -201,4 +203,38 @@ public class BrowseUiTest {
         }
     }
 
+    private Object read(Object object,String name)throws Exception{
+        java.lang.reflect.Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(object);
+    }
+
+    @Test public void homeTilesShareWidthEquallyWithoutOverflow()throws Exception{
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
+            }});server.start();MainActivity activity=lifecycle.get();
+            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            call(activity,"showLibrary");
+            LinearLayout content=(LinearLayout)read(activity,"content");
+            ViewGroup tiles=null;
+            for(int i=0;i<content.getChildCount()-1;i++){
+                View child=content.getChildAt(i);
+                if(child instanceof TextView&&"我的媒体".equals(((TextView)child).getText().toString())){tiles=(ViewGroup)content.getChildAt(i+1);break;}
+            }
+            assertNotNull("首页应渲染我的媒体磁贴行",tiles);
+            assertEquals(5,tiles.getChildCount());
+            for(int i=0;i<tiles.getChildCount();i++)assertEquals("主题按钮默认 88dp 最小宽度会把均分行撑变形",0,tiles.getChildAt(i).getMinimumWidth());
+            View root=(View)read(activity,"root");
+            for(int[] size:new int[][]{{360,800},{320,640}}){
+                root.measure(View.MeasureSpec.makeMeasureSpec(size[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(size[1],View.MeasureSpec.EXACTLY));
+                root.layout(0,0,size[0],size[1]);
+                int share=(tiles.getWidth()-tiles.getPaddingLeft()-tiles.getPaddingRight())/tiles.getChildCount();
+                for(int i=0;i<tiles.getChildCount();i++){
+                    View tile=tiles.getChildAt(i);
+                    ViewGroup.MarginLayoutParams params=(ViewGroup.MarginLayoutParams)tile.getLayoutParams();
+                    int expected=share-params.leftMargin-params.rightMargin;
+                    assertTrue("磁贴超出均分宽度会整行变形（"+size[0]+"dp 第"+i+"个）",tile.getMeasuredWidth()<=expected+1);
+                }
+            }
+        }
+    }
 }

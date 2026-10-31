@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 import time
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QTabWidget, QWidget, QLineEdit,
- QComboBox, QCheckBox, QSpinBox, QListWidget, QFileDialog, QMessageBox, QPlainTextEdit)
+ QComboBox, QCheckBox, QSpinBox, QListWidget, QMessageBox, QPlainTextEdit)
 from .core import tool
 from .plugins import Plugins
 from .ui import button, label, KINDS
@@ -114,7 +114,8 @@ class Settings(QDialog):
         self.magnet_executable.setPlaceholderText('留空自动寻找 qBittorrent；自定义工具须指定程序路径')
         executable_row=QHBoxLayout();executable_row.addWidget(self.magnet_executable)
         def choose_executable():
-            path,_=QFileDialog.getOpenFileName(self,'选择下载器程序',self.magnet_executable.text())
+            from .dialogs import open_file_name
+            path=open_file_name(self,'选择下载器程序',self.magnet_executable.text())
             if path:self.magnet_executable.setText(path)
         executable_row.addWidget(button('选择程序',choose_executable));download_form.addRow('下载器程序',executable_row)
         self.magnet_arguments=QLineEdit(json.dumps(download_config.get('magnet_arguments',['--save-path={directory}','{url}']),ensure_ascii=False))
@@ -184,7 +185,8 @@ class Settings(QDialog):
         except (ValueError,TypeError) as error:QMessageBox.warning(self,'未保存下载设置',str(error))
 
     def choose_folder(self, field):
-        path = QFileDialog.getExistingDirectory(self, '选择目标目录')
+        from .dialogs import existing_directory
+        path = existing_directory(self, '选择目标目录')
         if path:
             field.setText(path)
 
@@ -225,7 +227,8 @@ class Settings(QDialog):
         self.reload()
 
     def install(self):
-        folder = QFileDialog.getExistingDirectory(self, '选择包含 manifest.json 和 plugin.js 的文件夹')
+        from .dialogs import existing_directory
+        folder = existing_directory(self, '选择包含 manifest.json 和 plugin.js 的文件夹')
         if not folder:
             return
         try:
@@ -252,7 +255,8 @@ class Settings(QDialog):
         QMessageBox.information(self, '已保存', '分区规则已保存。')
 
     def backup(self):
-        path, _ = QFileDialog.getSaveFileName(self, '备份数据库', f'lumen-{int(time.time())}.sqlite', 'SQLite (*.sqlite)')
+        from .dialogs import save_file_name
+        path = save_file_name(self, '备份数据库', f'lumen-{int(time.time())}.sqlite', 'SQLite (*.sqlite)')
         if path:
             try:
                 self.library.backup(path)
@@ -267,7 +271,8 @@ class Settings(QDialog):
         if self.window.jobs or self.window.job_queue:
             QMessageBox.information(self, '任务进行中', '请等待后台任务结束后再恢复。')
             return
-        path, _ = QFileDialog.getOpenFileName(self, '选择数据库备份', '', 'SQLite (*.sqlite)')
+        from .dialogs import open_file_name
+        path = open_file_name(self, '选择数据库备份', '', 'SQLite (*.sqlite)')
         if not path:
             return
         if QMessageBox.question(self, '恢复备份', '将恢复备份中的媒体资料、评分、历史和队列。当前数据库会先自动备份，视频文件不受影响。继续？') != QMessageBox.StandardButton.Yes:

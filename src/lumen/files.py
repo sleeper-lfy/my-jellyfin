@@ -4,7 +4,68 @@ import os
 from pathlib import Path
 import re
 import uuid
-from .core import fingerprint, SIDECARS
+from .core import fingerprint, SIDECARS, check_cancelled
+
+
+def related_files(source):
+    """Sidecars that belong to one video: same stem in the same directory."""
+    return [p for p in source.parent.iterdir() if p.is_file() and p.suffix.lower() in SIDECARS and
+            (p.stem == source.stem or p.name.startswith(source.stem + '.'))]
+
+
+def plan_delete(library, work_id):
+    """Recorded paths and cached sizes only: planning must not touch offline drives."""
+    work = library.work(work_id)
+    if not work['files']:
+        raise ValueError('该条目没有本地视频文件')
+    sizes = []
+    for f in work['files']:
+        cache = library.db.execute('SELECT size FROM import_cache WHERE file_id=?', (f['id'],)).fetchone()
+        sizes.append(cache['size'] if cache and cache['size'] else None)
+    total = sum(size for size in sizes if size is not None)
+    return {'paths': [f['path'] for f in work['files']], 'known_size': all(size is not None for size in sizes), 'bytes': total}
+
+
+def execute_delete(library, work_id, progress=None, cancelled=None):
+    """Delete every recorded video plus its sidecars, then drop the library entry.
+
+    Any missing or undeletable file aborts with the entry intact for a retry."""
+    work = library.work(work_id)
+    if not work['files']:
+        raise ValueError('该条目没有本地视频文件')
+    if library.db.execute('SELECT 1 FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id=? AND s.ended IS NULL', (work_id,)).fetchone():
+        raise ValueError('请先停止该作品的播放，再删除本地文件')
+    videos, missing = [], []
+    sidecars = []
+    for f in work['files']:
+        source = Path(f['path'])
+        if source.is_file():
+            videos.append(source)
+            try:
+                sidecars.extend(related_files(source))
+            except OSError as error:
+                raise ValueError(f'无法读取视频所在目录：{source}（{error}）')
+        else:
+            missing.append(str(source))
+    if missing:
+        raise ValueError('以下视频当前不存在或所在磁盘离线，未执行删除；如文件已永久移除请改用“仅移出媒体库”：\n' + '\n'.join(missing))
+    targets = list(dict.fromkeys([*sidecars, *videos]))
+    total = len(targets)
+    errors = []
+    for index, target in enumerate(targets):
+        check_cancelled(cancelled)
+        if progress:
+            progress(index, total, target.name)
+        try:
+            target.unlink()
+        except OSError as error:
+            errors.append(f'{target}：{error}')
+    if progress:
+        progress(total, total, '删除完成')
+    if errors:
+        raise ValueError('以下文件未能删除，条目已保留，可重试或改用“仅移出媒体库”：\n' + '\n'.join(errors))
+    library.remove_catalog(work_id)
+    return {'deleted': total}
 
 
 def safe_name(value):
@@ -25,8 +86,7 @@ def plan_move(library, work_id, destination):
             folder /= f"Season {f['season']:02}" if f['season'] is not None else '未分季'
         if work['kind'] == 'other':
             folder = root / Path(f['root']).name / source.relative_to(f['root']).parent
-        related = [p for p in source.parent.iterdir() if p.is_file() and p.suffix.lower() in SIDECARS and
-                   (p.stem == source.stem or p.name.startswith(source.stem + '.'))]
+        related = related_files(source)
         for p in [source, *related]:
             target = folder / p.name
             if not target.resolve().is_relative_to(root):

@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QSize, QThread, Signal, QTimer, QUrl, QRect, QPoi
 from PySide6.QtGui import QPixmap, QIcon, QColor, QPainter, QFont, QDesktopServices, QPixmapCache, QLinearGradient, QPainterPath
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
  QGridLayout, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
- QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
+ QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
  QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter, QSizePolicy)
 from .core import Library, thumbnail, tool, ImportCancelled
@@ -486,7 +486,8 @@ class FilterDialog(QDialog):
         super().accept()
 
     def choose_folder(self):
-        path=QFileDialog.getExistingDirectory(self,'选择目录范围',self.folder.text())
+        from .dialogs import existing_directory
+        path=existing_directory(self,'选择目录范围',self.folder.text())
         if path:self.folder.setText(path)
 
     def filters(self):
@@ -593,6 +594,7 @@ class Details(QWidget):
         self.management_menu.addAction('从头播放',lambda:window.catalog_restart(work_id))
         self.management_menu.addAction('加入播放队列',lambda:window.library.edit_queue([*window.library.setting('queue',{'ids':[]})['ids'],work_id]))
         self.management_menu.addAction('仅移出媒体库…',lambda:window.remove_catalog_work(work_id))
+        if w['files']:self.management_menu.addAction('删除本地文件…',lambda:window.delete_work_files(work_id))
         if w['kind'] in {'movie','series','vr'}:self.management_menu.addAction('合并重复作品…',self.merge_duplicate)
         if w['kind']=='fans':self.management_menu.addAction('合并同作者文件夹…',self.merge_fans_folders)
         if w['kind'] in {'movie','series','vr','fans'}:
@@ -864,8 +866,9 @@ class Details(QWidget):
         self.fullscreen_stills(item)
 
     def choose_download_folder(self):
+        from .dialogs import existing_directory
         from .downloads import download_folder,set_download_folder
-        path=QFileDialog.getExistingDirectory(self,'选择此作品的下载目录',str(download_folder(self.library,self.work_id)))
+        path=existing_directory(self,'选择此作品的下载目录',str(download_folder(self.library,self.work_id)))
         if path:
             directory=set_download_folder(self.library,self.work_id,path)
             self.download_directory_label.setText('保存位置：'+directory)
@@ -1055,7 +1058,8 @@ class Details(QWidget):
 
 
     def organize(self):
-        target = QFileDialog.getExistingDirectory(self, '选择整理目标根目录')
+        from .dialogs import existing_directory
+        target = existing_directory(self, '选择整理目标根目录')
         if not target:
             return
         # Hashing / planning runs off the UI thread for large video files.
@@ -1768,6 +1772,7 @@ class MainWindow(QMainWindow):
             menu.addAction('从头播放',lambda:self.catalog_restart(data['id']))
             menu.addAction('加入播放队列',lambda:self.library.edit_queue([*self.library.setting('queue',{'ids':[]})['ids'],data['id']]))
             menu.addAction('仅移出媒体库…',lambda:self.remove_catalog_work(data['id']))
+            if data.get('files'):menu.addAction('删除本地文件…',lambda:self.delete_work_files(data['id']))
         menu.exec(self.cards.mapToGlobal(position))
 
     def scrape_actor_photo(self):
@@ -1802,6 +1807,28 @@ class MainWindow(QMainWindow):
         try:self.library.remove_catalog(work_id)
         except Exception as error:QMessageBox.warning(self,'未移除',str(error));return
         self.back_details();self.refresh()
+
+    def delete_work_files(self, work_id):
+        from .files import plan_delete
+        try:
+            plan = plan_delete(self.library, work_id)
+        except Exception as error:
+            QMessageBox.warning(self, '无法删除', str(error)); return
+        size = f"（共 {plan['bytes'] / 1073741824:.2f} GB）" if plan['known_size'] else ''
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle('删除本地文件')
+        dialog.setText(f"将永久删除 {len(plan['paths'])} 个视频及同名字幕 / NFO / 图片{size}，并把该条目移出媒体库。\n此操作不经过回收站，无法恢复。")
+        dialog.setDetailedText('\n'.join(plan['paths']))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        dialog.button(QMessageBox.StandardButton.Ok).setText('永久删除')
+        dialog.button(QMessageBox.StandardButton.Cancel).setText('取消')
+        if dialog.exec() != QMessageBox.StandardButton.Ok:return
+        if self.player.file and self.player.file['work_id']==work_id:self.player.finish();self.player.hide()
+        from .files import execute_delete
+        def done(result):
+            self.status.setText(f"已删除 {result['deleted']} 个文件并移出媒体库")
+            self.back_details();self.refresh()
+        self.run_job('删除本地文件', lambda lib, progress: execute_delete(lib, work_id, progress, progress.cancelled), done)
 
     def change_movie_kind(self, work_id, kind):
         try:
@@ -1927,12 +1954,13 @@ class MainWindow(QMainWindow):
             self.refresh()
 
     def import_nfo_artwork(self, work_id=None):
+        from .dialogs import existing_directory
         dialog=QDialog(self);dialog.setWindowTitle('从资源目录的 NFO 补充图片');dialog.resize(650,260)
         form=QFormLayout(dialog)
         current=self.library.work(work_id) if work_id else None
         initial=str(Path(current['files'][0]['path']).parent) if current and current['files'] else self.library.setting('artwork_folder','')
         path=QLineEdit(initial)
-        browse=button('选择目录…',lambda:path.setText(QFileDialog.getExistingDirectory(dialog,'选择包含 NFO 和图片的资源目录',path.text()) or path.text()))
+        browse=button('选择目录…',lambda:path.setText(existing_directory(dialog,'选择包含 NFO 和图片的资源目录',path.text()) or path.text()))
         row=QHBoxLayout();row.addWidget(path,1);row.addWidget(browse);form.addRow('资源目录',row)
         mode=QComboBox();mode.addItem('仅补充缺失：保留已有图片与锁定字段','missing');mode.addItem('强制覆盖：用 NFO 图片替换已有图片（包括图片锁定）','overwrite');form.addRow('更新方式',mode)
         message=label('更新海报、缩略图、背景图及剧照。只调整缓存图片关联；不改影片资料、评分、收藏或播放进度。原始文件保留。')
@@ -1958,50 +1986,59 @@ class MainWindow(QMainWindow):
     def import_dialog(self):
         self.import_path()
 
-    def import_path(self, path=None):
+    def import_path(self, path=None, pending=None):
         if self._closing:return
         from .import_ui import ImportDialog
         dialog=getattr(self,'import_form',None)
         if dialog is None:dialog=self.import_form=ImportDialog(self)
+        dialog.pending=list(pending or [])
+        dialog.refresh_scrapers()
         if path:dialog.path.setText(str(path))
         if not dialog.isVisible():
             dialog.kind.setCurrentIndex(max(0,dialog.kind.findData(self.section if self.section in KINDS else 'movie')))
+            dialog.sync_kind()
             dialog.show()
         if dialog.browser is not None and dialog.browser.isVisible():dialog.browser.raise_();dialog.browser.activateWindow();return
         dialog.raise_();dialog.activateWindow()
 
-    def start_import(self,path,kind):
+    def start_import(self,path,kind,plugin=None,destination=None,batch=None):
         origin=(self.section,self.subtab)
         def complete(result):
             self.status.setText(f"导入 {result['imported']} · NFO 更新 {result.get('nfo_updated',0)} · 重复 {result['duplicates']} · 失败 {len(result['errors'])} · 警告 {len(result['warnings'])}")
             if self.detail_page is None and (self.section,self.subtab)==origin and self.section!=kind:self.navigate(kind)
             if kind in {'movie','series','vr'}:
-                self.auto_scrape_import(path, kind)
+                self.auto_scrape_import(path, kind, plugin, destination)
         self.run_job('快速导入 · 时长与缺失图片稍后补充', lambda lib, p: lib.import_folder(path, kind, p, fast=True, cancelled=p.cancelled), complete)
+        for folder in (batch or []):
+            self.start_import(folder, kind, plugin, destination)
 
-    def auto_scrape_import(self, path, kind):
+    def auto_scrape_import(self, path, kind, plugin_id=None, destination=None):
         if kind not in {'movie','series','vr'}:return
         config = self.library.setting('partition:' + kind, {})
-        plugin_id = config.get('plugin')
-        if not plugin_id:
+        # None falls back to the saved partition rule; '' explicitly disables it.
+        plugin_id = config.get('plugin') if plugin_id is None else plugin_id
+        destination = config.get('destination','') if destination is None else destination
+        if not plugin_id and not destination:
             return
         def scrape(lib, progress):
-            plugin = Plugins(lib)
+            manager = Plugins(lib) if plugin_id else None
             works = lib.query({'kinds':[kind], 'folder':str(Path(path).resolve())})
             for i, w in enumerate(works):
-                if w['metadata'].get('nfo_fields'):
-                    progress(i+1, len(works), w['title'])
-                    continue
-                try:
-                    candidates = plugin.run(plugin_id, 'search', query=w['title'])
-                    matches = [m for m in candidates if (m.get('kind','movie') == kind or kind=='vr' and m.get('kind','movie')=='movie') and m['title'].casefold() == w['title'].casefold() and (not w['year'] or m.get('year') == w['year'])]
-                    if len(matches) != 1:
-                        raise ValueError(f'匹配不唯一（{len(candidates)} 个候选），请在详情中确认')
-                    plugin.merge(plugin_id, matches[0], w['id'])
-                    if config.get('destination'):
-                        execute_move(lib, plan_move(lib, w['id'], config['destination']))
-                except Exception as exc:
-                    lib.task(__import__('uuid').uuid4().hex, 'match', 'pending', {'work_id':w['id'], 'plugin':plugin_id}, error=str(exc))
+                if manager and not w['metadata'].get('nfo_fields'):
+                    try:
+                        candidates = manager.run(plugin_id, 'search', query=w['title'])
+                        matches = [m for m in candidates if (m.get('kind','movie') == kind or kind=='vr' and m.get('kind','movie')=='movie') and m['title'].casefold() == w['title'].casefold() and (not w['year'] or m.get('year') == w['year'])]
+                        chosen = matches[0] if matches else (candidates[0] if candidates else None)
+                        if chosen is None:
+                            raise ValueError('未找到候选，请在详情中确认')
+                        manager.merge(plugin_id, chosen, w['id'])
+                    except Exception as exc:
+                        lib.task(__import__('uuid').uuid4().hex, 'match', 'pending', {'work_id':w['id'], 'plugin':plugin_id}, error=str(exc))
+                if destination:
+                    try:
+                        execute_move(lib, plan_move(lib, w['id'], destination))
+                    except Exception as exc:
+                        lib.task(__import__('uuid').uuid4().hex, 'match', 'pending', {'work_id':w['id'], 'plugin':plugin_id}, error=str(exc))
                 progress(i+1, len(works), w['title'])
         self.run_job('自动匹配与分区整理', scrape)
 
@@ -2012,9 +2049,9 @@ class MainWindow(QMainWindow):
     def dropEvent(self, event):
         folders = [u.toLocalFile() for u in event.mimeData().urls() if Path(u.toLocalFile()).is_dir()]
         if folders:
-            self.import_path(folders[0])
+            self.import_path(folders[0], pending=folders[1:])
             if len(folders) > 1:
-                self.status.setText('本次导入第一个文件夹；其余文件夹可在完成后继续拖入。')
+                self.status.setText(f'本次拖入 {len(folders)} 个文件夹；确认设置后其余文件夹按相同选项加入队列。')
 
     def build_tree(self,items=None):
         self.tree.clear()
@@ -2291,6 +2328,7 @@ class MainWindow(QMainWindow):
                 if queued[3]==identifier:self.job_queue.remove(queued);self.task_journal.record(identifier,'background','cancelled',{'title':queued[0]});reload();return
         layout.addWidget(button('停止选中后台任务',cancel_selected))
         def inspect_task():
+            from .dialogs import save_file_name
             index=table.currentRow()
             if not 0<=index<len(rows):return
             identifier=rows[index]['id']
@@ -2301,7 +2339,7 @@ class MainWindow(QMainWindow):
                 if alive[0]:text.setPlainText(('记录较大，此处显示预览；可导出完整 JSON。\n\n' if data['truncated'] else '')+data['text'])
             run_background(self,lambda job:tasks.record(self.library.directory,identifier,preview=True),ready,lambda error:text.setPlainText(error) if alive[0] else None)
             def export():
-                destination,_=QFileDialog.getSaveFileName(detail,'导出完整任务记录',identifier+'.json','JSON (*.json)',options=QFileDialog.Option.DontUseNativeDialog)
+                destination=save_file_name(detail,'导出完整任务记录',identifier+'.json','JSON (*.json)')
                 if destination:run_background(self,lambda job:tasks.export(self.library.directory,identifier,destination,job.isInterruptionRequested),lambda path:text.appendPlainText('\n已导出：'+path) if alive[0] else None)
             content.addWidget(button('导出完整 JSON',export));content.addWidget(button('关闭',detail.accept));detail.show()
         layout.addWidget(button('查看完整进度 / 结果 / 错误', inspect_task))

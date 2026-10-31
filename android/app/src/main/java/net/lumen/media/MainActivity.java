@@ -190,7 +190,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);browseScroll=scroll;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(kind.isEmpty()&&!favorites&&!recommended&&!discovery&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearFilter.isEmpty()) {
             content.addView(text("我的媒体",22,Color.WHITE));LinearLayout tiles=new LinearLayout(this);
-            for(int i=1;i<=5;i++){final int choice=i;Button tile=button(names[i],()->{savedList="";kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
+            for(int i=1;i<=5;i++){final int choice=i;Button tile=button(i==4?"Fans":names[i],()->{savedList="";kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));tile.setPadding(dp(4),0,dp(4),0);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
             content.addView(tiles);
         }
         content.addView(text(recommended?"为我推荐":discovery?"影片发现":favorites?"收藏":query.isEmpty()?"媒体库":"搜索结果",22,Color.WHITE));
