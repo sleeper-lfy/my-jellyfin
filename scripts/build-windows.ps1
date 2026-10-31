@@ -27,6 +27,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
   --add-data '.local/mpv-bundle/build.json;lumen/bin' --collect-data lumen `
   --add-data 'assets;assets' --add-data 'plugins;plugins' --add-data 'docs;docs' scripts/launcher.py
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+# PyInstaller collects the whole PySide6 Qt tree; remove modules the application never imports.
+# Kept: Core/Gui/Widgets/Svg/OpenGL/Network/Multimedia(+SpatialAudio)/Qml/Quick family and opengl32sw fallback.
+$PySide = 'dist\Lumen\_internal\PySide6'
+$Unused = @('3D*','WebEngine*','Pdf*','Charts*','DataVisualization*','Graphs*','Labs*','Location','Positioning*','Scxml','Test','QuickTest','StateMachine','Sensors*','SerialPort','VirtualKeyboard','TextToSpeech','RemoteObjects','WebChannel','WebSockets','Help','Designer','UiTools','HttpServer','NetworkAuth')
+Get-ChildItem $PySide -Filter 'Qt6*.dll' | Where-Object { $name = $_.BaseName.Substring(3); @($Unused | Where-Object { $name -like $_ }).Count -gt 0 } | Remove-Item -Force
+foreach ($module in @('Qt3D','QtCharts','QtDataVisualization','QtGraphs','QtLocation','QtPositioning','QtQuick3D','QtRemoteObjects','QtScxml','QtSensors','QtTest','QtTextToSpeech','QtWebChannel','QtWebEngine','QtWebSockets','QtWebView','Qt5Compat')) {
+    if (Test-Path "$PySide\qml\$module") { Remove-Item "$PySide\qml\$module" -Recurse -Force }
+}
+if (Test-Path "$PySide\plugins\qmltooling") { Remove-Item "$PySide\plugins\qmltooling" -Recurse -Force }
+Get-ChildItem "$PySide\translations" -Filter 'qt_help_*.qm' -ErrorAction SilentlyContinue | Remove-Item -Force
+if (Test-Path "$PySide\translations\qtwebengine_locales") { Remove-Item "$PySide\translations\qtwebengine_locales" -Recurse -Force }
+$PrunedSize = [math]::Round((Get-ChildItem 'dist\Lumen' -Recurse | Measure-Object Length -Sum).Sum / 1MB, 1)
+Write-Host "Pruned unused Qt modules; packaged size now $PrunedSize MB"
 Copy-Item README.md dist\Lumen\README.md
 Copy-Item THIRD_PARTY_NOTICES.md dist\Lumen\THIRD_PARTY_NOTICES.md
 Copy-Item docs/mpv-runtime.md dist\Lumen\mpv-runtime.md
