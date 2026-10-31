@@ -48,13 +48,13 @@ def main():
     root = Path(__file__).resolve().parents[1] / 'target'
     with httpx.Client(timeout=60) as client:
         existing = client.get(f'https://gitee.com/api/v5/repos/{REPO}/releases/tags/{TAG}', params={'access_token': access})
-        if existing.status_code == 200:
+        if existing.status_code == 200 and existing.json():
             release = existing.json()
             print('Release 已存在，复用：', release['id'])
         else:
             created = client.post(f'https://gitee.com/api/v5/repos/{REPO}/releases', json={
                 'access_token': access, 'tag_name': TAG, 'name': NAME, 'body': BODY,
-                'commitish': TARGET, 'prerelease': PRERELEASE})
+                'target_commitish': TARGET, 'prerelease': PRERELEASE})
             if created.status_code >= 300:
                 raise SystemExit(f'创建 Release 失败：{created.status_code} {created.text[:400]}')
             release = created.json()
