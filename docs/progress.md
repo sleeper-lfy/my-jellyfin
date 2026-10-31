@@ -391,3 +391,9 @@ Android 经 GitHub Actions 完成编译、lint、**73 项测试**和 APK 构建�
 源代码与累计图片、演员头像、VR 合并、数据保护改动已推送。以 [v0.4.12-preview.1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1) 发布 EXE、APK、校验和及验证报告；人工验收未完成，保持预发布且不替换 0.4.11 稳定最新版。公开校验文件与匿名分段下载核对通过，完整附件由 GitHub 服务端 digest 与本机 SHA-256 逐一比对。证据见 [beauty-preview.json](validation/beauty-preview.json)。
 
 Windows 云端首次因 Chocolatey 504 缺少 FFmpeg 而失败，重试持续排队，取消接口返回 409；不将云端结果标为通过。预发布标签触发的重复稳定版流水线已请求强制取消，采用本机接受记录和 Android 成功流水线中的原始附件发布。云端排队不依赖本机继续运行。
+
+## 自动更新发布修正（2026-10-31）
+
+用户明确要求两端自动更新可检测。原附件已上传，未提示更新是因为 v0.4.12-preview.1 属于预发布且不符合 PC 严格版本规则。将同一 Release 及六个原始附件切换至 [v0.4.12](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12)，设为非预发布及 Latest；附件大小、完整服务端 SHA-256 保持一致，人工验收保留未验证。没有重建或冒用人工验收报告。
+
+PC 实际联网检查从 0.4.11 检测到 0.4.12，同版本不会重复提示；手机使用实际 GitHubUpdates.java 解析匿名获取的最新发布和 target 响应，正确选择 Release 中的新 APK。两个新下载地址匿名分段读取通过。Android 0.4.11 签名不同，能提示新版但不能覆盖安装，需首次卸载旧手机应用后手动安装。详见 [检测证据](validation/auto-update-0.4.12.json)。

@@ -1,0 +1,36 @@
+{
+  "tag": "v0.4.12",
+  "release_id": 429320231,
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12",
+  "verified_at": "2026-10-31T05:21:25.314683+00:00",
+  "latest": true,
+  "draft": false,
+  "prerelease": false,
+  "source_commit": "f7e054988d3def0199ac2bcfc1141214165e01e4",
+  "publication_reason": "User explicitly requested PC and Android automatic-update availability; existing assets promoted without claiming manual acceptance.",
+  "manual_acceptance": "unverified",
+  "windows_update": {
+    "installed": "0.4.11",
+    "detected": "0.4.12",
+    "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.12/Lumen-Setup-x64.exe",
+    "bytes": 207962783,
+    "sha256": "6cc0a19526680b7c0ccb1ce1572365cfb9f2862d0195e0dbbc150fce4e7f42e5",
+    "live_client_check": "passed",
+    "same_version_no_update": "passed"
+  },
+  "android_update": {
+    "installed": "0.4.11",
+    "installed_code": 14,
+    "candidate": {
+      "sha256": "270fea86ac2859d9ac5147bbd771d4b936318b12efe7681d6b4f195054fd8413",
+      "bytes": 100899067,
+      "source": "GitHub Releases",
+      "version": "0.4.12",
+      "url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.12/Lumen-android-debug.apk"
+    },
+    "validation": "Actual GitHubUpdates.java executed with anonymous live latest and target responses"
+  },
+  "public_downloads": "Anonymous 1024-byte range downloads passed for EXE and APK; full server-side SHA-256 values match originally verified artifacts.",
+  "android_installation": "Signing key changed since 0.4.11; old client detects update but signature validation prevents overwrite. Uninstall and manually install once.",
+  "original_build_evidence": "docs/validation/beauty-preview.json"
+}
