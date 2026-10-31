@@ -1,6 +1,6 @@
 # Windows EXE 安装包
 
-安装文件名为 `Lumen-Setup-x64.exe`，使用 Inno Setup 6 包装已验证的 Windows PyInstaller onedir 程序。支持 Windows 10/11 x64，包含运行所需 Python、Qt、FFmpeg 和 FFprobe。
+安装文件名为 `Lumen-Setup-x64.exe`，使用 Inno Setup 6 包装已验证的 Windows PyInstaller onedir 程序。支持 Windows 10/11 x64，包含运行所需 Python、Qt 和 libmpv。FFmpeg / FFprobe 不再内置于安装包：首次运行会引导使用本机已有的 FFmpeg（配置其目录或加入 PATH），或联网自动下载一次（SHA-256 锁定的 gyan.dev essentials 构建）。
 
 ## 下载和安装
 

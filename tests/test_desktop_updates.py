@@ -15,7 +15,7 @@ def executable():
 
 
 def candidate():
-    data=executable();return updates.Candidate('0.4.6',f'https://github.com/{updates.REPO}/releases/download/v0.4.6/Lumen-Setup-x64.exe',len(data),hashlib.sha256(data).hexdigest())
+    data=executable();return updates.Candidate('0.4.6',f'https://gitee.com/{updates.REPO}/releases/download/v0.4.6/Lumen-Setup-x64.exe',len(data),hashlib.sha256(data).hexdigest())
 
 
 def metadata(url,limit):
@@ -42,13 +42,48 @@ def test_release_api_fallback_and_no_downgrades_or_unpublished_packages():
 def test_release_checksums_and_newest_stable_asset():
     value=candidate()
     def read(url,limit):
-        if url==updates.API:return json.dumps({'tag_name':'v0.4.7','assets':[{'name':'Lumen-Setup-x64.exe','browser_download_url':value.url.replace('0.4.6','0.4.7'),'size':value.size,'digest':'sha256:'+value.sha256}]}).encode()
+        if url==updates.API:return json.dumps({'tag_name':'v0.4.7','assets':[
+            {'name':'Lumen-Setup-x64.exe','browser_download_url':value.url.replace('0.4.6','0.4.7'),'size':value.size},
+            {'name':'Lumen-Setup-x64.exe.sha256','browser_download_url':value.url.replace('0.4.6','0.4.7')+'.sha256'}]}).encode()
+        if url.endswith('.sha256'):return (value.sha256+'\n').encode()
         return metadata(url,limit)
     assert updates.check('0.4.5',read).version=='0.4.7'
-    for url in ('http://github.com/a.exe','https://github.com.evil.test/a.exe','https://github.com@evil.test/a.exe','file:///tmp/a','https://github.com:444/a.exe'):
+    for url in ('http://gitee.com/a.exe','https://gitee.com.evil.test/a.exe','https://gitee.com@evil.test/a.exe','file:///tmp/a','https://gitee.com:444/a.exe','https://github.com/a.exe'):
         with pytest.raises(ValueError):updates.validate_url(url)
     with pytest.raises(ValueError):updates.Candidate('0.4.6',value.url,True,value.sha256)
     with pytest.raises(ValueError):updates.Candidate('0.4.6',value.url.replace(updates.REPO,'someone/else'),value.size,value.sha256)
+
+
+def test_split_installer_parts_merge_verify_and_reject_tampering(tmp_path):
+    data=executable();half=len(data)//2;parts=[data[:half],data[half:]];checksum=hashlib.sha256(data).hexdigest()
+    def read(url,limit):
+        if url==updates.API:
+            assets=[{'name':f'Lumen-Setup-x64.exe.part{index:03d}','browser_download_url':updates.release_url(f'Lumen-Setup-x64.exe.part{index:03d}','v0.4.8'),'size':len(part)} for index,part in enumerate(parts,1)]
+            assets.append({'name':'Lumen-Setup-x64.exe.sha256','browser_download_url':updates.release_url('Lumen-Setup-x64.exe.sha256','v0.4.8')})
+            return json.dumps({'tag_name':'v0.4.8','assets':assets}).encode()
+        if url.endswith('.sha256'):return (checksum+'\n').encode()
+        raise httpx.HTTPError('unexpected '+url)
+    best=updates.check('0.4.7',read)
+    assert best.version=='0.4.8' and not best.url and len(best.parts)==2
+    def serve(request):
+        path=request.url.path
+        for index,part in enumerate(parts,1):
+            if path.endswith(f'.part{index:03d}'):return httpx.Response(200,content=part)
+        return httpx.Response(404)
+    with httpx.Client(transport=httpx.MockTransport(serve)) as client:
+        destination=updates.download(best,tmp_path,client=client)
+    assert destination.read_bytes()==data and not list(tmp_path.glob('*.part'))
+    with httpx.Client(transport=httpx.MockTransport(lambda request:httpx.Response(200,content=bytes(48)))) as client,pytest.raises(ValueError):
+        updates.download(best,tmp_path,client=client)
+    assert not list(tmp_path.glob('*.part'))
+    with pytest.raises(ValueError):
+        updates.Candidate('0.4.8','',len(data),checksum,parts=((updates.release_url('Lumen-Setup-x64.exe.part001','v0.4.8'),half),))
+    with pytest.raises(ValueError):
+        updates.Candidate('0.4.8','',len(data),checksum,parts=(('https://gitee.com/evil/repo/releases/download/v0.4.8/Lumen-Setup-x64.exe.part001',half),))
+    def empty(url,limit):
+        if url==updates.API:return json.dumps({'tag_name':'v0.4.8','assets':[]}).encode()
+        return metadata(url,limit)
+    assert updates.check('0.4.7',empty) is None
 
 
 def test_streaming_download_checks_pe_hash_and_size_and_cleans_cancellation(tmp_path):

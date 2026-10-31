@@ -25,8 +25,14 @@ class Settings(QDialog):
         self.proxy.setPlaceholderText('留空直连；http://127.0.0.1:7890 或 socks5://127.0.0.1:1080')
         form.addRow('默认刮削代理', self.proxy)
         form.addRow('数据目录', label(str(self.library.directory)))
-        form.addRow('FFmpeg', label(tool('ffmpeg') or '未安装；请将 ffmpeg.exe / ffprobe.exe 所在目录加入 PATH'))
-        form.addRow('FFprobe', label(tool('ffprobe') or '未安装'))
+        from . import fftools
+        missing = fftools.missing_tools()
+        self.ffmpeg_status = label(('未检测到：' + '、'.join(missing) + '；读取时长和缩略图需要它们') if missing else '已就绪 · ' + str(tool('ffmpeg')))
+        form.addRow('FFmpeg 组件', self.ffmpeg_status)
+        component_row = QHBoxLayout()
+        component_row.addWidget(button('配置已有 FFmpeg 目录…', self.configure_fftools))
+        component_row.addWidget(button('联网自动下载', self.download_fftools))
+        form.addRow('', component_row)
         form.addRow(button('保存默认代理', self.save_proxy, True))
         parallel=QSpinBox();parallel.setRange(1,3);parallel.setValue(self.library.setting('background_concurrency',1));parallel.setSuffix(' 项')
         def concurrency(value):
@@ -193,6 +199,16 @@ class Settings(QDialog):
     def save_proxy(self):
         self.library.set_setting('proxy', self.proxy.text().strip())
         QMessageBox.information(self, '已保存', '默认刮削代理已保存。')
+
+    def configure_fftools(self):
+        self.window.configure_fftools()
+        from . import fftools
+        missing = fftools.missing_tools()
+        self.ffmpeg_status.setText(('未检测到：' + '、'.join(missing)) if missing else '已就绪 · ' + str(tool('ffmpeg')))
+
+    def download_fftools(self):
+        self.window.start_fftools_download()
+        self.ffmpeg_status.setText('正在后台下载 FFmpeg 组件（约 110MB，仅一次）…')
 
     def reload(self):
         self.plugins = self.manager.installed()

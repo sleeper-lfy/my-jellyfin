@@ -77,13 +77,13 @@ PC 编辑器在打开时固定时间点，名称、备注和秒数在同一窗�
 
 该场景 RSS 减少约 15.8%，修复后后几轮占用趋于稳定；它是界面测试，不包含视频解码内存，不承诺所有设备或影片具有相同结果。原始记录见 [JSON](validation/pc-stability-memory.json)，复现脚本为 `QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/profile-pc-memory.py`；基线为 `b7692cb` 的 src/lumen。
 
-## Android GitHub 更新
+## Android Gitee 更新
 
-连接页面的“检查客户端更新”和媒体库更多菜单中的“检查更新”均可进入，无需连接电脑。手动检查 GitHub 最新稳定 Release 和仓库 target/android-build.json，比较版本及 versionCode；API 不可访问时仍尝试仓库清单。只报告可用的更高版本，不把旧 Release 当更新。
+连接页面的“检查客户端更新”和媒体库更多菜单中的“检查更新”均可进入，无需连接电脑。手动检查 Gitee 最新稳定 Release 和仓库 target/android-build.json，比较版本及 versionCode；API 不可访问时仍尝试仓库清单。只报告可用的更高版本，不把旧 Release 当更新。
 
 用户点击下载后，以 64 KiB 缓冲流式写入应用缓存，显示进度，支持取消并清理临时文件。文件大小和 SHA-256 校验通过后，还核对包名、版本及与当前应用一致的签名，再提供“安装”。安装由 Android 系统确认；未授权安装应用时引导到本应用的系统授权页面。使用只读、临时授权的 content URI 交付唯一已校验 APK，不暴露其他缓存文件。
 
-GitHub 请求不携带媒体服务器密钥，不关闭 TLS 校验；来源限定为 GitHub HTTPS。下载失败可重新检查 / 下载，不支持断点续传、静默安装或签名变更迁移。target 清单与 APK 更新之间发生版本变化时，校验会拒绝不一致文件。
+Gitee 请求不携带媒体服务器密钥，不关闭 TLS 校验；来源限定为 Gitee HTTPS（gitee.com）。下载失败可重新检查 / 下载，不支持断点续传、静默安装或签名变更迁移。target 清单与 APK 更新之间发生版本变化时，校验会拒绝不一致文件。
 
 ## Android VR 与蓝牙
 

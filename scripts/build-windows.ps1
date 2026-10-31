@@ -13,27 +13,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
 & $LumenPython -m lumen.release_acceptance begin --report .local/pc-acceptance.json
 if ($LASTEXITCODE -ne 0) { throw 'Acceptance initialization failed' }
-$LumenFfmpeg = (Get-Command ffmpeg.exe -ErrorAction Stop).Source
-$LumenFfprobe = (Get-Command ffprobe.exe -ErrorAction Stop).Source
-# Chocolatey exposes shims on PATH; bundle the actual executables, not machine-specific shims.
-if ($env:ChocolateyInstall -and $LumenFfmpeg.StartsWith((Join-Path $env:ChocolateyInstall 'bin'), [System.StringComparison]::OrdinalIgnoreCase)) {
-    $LumenActual = Get-ChildItem (Join-Path $env:ChocolateyInstall 'lib\ffmpeg') -Filter ffmpeg.exe -Recurse | Select-Object -First 1
-    if (-not $LumenActual) { throw 'Cannot locate actual FFmpeg executable behind Chocolatey shim' }
-    $LumenFfmpeg = $LumenActual.FullName
-    $LumenFfprobe = Join-Path $LumenActual.DirectoryName 'ffprobe.exe'
-}
-if (-not (Test-Path $LumenFfprobe)) { throw 'FFprobe executable missing' }
-New-Item -ItemType Directory -Force '.local\ffmpeg-bundle' | Out-Null
-Copy-Item $LumenFfmpeg '.local\ffmpeg-bundle\ffmpeg.exe' -Force
-Copy-Item $LumenFfprobe '.local\ffmpeg-bundle\ffprobe.exe' -Force
-Get-ChildItem (Split-Path $LumenFfmpeg) -Filter '*.dll' | Copy-Item -Destination '.local\ffmpeg-bundle' -Force
+$LumenFfmpeg = (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue).Source
+if (-not $LumenFfmpeg) { throw 'FFmpeg must be on PATH for the test suite; the installer no longer bundles it.' }
+# FFmpeg is no longer shipped inside the installer: the app uses a local install when present
+# and otherwise offers configuration or a one-time download at first run.
 ./scripts/fetch-mpv-windows.ps1
 $env:LUMEN_REQUIRE_MPV = '1'
 & $LumenPython -m pytest -q --junitxml=.local/test-results.xml
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
 & $LumenPython -m PyInstaller --noconfirm --clean --windowed --onedir --name Lumen --paths src --icon assets/lumen.ico `
   --hidden-import lumen.js_worker --hidden-import lumen.sandbox --collect-submodules PySide6.QtQml `
-  --add-binary '.local/ffmpeg-bundle/*;lumen/bin' `
   --add-binary '.local/mpv-bundle/libmpv-2.dll;lumen/bin' `
   --add-data '.local/mpv-bundle/build.json;lumen/bin' --collect-data lumen `
   --add-data 'assets;assets' --add-data 'plugins;plugins' --add-data 'docs;docs' scripts/launcher.py

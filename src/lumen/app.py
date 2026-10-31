@@ -19,6 +19,8 @@ def main():
     parser.add_argument('--verify-mpv', action='store_true', help='Verify the bundled libmpv and shader resources')
     parser.add_argument('--smoke', action='store_true', help='Render all main pages and exit (for CI)')
     args = parser.parse_args()
+    if args.smoke:
+        os.environ['LUMEN_SMOKE'] = '1'
     if args.data_dir:
         os.environ['LUMEN_DATA_DIR'] = args.data_dir
     directory = data_directory()

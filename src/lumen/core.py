@@ -123,15 +123,33 @@ def identity(title, year, kind):
     return f'{kind}:{re.sub(r"[^\w]", "", title.casefold())}:{year or ""}'
 
 
+_TOOL_DIRECTORY=None
+
+
+def set_tool_directory(path):
+    """User-configured folder holding ffmpeg.exe / ffprobe.exe, chosen in Settings or the startup hint."""
+    global _TOOL_DIRECTORY
+    _TOOL_DIRECTORY=Path(path) if path else None
+
+
 def tool(name):
-    bundled = Path(__file__).resolve().parent / 'bin' / (name + ('.exe' if os.name == 'nt' else ''))
-    return str(bundled) if bundled.is_file() else shutil.which(name)
+    """Bundled build wins, then the configured folder and the user's PATH install, then the auto-downloaded copy."""
+    suffix='.exe' if os.name=='nt' else ''
+    bundled=Path(__file__).resolve().parent/'bin'/(name+suffix)
+    if bundled.is_file():return str(bundled)
+    if _TOOL_DIRECTORY is not None:
+        configured=_TOOL_DIRECTORY/(name+suffix)
+        if configured.is_file():return str(configured)
+    found=shutil.which(name)
+    if found:return found
+    downloaded=data_directory()/'ffmpeg'/(name+suffix)
+    return str(downloaded) if downloaded.is_file() else None
 
 
 def probe(path, cancelled=None, *, local_only=False):
     executable = tool('ffprobe')
     if not executable:
-        raise RuntimeError('未找到 ffprobe，请在设置说明中配置 FFmpeg PATH')
+        raise RuntimeError('未找到 ffprobe；可在设置中配置 FFmpeg 目录、加入 PATH 或等待联网自动下载')
     result = media_process([executable, '-v', 'error', *(['-protocol_whitelist','file,pipe,crypto,data'] if local_only else []), '-show_format', '-show_streams', '-of', 'json', str(path)], 45, cancelled)
     info = json.loads(result.stdout)
     if not any(s.get('codec_type') == 'video' for s in info.get('streams', [])):
@@ -142,7 +160,7 @@ def probe(path, cancelled=None, *, local_only=False):
 def thumbnail(path, target, duration, at=None, cancelled=None):
     executable = tool('ffmpeg')
     if not executable:
-        raise RuntimeError('未找到 ffmpeg')
+        raise RuntimeError('未找到 ffmpeg；可在设置中配置 FFmpeg 目录、加入 PATH 或等待联网自动下载')
     second = at if at is not None else min(max(duration * .15, 0), 300)
     media_process([executable, '-hide_banner', '-loglevel', 'error', '-y', '-ss', str(second), '-i', str(path),
                     '-frames:v', '1', '-vf', 'scale=480:-2', str(target)], 60, cancelled)
@@ -556,6 +574,11 @@ class Library(CatalogActions):
                 self.task(task_id,'media','cancelled',payload)
                 break
             except Exception as exc:
+                if str(exc).startswith('未找到'):
+                    # Missing FFmpeg is retried on a later schedule instead of
+                    # permanently marking these files as failed.
+                    result['needs_ffmpeg']=True
+                    break
                 result['errors'].append({'path':file['path'],'reason':str(exc)})
                 with self.db:
                     self.db.execute('UPDATE import_cache SET pending=-1 WHERE file_id=?',(file['id'],))

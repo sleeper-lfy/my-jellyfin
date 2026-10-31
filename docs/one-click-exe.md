@@ -7,7 +7,7 @@
 项目位置：`E:\workspaces\my-jellyfin`。本次已经检测到以下工具，可直接双击根目录的 `Build-PC.cmd`：
 
 - Python：`E:\environment\miniconda3\envs\lumen\python.exe`，Conda 的 Python 3.12 x64。
-- FFmpeg / FFprobe：`E:\environment\ffmpeg\bin`。
+- FFmpeg / FFprobe：`E:\environment\ffmpeg\bin`。构建机的测试套件需要真实 FFmpeg；安装包本身不再捆绑 FFmpeg，改为应用内置的配置 / 下载流程。
 - Inno Setup：项目内 `.local\tools\innosetup\ISCC.exe`。
 - 7-Zip：项目内 `.local\tools\7zip\7z.exe`。
 

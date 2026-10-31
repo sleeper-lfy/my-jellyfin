@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 from html import escape
 from pathlib import Path
 import time
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
  QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter, QSizePolicy)
-from .core import Library, thumbnail, tool, ImportCancelled
+from .core import Library, thumbnail, tool, set_tool_directory, ImportCancelled
 from .plugins import Plugins
 from .files import plan_move, execute_move
 from .player import Player
@@ -21,6 +22,7 @@ from .theme import STYLE
 from .components import ActionButton,FlowLayout,chip,icon,ElidedLabel
 
 KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'fans': 'Fans', 'other': '其他'}
+FFTOOLS_JOB = 'fftools-download'
 
 
 def button(text, callback, primary=False):
@@ -1330,6 +1332,9 @@ class MainWindow(QMainWindow):
         self.media_scheduler.timeout.connect(self.schedule_media)
         self.media_scheduler.start()
         QTimer.singleShot(4000, self.schedule_discovery)
+        set_tool_directory(self.library.setting('ffmpeg_directory',''))
+        self._fftools_prompted=False
+        QTimer.singleShot(2500,self.check_fftools)
         self.watch_scheduler=QTimer(self);self.watch_scheduler.setInterval(10000);self.watch_scheduler.timeout.connect(self.schedule_watched);self.watch_scheduler.start()
         with self.library.db:
             self.library.db.execute("UPDATE tasks SET status='cancelled',error='应用重启，未完成任务可重试' WHERE kind='background' AND status IN ('running','paused','queued')")
@@ -1370,7 +1375,76 @@ class MainWindow(QMainWindow):
             return
         pending = self.library.db.execute('SELECT COUNT(*) FROM import_cache WHERE pending IN (1,2)').fetchone()[0]
         if pending:
-            self.run_job(f'后台补充媒体信息 · 剩余 {pending} 个', lambda lib, progress: lib.enrich_pending(progress, cancelled=progress.cancelled))
+            self.run_job(f'后台补充媒体信息 · 剩余 {pending} 个', lambda lib, progress: lib.enrich_pending(progress, cancelled=progress.cancelled), self.media_enrich_done)
+
+    def media_enrich_done(self, result):
+        if isinstance(result, dict) and result.get('needs_ffmpeg'):
+            self.status.setText('缺少 FFmpeg 组件：读取时长与缩略图已暂停；可在设置中配置目录或联网下载')
+            self.schedule_fftools(force=True)
+
+    def check_fftools(self):
+        if self._closing or self._fftools_prompted or os.environ.get('LUMEN_SMOKE'):
+            return
+        from . import fftools
+        if not fftools.needed():
+            return
+        self._fftools_prompted=True
+        missing='、'.join(fftools.missing_tools())
+        dialog=QDialog(self);dialog.setWindowTitle('FFmpeg 组件')
+        layout=QVBoxLayout(dialog)
+        message=label(f'未检测到 {missing}。读取时长和生成缩略图需要它们，视频播放不受影响。\n可以使用本机已有的 FFmpeg（选择其所在目录），或联网自动下载一次（约 110MB）。')
+        message.setWordWrap(True);layout.addWidget(message)
+        row=QHBoxLayout()
+        row.addWidget(button('配置已有 FFmpeg 目录…',lambda:self.configure_fftools(dialog)))
+        row.addWidget(button('联网自动下载',lambda:self.start_fftools_download(dialog)))
+        row.addStretch();row.addWidget(button('暂不',dialog.accept))
+        layout.addLayout(row)
+        dialog.exec();dialog.deleteLater()
+
+    def configure_fftools(self, parent=None):
+        from .dialogs import existing_directory
+        from . import fftools
+        directory=existing_directory(self,'选择包含 ffmpeg.exe 和 ffprobe.exe 的目录')
+        if not directory:
+            return
+        folder=Path(directory)
+        missing=[name+'.exe' for name in fftools.TOOLS if not (folder/name).is_file()]
+        if missing:
+            QMessageBox.warning(self,'FFmpeg 目录','所选目录缺少：'+', '.join(missing));return
+        self.library.set_setting('ffmpeg_directory',str(folder))
+        set_tool_directory(str(folder))
+        self.status.setText('FFmpeg 组件已就绪：'+str(folder))
+        if parent is not None:parent.accept()
+
+    def start_fftools_download(self, parent=None):
+        if parent is not None:parent.accept()
+        self.schedule_fftools(force=True)
+
+    def schedule_fftools(self, force=False):
+        if self._closing or self.jobs_paused:
+            return
+        from . import fftools
+        if not fftools.needed():
+            return
+        busy=any(getattr(job,'task_identifier',None)==FFTOOLS_JOB for job in self.jobs) or any(queued[3]==FFTOOLS_JOB for queued in self.job_queue)
+        if busy:
+            return
+        if (self.jobs or self.job_queue) and not force:
+            QTimer.singleShot(60000,self.schedule_fftools)
+            return
+        def fetch(lib, progress):
+            try:
+                return fftools.ensure(progress, progress.cancelled, lib.setting('proxy') or None)
+            except ImportCancelled:
+                raise
+            except Exception as error:
+                return {'failed':str(error)}
+        def done(result):
+            if isinstance(result,dict) and result.get('failed'):
+                self.status.setText('FFmpeg 组件未能下载：'+result['failed']+'；可在设置中配置本机 FFmpeg 目录')
+            elif isinstance(result,dict) and result.get('ffmpeg'):
+                self.status.setText('FFmpeg 组件已就绪：'+result['ffmpeg'])
+        self.run_job('下载 FFmpeg 组件（仅一次）',fetch,done,_identifier=FFTOOLS_JOB)
 
     def open_favorites(self):
         self.navigate('home')

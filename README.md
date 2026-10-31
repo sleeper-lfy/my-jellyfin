@@ -66,6 +66,8 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 [更新说明](docs/releases/0.4.11.md)。Windows 323 项测试及安装验证、Android 71 项及 lint 通过；两个公开安装包均已重新下载校验，PC 更新器已验证能从 0.4.10 识别 0.4.11。普通推送只验证源码，仅明确请求时打包或发布。
 
+PC / Android 的更新检测与安装包下载走 [Gitee 仓库](https://gitee.com/sleeper_lfy/my-jellyfin)的 Releases：每个版本需上传 `Lumen-Setup-x64.exe` 的分卷（`part001…`，单附件限 100MB）、`.sha256` 校验文件和 `Lumen-android-debug.apk`（含 `.sha256`）。GitHub 仓库保留完整历史与原始发布。
+
 下载资源的默认目录、HTTP 下载后自动入库及外部磁力工具设置见 [下载与影视入库](docs/downloads.md)。
 
 ## Windows 安装与启动
@@ -74,7 +76,7 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 提供 [EXE 安装包构建与下载说明](docs/windows-installer.md)。[0.4.11 安装包](target/README.md)已通过 Windows 构建与安装验证并保存到 target / Actions；以下为源码启动方式。
 
-需要 Windows 10/11 x64、Python 3.12、FFmpeg 与 FFprobe（两个程序加入 PATH）。可通过已安装的 Winget 获取 Python/FFmpeg，或从各项目官方渠道安装；保持包签名/校验验证。
+需要 Windows 10/11 x64、Python 3.12。源码运行需将 FFmpeg / FFprobe 加入 PATH（可用 Winget 或官方渠道安装）；打包版启动时若未检测到 FFmpeg，会引导配置本机目录或联网自动下载一次（SHA-256 锁定的官方 essentials 构建），也可在 设置 → 通用 随时修改。保持包签名/校验验证。
 
 ```powershell
 cd my-jellyfin
