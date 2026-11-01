@@ -111,14 +111,24 @@ def installer_candidate(new,assets,fetcher,notes):
 
 
 def check(current,fetcher=fetch,cancelled=None):
-    best=None;successful=0
+    best=None;successful=0;latest=None
     try:
-        check_cancelled(cancelled);release=json.loads(fetcher(API,1024*1024));new=release['tag_name'].removeprefix('v');version(new)
-        if not release.get('draft') and not release.get('prerelease'):
-            if version(new)>version(current):
-                assets={entry['name']:entry for entry in release.get('assets',[])}
-                best=installer_candidate(new,assets,fetcher,str(release.get('body') or '')[:3000])
-            successful+=1
+        check_cancelled(cancelled)
+        try:
+            release=json.loads(fetcher(API,1024*1024))
+        except httpx.HTTPStatusError as error:
+            # A repository without any published release answers 404: a normal
+            # state that must not surface as a network failure.
+            if error.response.status_code==404:release=None;successful+=1
+            else:raise
+        else:successful+=1
+        if release:
+            new=release['tag_name'].removeprefix('v');version(new)
+            if not release.get('draft') and not release.get('prerelease'):
+                if version(new)>version(current):
+                    assets={entry['name']:entry for entry in release.get('assets',[])}
+                    best=installer_candidate(new,assets,fetcher,str(release.get('body') or '')[:3000])
+            latest=new
     except (ValueError,TypeError,AttributeError,KeyError,IndexError,UnicodeError,httpx.HTTPError,OSError):pass
     try:
         check_cancelled(cancelled);status=json.loads(fetcher(RAW+'release-status.json',65536));manifest=json.loads(fetcher(RAW+'windows-installer.json',65536))
@@ -129,7 +139,8 @@ def check(current,fetcher=fetch,cancelled=None):
         if version(new)>version(current) and (best is None or version(new)>version(best.version)):best=candidate
     except (ValueError,TypeError,AttributeError,KeyError,IndexError,httpx.HTTPError,OSError):pass
     check_cancelled(cancelled)
-    if not successful:raise ValueError('无法读取 Gitee 更新信息，请检查网络或稍后重试')
+    if not successful:
+        raise ValueError('无法读取 Gitee 更新信息：仓库还没有发布 Release，或网络暂时不可用')
     return best
 
 

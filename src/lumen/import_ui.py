@@ -62,7 +62,9 @@ class ImportDialog(QDialog):
     def choose(self):
         if self.browser is not None and self.browser.isVisible():self.browser.raise_();self.browser.activateWindow();return
         # Native shell extensions and nested modal loops can stall on unavailable drives.
+        from .dialogs import DARK
         browser=QFileDialog(self,'选择媒体目录');browser.setOption(QFileDialog.Option.DontUseNativeDialog,True)
+        browser.setStyleSheet(DARK)
         browser.setOption(QFileDialog.Option.DontResolveSymlinks,True);browser.setFileMode(QFileDialog.FileMode.Directory);browser.setOption(QFileDialog.Option.ShowDirsOnly,True)
         browser.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);self.browser=browser
         browser.fileSelected.connect(self.path.setText)

@@ -129,3 +129,14 @@ def test_powershell_upgrade_helper_parses_without_executing_it(tmp_path):
     literal=str(script).replace("'","''")
     source="$parseTokens=$null; $parseErrors=$null; [System.Management.Automation.Language.Parser]::ParseFile('"+literal+"',[ref]$parseTokens,[ref]$parseErrors) | Out-Null; if ($parseErrors.Count) { $parseErrors | ForEach-Object { $_.Message }; exit 1 }"
     subprocess.run([shell,'-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(source.encode('utf-16le')).decode()],check=True,capture_output=True,timeout=30)
+
+
+def test_missing_release_is_not_a_network_failure():
+    def missing(url,limit):
+        raise httpx.HTTPStatusError('Not Found',request=httpx.Request('GET',url),
+                                    response=httpx.Response(404,request=httpx.Request('GET',url)))
+    assert updates.check('0.4.5',missing) is None
+    def broken(url,limit):
+        raise httpx.HTTPError('connection refused')
+    with pytest.raises(ValueError,match='仓库还没有发布 Release'):
+        updates.check('0.4.5',broken)
