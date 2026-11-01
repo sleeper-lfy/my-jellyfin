@@ -584,6 +584,7 @@ class Details(QWidget):
             self.management_menu.addAction('编辑资料 / 锁定…',self.edit)
             self.management_menu.addSeparator()
         self.management_menu.addAction(icon('folder'),'整理文件…',self.organize)
+        if w['files']:self.management_menu.addAction('扫描本地文件变化…',self.refresh_files)
         if w['kind']!='fans':
             self.management_menu.addAction('从 NFO 补充图片…',lambda:window.import_nfo_artwork(work_id))
             self.management_menu.addAction('刮削演员头像…',self.scrape_actor_photo)
@@ -660,6 +661,8 @@ class Details(QWidget):
         self.episode_overview.setWordWrap(True)
         outer.addWidget(self.episode_overview)
         self.files.itemClicked.connect(self.select_episode)
+        self.files.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.files.customContextMenuRequested.connect(self.episode_menu)
         sources = QVBoxLayout()
         for source in w['sources']:
             if source['plugin'] == 'local-nfo':
@@ -1077,6 +1080,64 @@ class Details(QWidget):
                 self.window.run_job('整理文件', lambda lib, progress: execute_move(lib, pairs))
         self.window.run_job('检查文件整理计划', lambda lib, p: plan_move(lib, self.work_id, target), ready)
         self.accept()
+
+    def refresh_files(self):
+        origin=self.work_id
+        def scan(lib, progress):
+            return lib.refresh_work(origin, progress, progress.cancelled)
+        def ready(result):
+            if not isinstance(result, dict) or result.get('cancelled'):return
+            if self.detail_page is not None and self.detail_page.work_id==origin:self.window.reload_details(origin)
+            missing=result.get('missing',[]);renamed=result.get('renamed',[]);imported=result.get('imported',0)
+            warnings=result.get('errors',[])
+            summary=f"新增 {imported} 个 · 恢复重命名 {len(renamed)} 个 · 缺失 {len(missing)} 个"
+            if warnings:summary+=f" · 警告 {len(warnings)}"
+            dialog=QMessageBox(self.window);dialog.setWindowTitle('扫描文件变化')
+            if missing:
+                dialog.setText(summary+'。是否移除缺失文件的媒体库记录？磁盘上其他文件不受影响。')
+                dialog.setDetailedText('\n'.join(missing))
+                dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+                dialog.button(QMessageBox.StandardButton.Ok).setText('移除缺失记录')
+                dialog.button(QMessageBox.StandardButton.Cancel).setText('保留')
+                if dialog.exec()==QMessageBox.StandardButton.Ok:
+                    def apply(lib, progress):
+                        work=lib.work(origin);wanted=set(missing)
+                        return lib.remove_local_records(origin,[f['id'] for f in work['files'] if f['path'] in wanted])
+                    def removed(result):
+                        if result.get('removed_work'):self.window.back_details();self.window.refresh()
+                        elif self.detail_page is not None and self.detail_page.work_id==origin:self.window.reload_details(origin)
+                        self.window.status.setText(f"已移除 {result['removed']} 条缺失记录，文件保留在磁盘")
+                    self.window.run_job('移除缺失记录',apply,removed)
+            else:
+                dialog.setText(summary);dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+                dialog.exec()
+            dialog.deleteLater()
+        self.window.run_job('扫描本地文件变化',scan,ready)
+
+    def episode_menu(self, position):
+        item=self.files.itemAt(position)
+        if not item:return
+        file=item.data(Qt.ItemDataRole.UserRole)
+        menu=QMenu(self)
+        menu.addAction('移除此集的媒体库记录（保留文件）',lambda:self.remove_episode_records([file['id']]))
+        if file.get('season') is not None:
+            season=file['season']
+            menu.addAction(f'移除第 {season} 季的全部记录（保留文件）' if season else '移除特别篇的全部记录（保留文件）',
+                           lambda:self.remove_episode_records([f['id'] for f in self.work['files'] if f['season']==season]))
+        menu.exec(self.files.mapToGlobal(position))
+
+    def remove_episode_records(self, file_ids):
+        count=len(file_ids)
+        if QMessageBox.question(self.window,'移除季集记录',
+                f'将从媒体库移除 {count} 条记录，观看进度与书签一并清除；视频文件保留在磁盘。继续？')!=QMessageBox.StandardButton.Yes:return
+        origin=self.work_id
+        def apply(lib, progress):
+            return lib.remove_local_records(origin,file_ids)
+        def done(result):
+            if result.get('removed_work'):self.window.back_details();self.window.refresh()
+            elif self.detail_page is not None and self.detail_page.work_id==origin:self.window.reload_details(origin)
+            self.window.status.setText(f"已移除 {result['removed']} 条季集记录，文件保留在磁盘")
+        self.window.run_job('移除季集记录',apply,done)
 
     def recapture(self):
         if not self.work['files']:

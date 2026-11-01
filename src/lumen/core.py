@@ -586,6 +586,89 @@ class Library(CatalogActions):
             if progress: progress(index+1,len(rows),'后台媒体处理完成 · '+file['path'])
         return result
 
+    def refresh_work(self, work_id, progress=None, cancelled=None):
+        """Re-scan the folders this work already lives in: recover renames, report
+        missing files for confirmation, and import additions through the fast path."""
+        work = self.work(work_id)
+        if not work['files']:raise ValueError('该条目没有本地视频文件')
+        kind = work['kind']
+        marks = ','.join('?' * len(work['files']))
+        cache = {row['file_id']: row for row in self.db.execute(
+            f'SELECT file_id,size,modified,quick FROM import_cache WHERE file_id IN ({marks})',
+            [f['id'] for f in work['files']])}
+        missing = [f for f in work['files'] if not Path(f['path']).is_file()]
+        roots = []
+        if kind == 'fans':
+            from .fans import roots_for
+            roots = [Path(root) for root in roots_for(work) if Path(root).is_dir()]
+        else:
+            for f in work['files']:
+                folder = Path(f['path']).parent
+                if kind == 'series':
+                    from .series import season_folder
+                    if season_folder(folder) is not None and folder.parent.is_dir():folder = folder.parent
+                if folder.is_dir():roots.append(folder)
+        roots = list(dict.fromkeys(roots))
+        known = {f['path'] for f in work['files']}
+        candidates = []
+        for root in roots:
+            for candidate in root.rglob('*'):
+                check_cancelled(cancelled)
+                try:
+                    if (candidate.is_file() and not candidate.is_symlink() and candidate.suffix.lower() in VIDEO_EXTENSIONS
+                            and root in candidate.resolve().parents and str(candidate) not in known):
+                        candidates.append(candidate)
+                except OSError:continue
+        # A vanished file that reappeared elsewhere with the same size and sampled
+        # content is a rename; mtime alone is ambiguous for files created together.
+        renames = [];additions = []
+        for candidate in candidates:
+            try:stat = candidate.stat()
+            except OSError:continue
+            sized = [m for m in missing if cache.get(m['id']) is not None and cache[m['id']]['size'] == stat.st_size]
+            hits = [m for m in sized if cache[m['id']]['quick'] == quick_fingerprint(candidate)]
+            if len(hits) == 1:
+                renames.append((hits[0], candidate));missing.remove(hits[0])
+            else:additions.append(candidate)
+        for file, candidate in renames:
+            season = episode = None
+            if kind == 'series':
+                from .series import episode_numbers
+                season, episode = episode_numbers(candidate)
+            with self.db:
+                self.db.execute('UPDATE files SET path=?,root=?,season=COALESCE(?,season),episode=COALESCE(?,episode) WHERE id=?',
+                                (str(candidate), str(candidate.parent), season, episode, file['id']))
+        imported = duplicates = 0;errors = []
+        scanned = {}
+        for candidate in additions:
+            root = next((r for r in roots if r in candidate.parents), None)
+            if root is not None:scanned.setdefault(root, []).append(candidate)
+        for root, group in scanned.items():
+            result = self.import_folder(root, kind, fast=True, candidates=group, progress=progress, cancelled=cancelled)
+            imported += result['imported'];duplicates += result['duplicates'];errors += result['errors']
+        return {'missing': [f['path'] for f in missing], 'renamed': [[f['path'], str(c)] for f, c in renames],
+                'imported': imported, 'duplicates': duplicates, 'errors': errors, 'roots': [str(r) for r in roots]}
+
+    def remove_local_records(self, work_id, file_ids):
+        """Drop library records for specific episodes (and their history); files stay on disk."""
+        work = self.work(work_id)
+        wanted = set(file_ids)
+        ids = [f['id'] for f in work['files'] if f['id'] in wanted]
+        if not ids:return {'removed': 0, 'removed_work': False}
+        marks = ','.join('?' * len(ids))
+        with self.db:
+            self.db.execute(f'DELETE FROM activity WHERE session_id IN (SELECT id FROM sessions WHERE file_id IN ({marks}))', ids)
+            self.db.execute(f'DELETE FROM sessions WHERE file_id IN ({marks})', ids)
+            self.db.execute(f'DELETE FROM import_cache WHERE file_id IN ({marks})', ids)
+            self.db.execute(f'DELETE FROM files WHERE id IN ({marks})', ids)
+            self.db.executemany('DELETE FROM settings WHERE key=?',
+                                [(f'playback-position:{i}',) for i in ids] + [(f'playback-state:{i}',) for i in ids])
+        remaining = self.db.execute('SELECT COUNT(*) FROM files WHERE work_id=?', (work_id,)).fetchone()[0]
+        if remaining == 0 and not self.db.execute('SELECT 1 FROM sources WHERE work_id=?', (work_id,)).fetchone():
+            self.remove_catalog(work_id)
+            return {'removed': len(ids), 'removed_work': True}
+        return {'removed': len(ids), 'removed_work': False}
+
     def task(self, task_id, kind, status, payload, result=None, error=None):
         parent=getattr(self,'parent_task_id',None)
         if parent and parent!=task_id:payload={**payload,'parent_task_id':parent}
