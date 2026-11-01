@@ -1,6 +1,6 @@
 ; Build from the verified Windows onedir bundle; never package Linux binaries.
 #ifndef AppVersion
-  #define AppVersion "0.4.12"
+  #define AppVersion "0.4.13"
 #endif
 #ifndef BundleDir
   #define BundleDir "..\dist\Lumen"

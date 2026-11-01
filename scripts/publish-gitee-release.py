@@ -6,8 +6,8 @@ from pathlib import Path
 import httpx
 
 REPO = 'sleeper_lfy/my-jellyfin'
-TAG = 'v0.4.12-preview.2'
-NAME = 'Lumen 0.4.12 测试预发布 2（Windows + Android）'
+TAG = 'v0.4.13'
+NAME = 'Lumen 0.4.13（Windows + Android）'
 PRERELEASE = False
 TARGET = 'main'
 ASSETS = ['Lumen-Setup-x64.exe', 'Lumen-Setup-x64.exe.sha256', 'Lumen-android-debug.apk', 'Lumen-android-debug.apk.sha256']
@@ -27,7 +27,19 @@ BODY = '''测试预发布，面向愿意试用的用户；真机音频、DPI、�
 
 验证范围：PC 452 项自动化测试、Android 77 项测试通过；Windows 安装包完成安装 / 卸载自动验收（UI、播放运行时、插件工作进程、安装与卸载）。真机听感、全屏、DPI、旧版升级和真实插件站点未验证。Android versionCode 16，与 preview.1 使用同一持久签名，可直接覆盖安装。
 
-本次同时包含：媒体库自动巡检（缺失/重命名/新增的分批后台检测）、详情页扫描文件变化与右键移除季集记录、手机端女演员墙与高级筛选（年份范围/评分/多标签）、查询层 SQL 化（大库分页提速约 20 倍）、文件夹拖入间歇失效修复、海报缩略图本地图片选择、更新检测无 Release 友好提示与目录选择器深色主题。
+相对 0.4.12 的变化：
+
+- 查询层 SQL 化：筛选与分页下推 SQLite，大库分页提速约 20 倍
+- 手机端新增女演员墙与高级筛选（年份范围/评分下限/多标签组合）
+- 媒体库自动巡检：分批后台检测缺失/重命名/新增，离线盘自动跳过
+- 详情页"扫描本地文件变化"与右键移除季集记录（保留磁盘文件）
+- 右键"删除本地文件"（清单确认后删除并移出媒体库）
+- 海报/缩略图支持选择本地图片（文件选择或拖入对话框）
+- 导入对话框可选刮削器与整理目标，批量拖入按相同设置依次入队，自动匹配默认取第一个结果
+- 更新渠道切换到 Gitee；安装包不再捆绑 FFmpeg（启动时引导配置或联网下载）
+- 修复文件夹拖入间歇失效、目录选择器白字白底、安卓磁贴与密集按钮行变形
+
+SHA-256：
 
 SHA-256：
 
