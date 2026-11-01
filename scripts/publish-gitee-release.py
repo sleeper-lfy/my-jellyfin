@@ -8,7 +8,7 @@ import httpx
 REPO = 'sleeper_lfy/my-jellyfin'
 TAG = 'v0.4.12-preview.2'
 NAME = 'Lumen 0.4.12 测试预发布 2（Windows + Android）'
-PRERELEASE = True
+PRERELEASE = False
 TARGET = 'main'
 ASSETS = ['Lumen-Setup-x64.exe', 'Lumen-Setup-x64.exe.sha256', 'Lumen-android-debug.apk', 'Lumen-android-debug.apk.sha256']
 
