@@ -25,7 +25,7 @@
 
 ## 选择
 
-采用 Python 3.11–3.13 + PySide6 6.8.3 + SQLite。Qt Multimedia 的 FFmpeg 后端负责视频解码、音轨和内嵌字幕；外部 FFmpeg/FFprobe 负责探测、缩略图与外挂字幕转换。不自研解码器。
+采用 Python 3.11–3.13 + PySide6 6.8.3 + SQLite。Qt Multimedia 的 FFmpeg 后端负责视频解码、音轨和内嵌字幕；外部 FFmpeg/FFprobe 负责探测、缩略图与外挂字幕转换，安装包不捆绑，应用按"内置 → 配置目录 → PATH → 联网下载（SHA-256 锁定）"四级获取。不自研解码器。
 
 评估 libmpv：格式/滤镜能力强，但需额外维护 Windows 原生 DLL 分发、窗口嵌入和 IPC 生命周期。Qt 已包含成熟媒体后端，与 UI 共用部署链，因此第一版选 Qt。播放器封装于 `player.py`，若 Windows 特定格式兼容性测试要求替换内核，可独立替换。
 
