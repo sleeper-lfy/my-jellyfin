@@ -27,9 +27,11 @@ BODY = '''测试预发布，面向愿意试用的用户；真机音频、DPI、�
 
 验证范围：PC 452 项自动化测试、Android 77 项测试通过；Windows 安装包完成安装 / 卸载自动验收（UI、播放运行时、插件工作进程、安装与卸载）。真机听感、全屏、DPI、旧版升级和真实插件站点未验证。Android versionCode 16，与 preview.1 使用同一持久签名，可直接覆盖安装。
 
+本次同时包含：扫描本地文件变化（缺失 / 重命名 / 新增的季与集，右键移除季集记录）、更新检测对“仓库无 Release”的友好提示、目录选择器深色主题修复。
+
 SHA-256：
 
-- Lumen-Setup-x64.exe：f8844300d97b133a7270b769c5774d67cc56a7f13474f58bc0d56807a65fe197（单文件 84MB，无需合并分卷）
+- Lumen-Setup-x64.exe：07f999a4de133f28e292e788ded0784ec8245809bf53d97058157f077133d36d（单文件 84MB，无需合并分卷）
 - Lumen-android-debug.apk：9ffbe62a6efa835a8bf4c36067e80fd578ceac7b1f1301744281bf9144dd4e10'''
 
 
