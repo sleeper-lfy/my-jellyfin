@@ -2151,12 +2151,16 @@ class MainWindow(QMainWindow):
         dialog.pending=list(pending or [])
         dialog.refresh_scrapers()
         if path:dialog.path.setText(str(path))
-        if not dialog.isVisible():
+        # A minimized or buried dialog makes drops look dead; restore and force it forward.
+        already=dialog.isVisible()
+        if dialog.isMinimized():dialog.showNormal()
+        if not already:
             dialog.kind.setCurrentIndex(max(0,dialog.kind.findData(self.section if self.section in KINDS else 'movie')))
             dialog.sync_kind()
             dialog.show()
         if dialog.browser is not None and dialog.browser.isVisible():dialog.browser.raise_();dialog.browser.activateWindow();return
-        dialog.raise_();dialog.activateWindow()
+        dialog.raise_();dialog.activateWindow();dialog.setFocus()
+        if already:self.status.setText('导入窗口已打开，请在其中确认设置')
 
     def start_import(self,path,kind,plugin=None,destination=None,batch=None):
         origin=(self.section,self.subtab)
@@ -2200,15 +2204,28 @@ class MainWindow(QMainWindow):
         self.run_job('自动匹配与分区整理', scrape)
 
     def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls() and any(Path(u.toLocalFile()).is_dir() for u in event.mimeData().urls()):
+        # Delayed shell rendering and slow paths make toLocalFile()+is_dir()
+        # unreliable (and IO-churning) while hovering; validate on drop instead.
+        if event.mimeData().hasUrls():
             event.acceptProposedAction()
 
+    def import_hint(self, text):
+        QMessageBox.information(self, '导入', text)
+
     def dropEvent(self, event):
-        folders = [u.toLocalFile() for u in event.mimeData().urls() if Path(u.toLocalFile()).is_dir()]
-        if folders:
-            self.import_path(folders[0], pending=folders[1:])
-            if len(folders) > 1:
-                self.status.setText(f'本次拖入 {len(folders)} 个文件夹；确认设置后其余文件夹按相同选项加入队列。')
+        folders = []
+        for url in event.mimeData().urls():
+            local = url.toLocalFile()
+            if not local:continue
+            try:
+                if Path(local).is_dir():folders.append(local)
+            except OSError:continue
+        if not folders:
+            self.import_hint('拖入的内容里没有识别到文件夹；单个文件请先放入文件夹后拖入。')
+            return
+        self.import_path(folders[0], pending=folders[1:])
+        if len(folders) > 1:
+            self.status.setText(f'本次拖入 {len(folders)} 个文件夹；确认设置后其余文件夹按相同选项加入队列。')
 
     def build_tree(self,items=None):
         self.tree.clear()
