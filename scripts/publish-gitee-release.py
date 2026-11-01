@@ -43,8 +43,8 @@ SHA-256：
 
 SHA-256：
 
-- Lumen-Setup-x64.exe：045e8c2f4eda71b35f81269cb0cd325dc68b0f4dc5fe78aefdc1744b5933435c（单文件 84MB，无需合并分卷）
-- Lumen-android-debug.apk：1b4e02bd9276e030cd0e00083f2430ea97fff1ba06fc062c3495f73a3e63d51c'''
+- Lumen-Setup-x64.exe：70c880f73b1874e2599a6a7b9a420b6867a4f0e5703a090e1e903d35e16127e2（单文件 84MB）
+- Lumen-android-debug.apk：632d579e10b851fff793b498c58d17430c8b73a08048fb9dfde44d1e45e69745'''
 
 
 def token():
