@@ -23,6 +23,7 @@ from .components import ActionButton,FlowLayout,chip,icon,ElidedLabel
 
 KINDS = {'movie': '电影', 'series': '电视剧', 'vr': 'VR电影', 'fans': 'Fans', 'other': '其他'}
 FFTOOLS_JOB = 'fftools-download'
+INSPECT_JOB = 'library-inspection'
 
 
 def button(text, callback, primary=False):
@@ -1396,6 +1397,11 @@ class MainWindow(QMainWindow):
         set_tool_directory(self.library.setting('ffmpeg_directory',''))
         self._fftools_prompted=False
         QTimer.singleShot(2500,self.check_fftools)
+        self.inspect_scheduler=QTimer(self)
+        self.inspect_scheduler.setInterval(30*60_000)
+        self.inspect_scheduler.timeout.connect(self.schedule_inspect)
+        self.inspect_scheduler.start()
+        QTimer.singleShot(600_000,self.schedule_inspect)
         self.watch_scheduler=QTimer(self);self.watch_scheduler.setInterval(10000);self.watch_scheduler.timeout.connect(self.schedule_watched);self.watch_scheduler.start()
         with self.library.db:
             self.library.db.execute("UPDATE tasks SET status='cancelled',error='应用重启，未完成任务可重试' WHERE kind='background' AND status IN ('running','paused','queued')")
@@ -1442,6 +1448,22 @@ class MainWindow(QMainWindow):
         if isinstance(result, dict) and result.get('needs_ffmpeg'):
             self.status.setText('缺少 FFmpeg 组件：读取时长与缩略图已暂停；可在设置中配置目录或联网下载')
             self.schedule_fftools(force=True)
+
+    def schedule_inspect(self):
+        """One rotating batch per opportunity, at most every two hours; always yields to real work."""
+        if self._closing or self.jobs or self.job_queue or self.jobs_paused:
+            return
+        state = self.library.setting('inspection', {})
+        if state.get('last') and time.time() - state['last'] < 2 * 3600:
+            return
+        def run(lib, progress):
+            return lib.inspect_batch(progress=progress, cancelled=progress.cancelled)
+        def done(result):
+            if not isinstance(result, dict) or result.get('cancelled'):return
+            if result.get('missing') or result.get('imported') or result.get('renamed') or result.get('errors'):
+                self.status.setText(f"媒体库巡检：缺失 {result['missing']} · 恢复重命名 {result['renamed']} · "
+                                    f"新增 {result['imported']} · 失败 {result['errors']}；缺失详情见任务页")
+        self.run_job('媒体库巡检（分批后台）', run, done, quiet=True, _identifier=INSPECT_JOB)
 
     def check_fftools(self):
         if self._closing or self._fftools_prompted or os.environ.get('LUMEN_SMOKE'):

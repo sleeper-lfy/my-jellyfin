@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 import hashlib
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -144,6 +145,15 @@ def tool(name):
     if found:return found
     downloaded=data_directory()/'ffmpeg'/(name+suffix)
     return str(downloaded) if downloaded.is_file() else None
+
+
+def root_online(root):
+    """Drive-letter presence probe that never touches the hardware, so sleeping
+    or unplugged media drives are never poked by background scans."""
+    if os.name!='nt':return True
+    drive=os.path.splitdrive(str(root))[0]
+    if len(drive)!=2 or drive[1]!=':':return True
+    return bool(ctypes.windll.kernel32.GetLogicalDrives()>>(ord(drive[0].upper())-65)&1)
 
 
 def probe(path, cancelled=None, *, local_only=False):
@@ -586,7 +596,7 @@ class Library(CatalogActions):
             if progress: progress(index+1,len(rows),'后台媒体处理完成 · '+file['path'])
         return result
 
-    def refresh_work(self, work_id, progress=None, cancelled=None):
+    def refresh_work(self, work_id, progress=None, cancelled=None, skip_roots=None):
         """Re-scan the folders this work already lives in: recover renames, report
         missing files for confirmation, and import additions through the fast path."""
         work = self.work(work_id)
@@ -609,6 +619,7 @@ class Library(CatalogActions):
                     if season_folder(folder) is not None and folder.parent.is_dir():folder = folder.parent
                 if folder.is_dir():roots.append(folder)
         roots = list(dict.fromkeys(roots))
+        if skip_roots:roots = [root for root in roots if str(root) not in skip_roots]
         known = {f['path'] for f in work['files']}
         candidates = []
         for root in roots:
@@ -667,7 +678,65 @@ class Library(CatalogActions):
         if remaining == 0 and not self.db.execute('SELECT 1 FROM sources WHERE work_id=?', (work_id,)).fetchone():
             self.remove_catalog(work_id)
             return {'removed': len(ids), 'removed_work': True}
+        identifier = 'inspect-' + str(work_id)
+        row = self.db.execute('SELECT status FROM tasks WHERE id=?', (identifier,)).fetchone()
+        if row and row[0] == 'pending':
+            self.task(identifier, 'inspect', 'done', {'work_id': work_id}, {'removed': len(ids)})
         return {'removed': len(ids), 'removed_work': False}
+
+    def inspect_batch(self, limit=200, seconds=30, progress=None, cancelled=None):
+        """One rotating batch of per-work file checks. Additions are imported and
+        renames recovered immediately; missing files are only reported for the
+        user to confirm, and offline drives are never touched."""
+        state = self.setting('inspection', {})
+        offline = {root: stamp for root, stamp in state.get('offline', {}).items() if stamp > time.time() - 24 * 3600}
+        cursor = state.get('cursor', 0)
+        rows = [row[0] for row in self.db.execute(
+            'SELECT id FROM works WHERE id>? AND EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id) ORDER BY id LIMIT ?',
+            (cursor, limit))]
+        findings = {'scanned': 0, 'missing': 0, 'renamed': 0, 'imported': 0, 'errors': 0, 'offline': []}
+        deadline = time.monotonic() + seconds
+        last = None
+        for work_id in rows:
+            check_cancelled(cancelled)
+            last = work_id
+            work = self.work(work_id)
+            roots = []
+            if work['kind'] == 'fans':
+                from .fans import roots_for
+                roots = [Path(root) for root in roots_for(work) if Path(root).is_dir()]
+            else:
+                for f in work['files']:
+                    folder = Path(f['path']).parent
+                    if work['kind'] == 'series':
+                        from .series import season_folder
+                        if season_folder(folder) is not None and folder.parent.is_dir():folder = folder.parent
+                    if folder.is_dir():roots.append(folder)
+            roots = list(dict.fromkeys(roots))
+            unreachable = {root for root in roots if str(root) in offline or not root_online(root)}
+            for root in unreachable:
+                offline[str(root)] = time.time();findings['offline'].append(str(root))
+            roots = [root for root in roots if root not in unreachable]
+            if not roots:continue
+            try:
+                result = self.refresh_work(work_id, progress, cancelled, skip_roots={str(root) for root in unreachable})
+            except (ValueError, OSError) as error:
+                findings['errors'] += 1
+                self.task('inspect-' + str(work_id), 'inspect', 'failed', {'work_id': work_id, 'title': work['title']}, error=str(error))
+                continue
+            findings['scanned'] += 1
+            findings['missing'] += len(result['missing'])
+            findings['renamed'] += len(result['renamed'])
+            findings['imported'] += result['imported']
+            findings['errors'] += len(result['errors'])
+            if result['missing']:
+                self.task('inspect-' + str(work_id), 'inspect', 'pending',
+                          {'work_id': work_id, 'title': work['title'], 'missing': result['missing']})
+        state['offline'] = offline
+        state['cursor'] = 0 if last is None or len(rows) < limit else last
+        state['last'] = time.time()
+        self.set_setting('inspection', state)
+        return findings
 
     def task(self, task_id, kind, status, payload, result=None, error=None):
         parent=getattr(self,'parent_task_id',None)
