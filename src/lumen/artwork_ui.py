@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-                              QDialogButtonBox)
+                              QDialogButtonBox, QPushButton)
+
+IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tif', '.tiff', '.avif'}
 
 
 def artwork_paths(library, work):
@@ -67,7 +69,10 @@ class ArtworkDialog(QDialog):
             self.sources.addItem(f'{index + 1} · {Path(source).name}', source)
         if path:
             self.sources.setCurrentIndex(max(0, self.sources.findData(path)))
-        layout.addWidget(self.sources)
+        sources_row = QHBoxLayout(); sources_row.addWidget(self.sources, 1)
+        pick = QPushButton('本地图片…'); pick.clicked.connect(self.pick_local); sources_row.addWidget(pick)
+        layout.addLayout(sources_row)
+        self.setAcceptDrops(True)
         row = QHBoxLayout(); layout.addLayout(row)
         self.role = QComboBox(); self.role.addItem('设为海报（2:3）', 'poster'); self.role.addItem('设为缩略图（16:9）', 'thumbnail'); row.addWidget(self.role)
         self.anchor = QComboBox()
@@ -82,6 +87,27 @@ class ArtworkDialog(QDialog):
         from .images import image_cache
         image_cache().changed.connect(self.render)
         self.render()
+
+    def pick_local(self):
+        from .dialogs import open_file_name
+        path = open_file_name(self, '选择本地图片', '', '图片 (*.jpg *.jpeg *.png *.webp *.bmp *.gif *.tif *.tiff *.avif)')
+        if path:self.add_local_image(path)
+
+    def add_local_image(self, path):
+        path = str(Path(path))
+        if self.sources.findData(path) < 0:
+            self.sources.insertItem(0, '本地 · ' + Path(path).name, path)
+        self.sources.setCurrentIndex(max(0, self.sources.findData(path)))
+
+    def dragEnterEvent(self, event):
+        if any(Path(url.toLocalFile()).suffix.lower() in IMAGE_SUFFIXES for url in event.mimeData().urls()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            local = url.toLocalFile()
+            if local and Path(local).suffix.lower() in IMAGE_SUFFIXES:
+                self.add_local_image(local)
 
     def render(self):
         from .images import image_cache

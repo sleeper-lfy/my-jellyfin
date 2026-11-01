@@ -208,3 +208,29 @@ def test_save_from_detail_dialog_refreshes_page_and_gallery_is_browsable(qapp,tm
     window.detail_page.view_cover()
     assert opened==[selected['poster'],str(source)]
     window.close()
+
+
+def test_local_image_pick_and_drop_feed_dialog_and_save(qapp,tmp_path,monkeypatch):
+    window=MainWindow(tmp_path/'ui');work_id=add_work(window.library,'Local pick')
+    source=tmp_path/'chosen.png';picture(source);original=source.read_bytes()
+    try:
+        dialog=ArtworkDialog(window,window.library.work(work_id));dialog.show()
+        assert dialog.sources.count()==0
+        monkeypatch.setattr('lumen.dialogs.open_file_name',lambda *args,**kwargs:str(source))
+        dialog.pick_local()
+        assert dialog.sources.currentData()==str(source)
+        dropped=tmp_path/'dropped.png';picture(dropped)
+        class Drag:pass
+        drag=Drag();drag.mimeData=lambda:None
+        from PySide6.QtCore import QUrl,QMimeData
+        mime=QMimeData();mime.setUrls([QUrl.fromLocalFile(str(dropped))])
+        event=type('E',(object,),{'mimeData':lambda self:mime,'acceptProposedAction':lambda self:None})()
+        dialog.dragEnterEvent(event)
+        dialog.dropEvent(event)
+        assert dialog.sources.count()==2 and dialog.sources.currentData()==str(dropped)
+        result=save_artwork(window.library,work_id,str(dropped),'poster','center')
+        assert result['updated'] and window.library.setting(f'artwork_{work_id}')['poster']
+        assert dropped.read_bytes()==original
+        dialog.reject();dialog.deleteLater()
+    finally:
+        window.close()
