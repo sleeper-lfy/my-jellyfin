@@ -65,19 +65,22 @@ public class BrowseUiTest {
             field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
             call(activity,"showLibrary");call(activity,"showFilters");
             AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
-            List<AutoCompleteTextView> fields=inputs(dialog.getWindow().getDecorView());assertEquals(3,fields.size());
+            List<AutoCompleteTextView> fields=inputs(dialog.getWindow().getDecorView());assertEquals(6,fields.size());
             long deadline=System.currentTimeMillis()+6000;
             while(fields.get(0).getAdapter()==null&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
             assertNotNull(fields.get(0).getAdapter());assertEquals(2,fields.get(0).getAdapter().getCount());
             assertEquals("Example actor",fields.get(1).getAdapter().getItem(0));
-            assertEquals("2024",fields.get(2).getAdapter().getItem(0));
-            fields.get(0).setText("Drama",false);fields.get(1).setText("Example actor",false);fields.get(2).setText("bad",false);
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertTrue(dialog.isShowing());assertNotNull(fields.get(2).getError());
-            fields.get(2).setText("2024",false);dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertFalse(dialog.isShowing());
+            assertEquals("2024",fields.get(3).getAdapter().getItem(0));
+            fields.get(0).setText("Drama",false);fields.get(1).setText("Example actor",false);fields.get(4).setText("2024",false);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertFalse(dialog.isShowing());
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);String query=(String)path.invoke(activity);
-            assertTrue(query.contains("tag=Drama"));assertTrue(query.contains("actor=Example%20actor"));assertTrue(query.contains("year=2024"));
-            call(activity,"showFilters");AlertDialog clear=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();assertTrue(clear.isShowing());clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
-            assertTrue(((String)path.invoke(activity)).contains("&tag=&actor=&year=&"));
+            assertTrue("tag",query.contains("tag=Drama"));assertTrue("actor",query.contains("actor=Example%20actor"));assertTrue("yearmax",query.contains("year_max=2024"));
+            call(activity,"showFilters");AlertDialog second=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            List<AutoCompleteTextView> secondFields=inputs(second.getWindow().getDecorView());
+            secondFields.get(4).setText("bad",false);second.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            assertTrue(second.isShowing());assertNotNull(secondFields.get(4).getError());second.dismiss();
+            AlertDialog clear=second;clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
+            String cleared=(String)path.invoke(activity);assertTrue("cleared="+cleared,cleared.contains("&tag=&actor=&"));
         }
     }
     private View findText(View view,String wanted){
@@ -235,6 +238,29 @@ public class BrowseUiTest {
                     assertTrue("磁贴超出均分宽度会整行变形（"+size[0]+"dp 第"+i+"个）",tile.getMeasuredWidth()<=expected+1);
                 }
             }
+        }
+    }
+
+    @Test public void actressWallRendersFromServerAndClickFiltersByActor()throws Exception{
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                if(request.getPath().startsWith("/api/actresses"))return new MockResponse().setHeader("Content-Type","application/json")
+                    .setBody("{\"total\":2,\"items\":[{\"name\":\"Star\",\"count\":5,\"rated\":3,\"average\":7.5,\"work_ids\":[1],\"photo\":\"/api/works/1/actors/0/photo\"},{\"name\":\"Other\",\"count\":1,\"rated\":0,\"average\":null,\"work_ids\":[2],\"photo\":null}]}");
+                return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
+            }});server.start();MainActivity activity=lifecycle.get();
+            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            call(activity,"showLibrary");
+            View nav=findText(activity.findViewById(android.R.id.content),"女演员");assertNotNull("导航应包含女演员分区",nav);
+            nav.performClick();
+            long deadline=System.currentTimeMillis()+5000;
+            while(findText(activity.findViewById(android.R.id.content),"Star")==null&&System.currentTimeMillis()<deadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
+            assertNotNull("女演员墙应渲染演员卡片",findText(activity.findViewById(android.R.id.content),"Star"));
+            assertNotNull(findText(activity.findViewById(android.R.id.content),"5 部 · 均分 7.5 · 已评分 3"));
+            View star=findText(activity.findViewById(android.R.id.content),"Star");((View)star.getParent()).performClick();
+            Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);
+            long filterDeadline=System.currentTimeMillis()+5000;
+            while(!((String)path.invoke(activity)).contains("actor=Star")&&System.currentTimeMillis()<filterDeadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
+            assertTrue(((String)path.invoke(activity)).contains("actor=Star"));
         }
     }
 }

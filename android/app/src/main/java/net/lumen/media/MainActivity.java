@@ -31,7 +31,8 @@ public final class MainActivity extends Activity {
     private LinearLayout root,content;
     private ChipLayout posters;
     private ScrollView detailScroll;
-    private String kind="",query="",tagFilter="",actorFilter="",yearFilter="";
+    private String kind="",query="",tagFilter="",actorFilter="",yearMinFilter="",yearMaxFilter="",ratingMinFilter="",tagsAllFilter="";
+    private boolean actresses=false;
     private boolean favorites=false,recommended=false,discovery=false;
     private int offset=0,generation=0;
     private long detailId=0,renderedDetailId=0;
@@ -57,8 +58,8 @@ public final class MainActivity extends Activity {
     private int restoreOffset=0,restoreScroll=0;
     private TextView browseLoading;
     private static final class NavigationState {
-        String kind,query,tag,actor,year,sort,watch,list,discoverySort,discoveryProvider,searchTask,searchState,searchMessage,searchErrors,resultIds,resultTag;
-        boolean favorites,recommended,discovery,descending,discoveryDescending,discoveryOnline;
+        String kind,query,tag,actor,year,yearMin,yearMax,ratingMin,tagsAll,sort,watch,list,discoverySort,discoveryProvider,searchTask,searchState,searchMessage,searchErrors,resultIds,resultTag;
+        boolean favorites,recommended,discovery,actresses,descending,discoveryDescending,discoveryOnline;
         int offset,scroll,detailScroll;
         JSONObject detail;
     }
@@ -143,7 +144,7 @@ public final class MainActivity extends Activity {
                 status.setText("正在连接…");
                 request(()->client.get("/api/info"),info->{
                     if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");
-                    candidate.save(this);api=client;pictures.evictAll();kind="";query="";tagFilter="";actorFilter="";yearFilter="";favorites=false;recommended=false;showLibrary();
+                    candidate.save(this);api=client;pictures.evictAll();kind="";query="";tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;recommended=false;showLibrary();
                 });
             }catch(Exception e){status.setText(e.getMessage());}
         });MediaStyle.button(connect,true,false,false);panel.addView(connect);
@@ -154,7 +155,7 @@ public final class MainActivity extends Activity {
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(8),dp(6));
         if(back||!navigationHistory.isEmpty()){Button previous=button("",this::onBackPressed);MediaStyle.icon(previous,"back",false);previous.setContentDescription("返回上一页");row.addView(previous,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         TextView brand=text(title,24,Color.WHITE);row.addView(brand,new LinearLayout.LayoutParams(0,dp(52),1));
-        if(!back){Button collection=button("",()->{navigationHistory.clear();kind="";query="";savedList="";favorites=true;recommended=false;discovery=false;tagFilter="";actorFilter="";yearFilter="";showLibrary();});MediaStyle.icon(collection,"heart",favorites);collection.setContentDescription("收藏");row.addView(collection,new LinearLayout.LayoutParams(dp(48),dp(48)));}
+        if(!back){Button collection=button("",()->{navigationHistory.clear();kind="";query="";savedList="";favorites=true;recommended=false;discovery=false;actresses=false;tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";showLibrary();});MediaStyle.icon(collection,"heart",favorites);collection.setContentDescription("收藏");row.addView(collection,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         Button more=button("",()->{});MediaStyle.icon(more,"more",false);more.setContentDescription("更多操作");more.setOnClickListener(view->{
             PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("排序");menu.getMenu().add("智能片单");menu.getMenu().add("播放队列");menu.getMenu().add("随机播放");menu.getMenu().add("观影统计");menu.getMenu().add("电脑遥控");menu.getMenu().add("检查更新");menu.getMenu().add("切换连接");
             menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "排序":sorting();break;case "智能片单":smartLists();break;case "播放队列":queueEditor();break;case "随机播放":shuffle();break;case "观影统计":showStats();break;case "电脑遥控":startActivity(new Intent(this,RemoteActivity.class));break;case "检查更新":startActivity(new Intent(this,UpdateActivity.class));break;default:showConnection();}return true;});menu.show();
@@ -163,39 +164,42 @@ public final class MainActivity extends Activity {
     private void showLibrary() {
         generation++;browseRoot=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;discoveryTagInput=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();header("Lumen",false);
         LinearLayout searchRow=new LinearLayout(this);searchRow.setPadding(dp(16),0,dp(16),0);
-        EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint(discovery?"按影片名称搜索":"搜索媒体库");search.setContentDescription(discovery?"发现影片名称搜索":"媒体库搜索");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint(discovery?"按影片名称搜索":actresses?"搜索女演员":"搜索媒体库");search.setContentDescription(discovery?"发现影片名称搜索":actresses?"女演员搜索":"媒体库搜索");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         Runnable applySearch=()->{if(discovery&&discoveryOnline){startDiscoverySearch(search);return;}savedList="";query=search.getText().toString().trim();if(discovery&&discoveryTagInput!=null)tagFilter=discoveryTagInput.getText().toString().trim();showLibrary();};
         search.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
         search.setBackground(MediaStyle.surface(this,0xff202026,0xff3a3a44,8));search.setPadding(dp(12),0,dp(8),0);
         searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(48),1));Button searchButton=button("",applySearch);MediaStyle.icon(searchButton,"search",false);searchButton.setContentDescription("搜索");LinearLayout.LayoutParams searchParams=new LinearLayout.LayoutParams(dp(48),dp(48));searchParams.setMargins(dp(6),0,dp(6),0);searchRow.addView(searchButton,searchParams);
         String activeTag=discovery&&discoveryOnline?discoveryResultTag:tagFilter;
-        int count=(watchFilter.isEmpty()?0:1)+(savedList.isEmpty()?0:1)+(activeTag.isEmpty()?0:1)+(actorFilter.isEmpty()?0:1)+(yearFilter.isEmpty()?0:1)+(favorites?1:0);
+        int count=(watchFilter.isEmpty()?0:1)+(savedList.isEmpty()?0:1)+(activeTag.isEmpty()?0:1)+(actorFilter.isEmpty()?0:1)+(yearMinFilter.isEmpty()?0:1)+(yearMaxFilter.isEmpty()?0:1)+(ratingMinFilter.isEmpty()?0:1)+(tagsAllFilter.isEmpty()?0:1)+(favorites?1:0);
         Button filters=button("筛选"+(count>0?" · "+count:""),this::showFilters);MediaStyle.icon(filters,"filter",count>0);searchRow.addView(filters);root.addView(searchRow);
         ChipLayout selectedFilters=new ChipLayout(this);selectedFilters.setPadding(dp(16),dp(8),dp(16),0);
         if(!activeTag.isEmpty())selectedFilters.addView(filterChip(activeTag,()->{if(discovery&&discoveryOnline)discoveryResultTag="";else tagFilter="";showLibrary();}));
         if(!actorFilter.isEmpty())selectedFilters.addView(filterChip(actorFilter,()->{actorFilter="";showLibrary();}));
-        if(!yearFilter.isEmpty())selectedFilters.addView(filterChip(yearFilter,()->{yearFilter="";showLibrary();}));
+        if(!yearMinFilter.isEmpty()||!yearMaxFilter.isEmpty())selectedFilters.addView(filterChip("年份 "+yearMinFilter+"–"+yearMaxFilter,()->{yearMinFilter="";yearMaxFilter="";showLibrary();}));
+        if(!ratingMinFilter.isEmpty())selectedFilters.addView(filterChip("评分 ≥ "+ratingMinFilter,()->{ratingMinFilter="";showLibrary();}));
+        if(!tagsAllFilter.isEmpty())selectedFilters.addView(filterChip("标签:"+tagsAllFilter,()->{tagsAllFilter="";showLibrary();}));
         if(!watchFilter.isEmpty())selectedFilters.addView(filterChip(watchFilter.equals("completed")?"已完成":watchFilter.equals("progress")?"观看中":"未开始",()->{watchFilter="";savedList="";showLibrary();}));
         if(!savedList.isEmpty())selectedFilters.addView(filterChip("片单："+savedList,()->{savedList="";showLibrary();}));
         if(favorites)selectedFilters.addView(filterChip("已收藏",()->{favorites=false;showLibrary();}));
         if(count>0)root.addView(selectedFilters);
         HorizontalScrollView nav=new HorizontalScrollView(this);nav.setHorizontalScrollBarEnabled(false);LinearLayout links=new LinearLayout(this);
-        String[] names={"首页","电影","电视剧","VR电影","Fans视频","其他","收藏","为我推荐","影片发现"};String[] types={"","movie","series","vr","fans","other","","",""};
+        String[] names={"首页","电影","电视剧","VR电影","Fans视频","其他","收藏","为我推荐","影片发现","女演员"};String[] types={"","movie","series","vr","fans","other","","","",""};
         for(int i=0;i<names.length;i++) {
-            final int choice=i;Button tab=button(names[i],()->{navigationHistory.clear();savedList="";watchFilter="";kind=types[choice];favorites=choice==6;recommended=choice==7;discovery=choice==8;query="";tagFilter="";actorFilter="";yearFilter="";if(discovery)clearDiscoverySearch();showLibrary();});
-            boolean selected=(choice==6&&favorites&&kind.isEmpty())||(choice==7&&recommended)||(choice==8&&discovery)||(choice<6&&(!favorites||!kind.isEmpty())&&!recommended&&!discovery&&kind.equals(types[i]));
+            final int choice=i;Button tab=button(names[i],()->{navigationHistory.clear();savedList="";watchFilter="";kind=types[choice];favorites=choice==6;recommended=choice==7;discovery=choice==8;actresses=choice==9;query="";tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";if(discovery)clearDiscoverySearch();showLibrary();});
+            boolean selected=(choice==6&&favorites&&kind.isEmpty())||(choice==7&&recommended)||(choice==8&&discovery)||(choice==9&&actresses)||(choice<6&&(!favorites||!kind.isEmpty())&&!recommended&&!discovery&&!actresses&&kind.equals(types[i]));
             tab.setBackground(MediaStyle.surface(this,selected?0xff15343f:Color.TRANSPARENT,0,20));if(selected)tab.setTextColor(0xff9cdef2);links.addView(tab);
         }
         nav.addView(links);root.addView(nav);
         ScrollView scroll=new ScrollView(this);browseScroll=scroll;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(10),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        if(kind.isEmpty()&&!favorites&&!recommended&&!discovery&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearFilter.isEmpty()) {
+        if(kind.isEmpty()&&!favorites&&!recommended&&!discovery&&!actresses&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearMinFilter.isEmpty()&&yearMaxFilter.isEmpty()) {
             content.addView(text("我的媒体",22,Color.WHITE));LinearLayout tiles=new LinearLayout(this);
             for(int i=1;i<=5;i++){final int choice=i;Button tile=button(i==4?"Fans":names[i],()->{savedList="";kind=types[choice];showLibrary();});tile.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(35,35,35)));tile.setPadding(dp(4),0,dp(4),0);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(85),1);p.setMargins(dp(3),0,dp(3),dp(12));tiles.addView(tile,p);}
             content.addView(tiles);
         }
-        content.addView(text(recommended?"为我推荐":discovery?"影片发现":favorites?"收藏":query.isEmpty()?"媒体库":"搜索结果",22,Color.WHITE));
+        content.addView(text(recommended?"为我推荐":discovery?"影片发现":actresses?"女演员墙":favorites?"收藏":query.isEmpty()?"媒体库":"搜索结果",22,Color.WHITE));
         if(discovery)showDiscoveryTools(search,applySearch);
         posters=new ChipLayout(this);content.addView(posters);
+        if(actresses){loadActresses();return;}
         if(discovery&&discoveryOnline&&discoveryResultIds==null){
             content.addView(text(discoverySearchState.equals("running")||discoverySearchState.equals("queued")?"正在搜索站点，完成后显示本次结果。":"输入影片名称或标签，点击“搜索站点”。",15,MUTED));
         }else loadPage();
@@ -205,7 +209,7 @@ public final class MainActivity extends Activity {
         String path=recommended?"/api/recommendations?":discovery?"/api/discover?":"/api/works?";
         boolean onlineResult=discovery&&discoveryOnline;
         String ids="";if(onlineResult){java.util.ArrayList<String> selected=new java.util.ArrayList<>();if(discoveryResultIds!=null)for(int i=0;i<discoveryResultIds.length();i++)selected.add(Long.toString(discoveryResultIds.optLong(i)));ids="&ids="+android.text.TextUtils.join(",",selected);}
-        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&q="+android.net.Uri.encode(onlineResult?"":query)+(discovery?"&tag_q=":"&tag=")+android.net.Uri.encode(onlineResult?discoveryResultTag:tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year="+android.net.Uri.encode(yearFilter)+"&sort="+(discovery?discoverySort:sortField)+"&direction="+((discovery?discoveryDescending:sortDescending)?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList)+ids;
+        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&q="+android.net.Uri.encode(onlineResult?"":query)+(discovery?"&tag_q=":"&tag=")+android.net.Uri.encode(onlineResult?discoveryResultTag:tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year_min="+android.net.Uri.encode(discovery?"":yearMinFilter)+"&year_max="+android.net.Uri.encode(discovery?"":yearMaxFilter)+"&rating_min="+android.net.Uri.encode(discovery?"":ratingMinFilter)+"&tags_all="+android.net.Uri.encode(discovery?"":tagsAllFilter)+"&sort="+(discovery?discoverySort:sortField)+"&direction="+((discovery?discoveryDescending:sortDescending)?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList)+ids;
     }
     private void showDiscoveryTools(EditText search,Runnable applySearch){
         LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(12),dp(6),dp(12),dp(12));
@@ -300,7 +304,7 @@ public final class MainActivity extends Activity {
         }
         // A new site search uses only its explicit name/tag/provider inputs;
         // old local-library conditions must not silently discard site matches.
-        kind="";actorFilter="";yearFilter="";favorites=false;watchFilter="";savedList="";discoveryResultTag="";
+        kind="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;watchFilter="";savedList="";discoveryResultTag="";
         final JSONObject payload=new JSONObject();
         try{payload.put("query",query).put("tag",tagFilter).put("plugin",discoveryProvider);}catch(Exception error){message(error.getMessage());return;}
         savedList="";discoveryResultIds=null;discoverySearchTask="";discoverySearchState="queued";discoverySearchMessage="正在提交站点搜索…";discoverySearchErrors="";showLibrary();
@@ -361,8 +365,13 @@ public final class MainActivity extends Activity {
     }
     private void showFilters(){
         LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(12),dp(20),dp(12));
-        AutoCompleteTextView tag=filterInput(form,"标签",discovery&&discoveryOnline?discoveryResultTag:tagFilter),actor=filterInput(form,"演员",actorFilter),year=filterInput(form,"年份",yearFilter);
-        year.setInputType(InputType.TYPE_CLASS_NUMBER);
+        AutoCompleteTextView tag=filterInput(form,"标签",discovery&&discoveryOnline?discoveryResultTag:tagFilter),actor=filterInput(form,"演员",actorFilter),multiTag=filterInput(form,"多个标签（逗号分隔，需全部包含）",tagsAllFilter);
+        LinearLayout yearRow=new LinearLayout(this);yearRow.setOrientation(LinearLayout.HORIZONTAL);
+        AutoCompleteTextView yearFrom=filterInput(yearRow,"年份从",yearMinFilter),yearTo=filterInput(yearRow,"年份到",yearMaxFilter);
+        yearFrom.setInputType(InputType.TYPE_CLASS_NUMBER);yearTo.setInputType(InputType.TYPE_CLASS_NUMBER);
+        yearFrom.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));yearTo.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));
+        form.addView(yearRow);
+        AutoCompleteTextView rating=filterInput(form,"最低评分（0–10）",ratingMinFilter);rating.setInputType(InputType.TYPE_CLASS_NUMBER);
         android.widget.Spinner watching=new android.widget.Spinner(this);String[] states={"","unwatched","progress","completed"};
         watching.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"全部观看状态","未开始","观看中","已完成"}));
         for(int i=0;i<states.length;i++)if(states[i].equals(watchFilter))watching.setSelection(i);form.addView(watching);
@@ -372,23 +381,29 @@ public final class MainActivity extends Activity {
         TextView status=text("正在读取筛选选项…",13,MUTED);form.addView(status);
         ScrollView scroll=new ScrollView(this);scroll.addView(form);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("筛选媒体库").setView(scroll)
-            .setPositiveButton("应用",null).setNegativeButton("取消",null).setNeutralButton("重置",(d,which)->{tagFilter="";actorFilter="";yearFilter="";favorites=false;showLibrary();}).create();
+            .setPositiveButton("应用",null).setNegativeButton("取消",null).setNeutralButton("重置",(d,which)->{tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;showLibrary();}).create();
         dialog.show();
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
-            String value=year.getText().toString().trim();
-            if(!value.isEmpty()&&(!value.matches("[0-9]{4}")||Integer.parseInt(value)<1800||Integer.parseInt(value)>2200)){year.setError("请输入 1800–2200 的年份");return;}
-            if(discovery&&discoveryOnline)discoveryResultTag=tag.getText().toString().trim();else tagFilter=tag.getText().toString().trim();actorFilter=actor.getText().toString().trim();yearFilter=value;favorites=onlyFavorites[0];watchFilter=states[watching.getSelectedItemPosition()];savedList="";dialog.dismiss();showLibrary();
+            String from=yearFrom.getText().toString().trim(),to=yearTo.getText().toString().trim(),score=rating.getText().toString().trim();
+            System.out.println("APPLY from="+from+" to="+to+" score="+score);
+            if(!from.isEmpty()&&(!from.matches("[0-9]{4}")||Integer.parseInt(from)<1800||Integer.parseInt(from)>2200)){yearFrom.setError("请输入 1800–2200 的年份");return;}
+            if(!to.isEmpty()&&(!to.matches("[0-9]{4}")||Integer.parseInt(to)<1800||Integer.parseInt(to)>2200)){yearTo.setError("请输入 1800–2200 的年份");return;}
+            if(!score.isEmpty()&&(!score.matches("[0-9]{1,2}")||Integer.parseInt(score)>10)){rating.setError("评分范围 0–10");return;}
+            if(!from.isEmpty()&&!to.isEmpty()&&Integer.parseInt(from)>Integer.parseInt(to)){yearFrom.setError("起始年份不能晚于结束");return;}
+            if(discovery&&discoveryOnline)discoveryResultTag=tag.getText().toString().trim();else tagFilter=tag.getText().toString().trim();
+            actorFilter=actor.getText().toString().trim();tagsAllFilter=multiTag.getText().toString().trim();
+            yearMinFilter=from;yearMaxFilter=to;ratingMinFilter=score;favorites=onlyFavorites[0];watchFilter=states[watching.getSelectedItemPosition()];savedList="";dialog.dismiss();showLibrary();
         });
         android.view.Window sheet=dialog.getWindow();if(sheet!=null){sheet.setBackgroundDrawable(MediaStyle.surface(this,0xff18181e,0xff3a3a44,18));sheet.setGravity(Gravity.BOTTOM);sheet.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);sheet.setLayout(-1,-2);View sheetView=sheet.getDecorView();sheetView.post(()->{int available=getResources().getDisplayMetrics().heightPixels-dp(48);if(sheetView.getHeight()>available)sheet.setLayout(-1,available);});}
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view->{
-            tag.setText("");actor.setText("");year.setText("");watching.setSelection(0);onlyFavorites[0]=false;
+            tag.setText("");actor.setText("");multiTag.setText("");yearFrom.setText("");yearTo.setText("");rating.setText("");watching.setSelection(0);onlyFavorites[0]=false;
             collection.setText("全部收藏状态");MediaStyle.icon(collection,"heart",false);MediaStyle.button(collection,false,false,true);
         });
         MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_POSITIVE),true,false,false);
         MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEGATIVE),false,false,false);MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEUTRAL),false,false,false);
         request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)+"&discover="+discovery),options->{
             if(!dialog.isShowing())return;
-            AutoCompleteTextView[] inputs={tag,actor,year};String[] keys={"tags","actors","years"};
+            AutoCompleteTextView[] inputs={tag,actor,multiTag,yearFrom,yearTo};String[] keys={"tags","actors","tags","years","years"};
             for(int i=0;i<inputs.length;i++){
                 JSONArray values=options.getJSONArray(keys[i]);java.util.ArrayList<String> choices=new java.util.ArrayList<>();
                 for(int j=0;j<values.length();j++)choices.add(values.optString(j));
@@ -422,6 +437,29 @@ public final class MainActivity extends Activity {
             if(offset<restoreOffset&&offset<total&&items.length()>0){loadPage();return;}
             if(restoreOffset>0){restoreOffset=0;final int position=restoreScroll;ScrollView target=browseScroll;target.post(()->target.scrollTo(0,position));}
             if(offset<total) {Button more=button("加载更多  ·  "+offset+" / "+total,()->{});more.setOnClickListener(v->{content.removeView(more);loadPage();});content.addView(more);}
+        });
+    }
+    private void loadActresses() {
+        TextView loading=text("正在读取女演员墙…",14,MUTED);browseLoading=loading;content.addView(loading);
+        String path="/api/actresses?minimum=0&sort=average"+(query.isEmpty()?"":"&q="+android.net.Uri.encode(query));
+        request(()->api.get(path),result->{
+            content.removeView(loading);if(browseLoading==loading)browseLoading=null;
+            JSONArray items=result.getJSONArray("items");
+            if(items.length()==0)content.addView(text("还没有女演员资料。影片刮削演员后，这里会按出演数量与评分汇总。",16,MUTED));
+            int columns=getResources().getConfiguration().screenWidthDp>=650?4:2;
+            int width=(getResources().getDisplayMetrics().widthPixels-dp(32)-(columns-1)*dp(6))/columns;
+            for(int i=0;i<items.length();i++){
+                JSONObject actor=items.getJSONObject(i);
+                LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(3),dp(6),dp(3),dp(12));
+                FrameLayout cover=new FrameLayout(this);cover.setBackground(MediaStyle.surface(this,0xff25252b,0,6));cover.setClipToOutline(true);
+                ImageView photo=new ImageView(this);photo.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(photo,new FrameLayout.LayoutParams(-1,-1));
+                card.addView(cover,new LinearLayout.LayoutParams(-1,(int)(width*1.5)));loadImage(photo,actor.optString("photo",""));
+                TextView name=text(actor.optString("name"),15,Color.WHITE);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(name);
+                String average=actor.isNull("average")?"暂无评分":"均分 "+String.format(java.util.Locale.ROOT,"%.1f",actor.optDouble("average"));
+                card.addView(text(actor.optInt("count")+" 部 · "+average+" · 已评分 "+actor.optInt("rated"),12,MUTED));
+                card.setOnClickListener(view->{actorFilter=actor.optString("name");actresses=false;kind="movie";savedList="";query="";navigationHistory.clear();showLibrary();});
+                posters.addView(card,new android.view.ViewGroup.LayoutParams(width,-2));
+            }
         });
     }
     private void loadImage(ImageView view,String path) {
@@ -590,28 +628,28 @@ public final class MainActivity extends Activity {
     }
     private void filterMetadata(String field,String value){
         NavigationState state=new NavigationState();
-        state.kind=kind;state.query=query;state.tag=tagFilter;state.actor=actorFilter;state.year=yearFilter;
+        state.kind=kind;state.query=query;state.tag=tagFilter;state.actor=actorFilter;state.yearMin=yearMinFilter;state.yearMax=yearMaxFilter;state.ratingMin=ratingMinFilter;state.tagsAll=tagsAllFilter;
         state.sort=sortField;state.watch=watchFilter;state.list=savedList;state.descending=sortDescending;
         state.discoverySort=discoverySort;state.discoveryDescending=discoveryDescending;
         state.discoveryOnline=discoveryOnline;state.discoveryProvider=discoveryProvider;state.searchTask=discoverySearchTask;state.searchState=discoverySearchState;state.searchMessage=discoverySearchMessage;state.searchErrors=discoverySearchErrors;state.resultIds=discoveryResultIds==null?null:discoveryResultIds.toString();
         state.resultTag=discoveryResultTag;
-        state.favorites=favorites;state.recommended=recommended;state.discovery=discovery;
+        state.favorites=favorites;state.recommended=recommended;state.discovery=discovery;state.actresses=actresses;
         state.offset=offset;state.scroll=browseScroll==null?0:browseScroll.getScrollY();
         state.detailScroll=detailScroll==null?0:detailScroll.getScrollY();
         try{state.detail=detailId>0&&detail!=null?new JSONObject(detail.toString()):null;}catch(Exception ignored){}
         navigationHistory.addLast(state);while(navigationHistory.size()>20)navigationHistory.removeFirst();
         savedList="";watchFilter="";tagFilter=field.equals("tag")?value:"";actorFilter=field.equals("actor")?value:"";
-        yearFilter="";favorites=false;recommended=false;discovery=state.discovery;discoveryOnline=false;query="";kind="";showLibrary();
+        yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;recommended=false;discovery=state.discovery;actresses=false;discoveryOnline=false;query="";kind="";showLibrary();
     }
     private void restoreNavigation(){
         NavigationState state=navigationHistory.removeLast();
-        kind=state.kind;query=state.query;tagFilter=state.tag;actorFilter=state.actor;yearFilter=state.year;
+        kind=state.kind;query=state.query;tagFilter=state.tag;actorFilter=state.actor;yearMinFilter=state.yearMin;yearMaxFilter=state.yearMax;ratingMinFilter=state.ratingMin;tagsAllFilter=state.tagsAll;
         sortField=state.sort;watchFilter=state.watch;savedList=state.list;sortDescending=state.descending;
         discoverySort=state.discoverySort;discoveryDescending=state.discoveryDescending;
         discoveryOnline=state.discoveryOnline;discoveryProvider=state.discoveryProvider;discoverySearchTask=state.searchTask;discoverySearchState=state.searchState;discoverySearchMessage=state.searchMessage;discoverySearchErrors=state.searchErrors;
         discoveryResultTag=state.resultTag;
         try{discoveryResultIds=state.resultIds==null?null:new JSONArray(state.resultIds);}catch(Exception ignored){discoveryResultIds=null;}
-        favorites=state.favorites;recommended=state.recommended;discovery=state.discovery;
+        favorites=state.favorites;recommended=state.recommended;discovery=state.discovery;actresses=state.actresses;
         showLibrary();restoreOffset=Math.max(1,state.offset);restoreScroll=state.scroll;
         if(state.detail!=null){
             browseRoot=root;
@@ -659,7 +697,11 @@ public final class MainActivity extends Activity {
                         JSONObject filters=new JSONObject().put("query",query).put("sort",sortField).put("descending",sortDescending);
                         if(!kind.isEmpty())filters.put("kinds",new JSONArray().put(kind));if(favorites)filters.put("favorite",true);
                         if(!tagFilter.isEmpty())filters.put("tags_all",new JSONArray().put(tagFilter));if(!actorFilter.isEmpty())filters.put("actor",actorFilter);
-                        if(!yearFilter.isEmpty())filters.put("year_min",Integer.parseInt(yearFilter)).put("year_max",Integer.parseInt(yearFilter));if(!watchFilter.isEmpty())filters.put("watch_state",watchFilter);
+                        if(!tagsAllFilter.isEmpty()){JSONArray all=new JSONArray();for(String tag:tagsAllFilter.split("[,，]"))if(!tag.trim().isEmpty())all.put(tag.trim());if(all.length()>0)filters.put("tags_all",all);}
+                        if(!yearMinFilter.isEmpty())filters.put("year_min",Integer.parseInt(yearMinFilter));
+                        if(!yearMaxFilter.isEmpty())filters.put("year_max",Integer.parseInt(yearMaxFilter));
+                        if(!ratingMinFilter.isEmpty())filters.put("rating_min",Integer.parseInt(ratingMinFilter));
+                        if(!watchFilter.isEmpty())filters.put("watch_state",watchFilter);
                         JSONObject payload=new JSONObject().put("name",input.getText().toString()).put("filters",filters);
                         request(()->api.post("/api/lists",payload),ok->message("片单已保存"));
                     }catch(Exception e){message(e.getMessage());}
@@ -750,7 +792,7 @@ public final class MainActivity extends Activity {
         intent.putExtra("browse_position",browsePositions.getOrDefault(detailId,-1));return intent;
     }
     private void shuffle() {
-        request(()->api.post("/api/queue",new JSONObject().put("kind",kind).put("q",query).put("favorite",favorites).put("tag",tagFilter).put("actor",actorFilter).put("year",yearFilter)),result->{
+        request(()->api.post("/api/queue",new JSONObject().put("kind",kind).put("q",query).put("favorite",favorites).put("tag",tagFilter).put("actor",actorFilter).put("year_min",yearMinFilter).put("year_max",yearMaxFilter).put("rating_min",ratingMinFilter).put("tags_all",tagsAllFilter)),result->{
             JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message("当前范围没有媒体");return;}
             getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).apply();
             Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);startActivity(intent);

@@ -203,3 +203,32 @@ def test_playback_personal_api_returns_canonical_exclusive_flags(lan,library):
     assert client.post(path,json={'liked':True,'disliked':True}).status_code==400
     assert client.post(path,json={'liked':'true'}).status_code==400
     assert client.post(path,json={'rating':None}).json()['personal']['rating'] is None
+
+
+def test_actresses_endpoint_and_advanced_work_filters(lan,library,tmp_path):
+    client,_,_,_ = lan
+    from test_core import add_work
+    photo=tmp_path/'portrait.jpg';photo.write_bytes(b'jpeg-bytes')
+    import shutil
+    cached=library.directory/'cache'/'actress-test.jpg';shutil.copy(photo,cached)
+    for index in range(4):
+        work_id=add_work(library,f'Film {index}',year=2018+index%2,metadata={
+            'tags':['drama','mystery'] if index%2 else ['comedy'],
+            'actors':[{'name':'Lead Actress','gender':'female','photo_cache':str(cached)},
+                      {'name':'Support','gender':'male'}]})
+        library.update_personal(work_id,rating=7+index%3)
+        library.db.execute('UPDATE works SET added=? WHERE id=?',(f'2026-01-0{index+1}T00:00:00+00:00',work_id));library.db.commit()
+    add_work(library,'No actors')
+    options=client.get('/api/actresses').json()
+    assert options['total']==1
+    actress=options['items'][0]
+    assert actress['name']=='Lead Actress' and actress['count']==4 and actress['photo']
+    assert client.get(actress['photo']).status_code==200
+    assert client.get('/api/actresses?q=lead').json()['total']==1
+    assert client.get('/api/actresses?q=nomatch').json()['total']==0
+    assert client.get('/api/actresses?minimum=10').json()['total']==0
+    filtered=client.get('/api/works?tags_all=drama,mystery&rating_min=7').json()
+    assert filtered['total']==2
+    ranged=client.get('/api/works?year_min=2019&year_max=2019&rating_min=8').json()
+    assert ranged['total']==1 and ranged['items'][0]['title']=='Film 1'
+    assert client.get('/api/works?rating_min=11').status_code==400

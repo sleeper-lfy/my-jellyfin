@@ -226,6 +226,26 @@ class LanServer:
                                 from .discovery_catalog import discovery_facets
                                 return self.send_json(200,discovery_facets(library,filters.get('kinds')))
                             return self.send_json(200, library.filter_options(filters.get('kinds')))
+                        if path == '/api/actresses':
+                            minimum = max(0, int(query.get('minimum', ['0'])[0]))
+                            sort = query.get('sort', ['average'])[0]
+                            if sort not in {'average', 'count', 'rated', 'name'}:raise ApiError(400, '无效排序')
+                            needle = query.get('q', [''])[0].casefold().strip()
+                            result = []
+                            for actress in library.actresses(minimum=minimum, order=sort):
+                                if needle and needle not in actress['name'].casefold():continue
+                                photo = None
+                                for work_id in actress.get('work_ids', []):
+                                    try:work = library.work(work_id)
+                                    except ValueError:continue
+                                    for index, actor in enumerate(work['metadata'].get('actors', [])):
+                                        if actor.get('name') == actress['name'] and actor.get('photo_cache'):
+                                            photo = f'/api/works/{work_id}/actors/{index}/photo';break
+                                    if photo:break
+                                result.append({'name': actress['name'], 'average': actress.get('average'),
+                                               'count': actress.get('count'), 'rated': actress.get('rated'),
+                                               'work_ids': actress.get('work_ids', []), 'photo': photo})
+                            return self.send_json(200, {'total': len(result), 'items': result})
                         if path in {'/api/works','/api/recommendations','/api/discover'}:
                             filters = self.filters(query,discovery=path=='/api/discover')
                             if query.get('list',[''])[0]:
@@ -375,7 +395,7 @@ class LanServer:
                             library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
                             return self.send_json(200,{'ok':True})
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year','sort','direction','watch_state'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year_min','year_max','rating_min','tags_all','sort','direction','watch_state'}})
                             ids=[w['id'] for w in library.query(filters)]
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
@@ -429,12 +449,20 @@ class LanServer:
                 if query.get('favorite',[''])[0].lower() in {'true','1'}:filters['favorite']=True
                 if query.get('tag', [''])[0]:
                     filters['tags_all'] = [query['tag'][0]]
+                if query.get('tags_all', [''])[0]:
+                    tags = [tag.strip() for tag in query['tags_all'][0].split(',') if tag.strip()]
+                    if tags:filters['tags_all'] = filters.get('tags_all', []) + tags
                 if query.get('actor', [''])[0]:
                     filters['actor'] = query['actor'][0]
                 if query.get('year', [''])[0]:
                     year = int(query['year'][0])
                     if not 1800 <= year <= 2200: raise ApiError(400, '无效年份')
                     filters.update(year_min=year, year_max=year)
+                for field, low, high in [('year_min', 1800, 2200), ('year_max', 1800, 2200), ('rating_min', 0, 10)]:
+                    if query.get(field, [''])[0]:
+                        value = int(query[field][0])
+                        if not low <= value <= high: raise ApiError(400, '无效筛选数值')
+                        filters[field] = value
                 sort=query.get('sort',['discovered' if discovery else 'added'])[0]
                 from .catalog import SORTS
                 from .discovery_catalog import DISCOVERY_SORTS

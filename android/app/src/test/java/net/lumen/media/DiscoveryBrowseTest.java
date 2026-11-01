@@ -97,13 +97,13 @@ public class DiscoveryBrowseTest {
                 return json("{}");
             }});server.start();MainActivity activity=lifecycle.get();show(activity,server,true);
             waitFor(()->root(activity).findViewWithTag("discoverySearch").isEnabled());
-            set(activity,"kind","fans");set(activity,"actorFilter","Old actor");set(activity,"yearFilter","2020");set(activity,"favorites",true);set(activity,"watchFilter","completed");set(activity,"savedList","Old list");
+            set(activity,"kind","fans");set(activity,"actorFilter","Old actor");set(activity,"yearMinFilter","2020");set(activity,"favorites",true);set(activity,"watchFilter","completed");set(activity,"savedList","Old list");
             name(root(activity)).setText("Search words");((AutoCompleteTextView)root(activity).findViewWithTag("discoveryTag")).setText("Drama",false);
             root(activity).findViewWithTag("discoverySearch").performClick();root(activity).findViewWithTag("discoveryDirection").performClick();
             waitFor(()->root(activity).findViewWithTag("card:42")!=null);
             JSONObject submitted=new JSONObject(payload.get());assertEquals("Search words",submitted.getString("query"));assertEquals("Drama",submitted.getString("tag"));assertEquals("",submitted.getString("plugin"));
             assertTrue(resultPath.get().contains("ids=42,43"));assertTrue(resultPath.get().contains("&q=&tag_q="));assertFalse(resultPath.get().contains("Search%20words"));
-            assertTrue(resultPath.get().contains("&kind=&favorite=false"));assertTrue(resultPath.get().contains("&actor=&year="));assertTrue(resultPath.get().contains("&watch_state=&list=&ids="));
+            assertTrue(resultPath.get().contains("&kind=&favorite=false"));assertTrue(resultPath.get().contains("&actor=&year_min="));assertTrue(resultPath.get().contains("&watch_state=&list=&ids="));
             assertNotNull(text(root(activity),"Names only：不支持标签搜索",true));assertEquals(1,posts.get());
             Spinner sort=root(activity).findViewWithTag("discoverySort");sort.getOnItemSelectedListener().onItemSelected(sort,null,4,4);
             assertTrue(path(activity).contains("sort=community_rating"));assertTrue(path(activity).contains("ids=42,43"));assertEquals(1,posts.get());

@@ -181,6 +181,10 @@ def thumbnail(path, target, duration, at=None, cancelled=None):
 from .catalog import CatalogActions, sort_items, watch_state
 
 
+def escape_like(text):
+    return text.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
 class Library(CatalogActions):
     def __init__(self, directory=None, *, initialize=True, timeout=30):
         self.directory = Path(directory or data_directory())
@@ -746,6 +750,9 @@ class Library(CatalogActions):
                             (task_id, kind, status, json.dumps(payload, ensure_ascii=False), json.dumps(result or {}, ensure_ascii=False), error, now()))
 
     def query(self, filters=None, offset=0, limit=None):
+        """Filtering is pushed into SQLite (JSON1 for metadata arrays) so large
+        libraries stop materializing every work in Python; assembly below only
+        decorates the rows that survived."""
         f = filters or {}
         clauses, args = ['1=1'], []
         if 'kinds' in f and not f['kinds']:
@@ -768,17 +775,80 @@ class Library(CatalogActions):
                 args.append(int(f[field]))
         if f.get('local', True):
             clauses.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
-        rows = self.db.execute('SELECT * FROM works WHERE ' + ' AND '.join(clauses) + ' ORDER BY added DESC,id DESC', args).fetchall()
+        q = (f.get('query') or '').casefold().strip()
+        if q:
+            pattern = '%' + escape_like(q) + '%'
+            clauses.append("(LOWER(COALESCE(title,'') || ' ' || COALESCE((SELECT group_concat(je.value,' ') "
+                           "FROM json_each(works.metadata,'$.aliases') je),'') || ' ' || COALESCE((SELECT group_concat("
+                           "fl.path,' ') FROM files fl WHERE fl.work_id=works.id),'')) LIKE ? ESCAPE '\\')")
+            args.append(pattern)
+        if f.get('continue'):
+            clauses.append('EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id AND files.position>0 AND files.completed=0)')
+        if f.get('female_cast'):
+            clauses.append("EXISTS(SELECT 1 FROM json_each(works.metadata,'$.actors') "
+                           "WHERE json_extract(json_each.value,'$.gender')='female')")
+        for tag in f.get('tags_all') or []:
+            clauses.append("EXISTS(SELECT 1 FROM json_each(works.metadata,'$.tags') WHERE json_each.value=?)")
+            args.append(tag)
+        if f.get('tags_any'):
+            any_tags = f['tags_any']
+            clauses.append('EXISTS(SELECT 1 FROM json_each(works.metadata,\'$.tags\') WHERE json_each.value IN ('
+                           + ','.join('?' for _ in any_tags) + '))')
+            args.extend(any_tags)
+        if f.get('tags_not'):
+            not_tags = f['tags_not']
+            clauses.append('NOT EXISTS(SELECT 1 FROM json_each(works.metadata,\'$.tags\') WHERE json_each.value IN ('
+                           + ','.join('?' for _ in not_tags) + '))')
+            args.extend(not_tags)
+        if f.get('folder'):
+            clauses.append("EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id AND "
+                           "LOWER(REPLACE(files.path,'/','" + os.sep + "')) LIKE LOWER(?) ESCAPE '\\')")
+            args.append(escape_like(str(Path(f['folder'])) + os.sep) + '%')
+        if f.get('actor'):
+            actor = f['actor']
+            clauses.append("EXISTS(SELECT 1 FROM json_each(works.metadata,'$.actors') a WHERE "
+                           "json_extract(a.value,'$.name')=? OR EXISTS(SELECT 1 FROM json_each(a.value,'$.aliases') "
+                           "WHERE json_each.value=?))")
+            args.extend([actor, actor])
+        if f.get('watched') == 'yes':
+            clauses.append('(EXISTS(SELECT 1 FROM sessions s JOIN files fl ON fl.id=s.file_id WHERE '
+                           'fl.work_id=works.id AND s.watched>0) OR EXISTS(SELECT 1 FROM files WHERE '
+                           'files.work_id=works.id AND (files.completed=1 OR files.position>0)))')
+        elif f.get('watched') == 'no':
+            clauses.append('(NOT EXISTS(SELECT 1 FROM sessions s JOIN files fl ON fl.id=s.file_id WHERE '
+                           'fl.work_id=works.id AND s.watched>0) AND NOT EXISTS(SELECT 1 FROM files WHERE '
+                           'files.work_id=works.id AND (files.completed=1 OR files.position>0)))')
+        watch_filter = f.get('watch_state')
+        if watch_filter == 'completed':
+            clauses.append('EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id) AND '
+                           'NOT EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id AND files.completed=0)')
+        elif watch_filter == 'progress':
+            clauses.append('EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id AND '
+                           '(files.completed=1 OR files.position>0)) AND EXISTS(SELECT 1 FROM files WHERE '
+                           'files.work_id=works.id AND files.completed=0)')
+        elif watch_filter == 'unwatched':
+            clauses.append('NOT EXISTS(SELECT 1 FROM files WHERE files.work_id=works.id AND '
+                           '(files.completed=1 OR files.position>0))')
+        sorts = {'added': 'added', 'title': 'LOWER(title)', 'year': 'year', 'rating': 'rating',
+                 'duration': 'COALESCE((SELECT SUM(duration) FROM files WHERE files.work_id=works.id),0)'}
+        sort_key = f.get('sort', 'added')
+        if sort_key not in sorts:
+            raise ValueError('无效排序字段')
+        expression = sorts[sort_key]
+        direction = 'DESC' if f.get('descending', True) else 'ASC'
+        order = f' ORDER BY ({expression} IS NULL), {expression} {direction}, id ASC'
+        where = 'SELECT * FROM works WHERE ' + ' AND '.join(clauses)
+        rows = self.db.execute(where + order, args).fetchall()
         ids = {row['id'] for row in rows}
         files, sources, watches = {}, {}, {}
         # Batch joins avoid N+1 queries while preserving complete-result filtering and shuffle.
-        for row in self.db.execute('SELECT * FROM files WHERE work_id IN (SELECT id FROM works WHERE '+ ' AND '.join(clauses)+') ORDER BY season,episode,path',args):
+        for row in self.db.execute('SELECT * FROM files WHERE work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ') ORDER BY season,episode,path', args):
             if row['work_id'] in ids:
                 files.setdefault(row['work_id'], []).append(dict(row))
-        for row in self.db.execute('SELECT * FROM sources WHERE work_id IN (SELECT id FROM works WHERE '+' AND '.join(clauses)+')',args):
+        for row in self.db.execute('SELECT * FROM sources WHERE work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ')', args):
             if row['work_id'] in ids:
                 sources.setdefault(row['work_id'], []).append(dict(row))
-        for row in self.db.execute('SELECT f.work_id,SUM(s.watched) FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id IN (SELECT id FROM works WHERE '+' AND '.join(clauses)+') GROUP BY f.work_id',args):
+        for row in self.db.execute('SELECT f.work_id,SUM(s.watched) FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ') GROUP BY f.work_id', args):
             watches[row[0]] = row[1]
         items = []
         for row in rows:
@@ -787,61 +857,39 @@ class Library(CatalogActions):
             item['liked'] = item['favorite']
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
-            if item['kind'] in {'fans','vr'}:
+            if item['kind'] in {'fans', 'vr'}:
                 from .series import natural_key
-                item['files'].sort(key=lambda file:natural_key(file['path']))
+                item['files'].sort(key=lambda file: natural_key(file['path']))
             for file in item['files']:
-                details=item['metadata'].get('episode_details',{}).get(str(file['id']),{})
-                file.update({key:details[key] for key in ['title','overview'] if key in details})
-                file['stills']=item['metadata'].get('episode_stills',{}).get(str(file['id']),[])
+                details = item['metadata'].get('episode_details', {}).get(str(file['id']), {})
+                file.update({key: details[key] for key in ['title', 'overview'] if key in details})
+                file['stills'] = item['metadata'].get('episode_stills', {}).get(str(file['id']), [])
             item['sources'] = sources.get(item['id'], [])
-            m = item['metadata']
-            q = f.get('query', '').casefold().strip()
-            haystack = ' '.join([item['title'], *m.get('aliases', []), *[x['path'] for x in item['files']]]).casefold()
-            if q and q not in haystack:
-                continue
-            if f.get('continue') and not any(x['position'] > 0 and not x['completed'] for x in item['files']):
-                continue
-            if f.get('female_cast') and not any(a.get('gender') == 'female' for a in m.get('actors', [])):
-                continue
-            tags = set(m.get('tags', []))
-            if f.get('tags_all') and not set(f['tags_all']) <= tags:
-                continue
-            if f.get('tags_any') and not tags.intersection(f['tags_any']):
-                continue
-            if tags.intersection(f.get('tags_not', [])):
-                continue
-            if f.get('folder') and not any(Path(x['path']).is_relative_to(Path(f['folder'])) for x in item['files']):
-                continue
-            if f.get('actor') and not any(f['actor'] in [a.get('name'), *a.get('aliases', [])] for a in m.get('actors', [])):
-                continue
-            watched = watches.get(item['id'], 0)
-            seen = watched > 0 or any(file['completed'] or file['position'] > 0 for file in item['files'])
-            if f.get('watched') == 'yes' and not seen or f.get('watched') == 'no' and seen:
-                continue
             item['watch_state'] = watch_state(item['files'])
-            if f.get('watch_state') and item['watch_state'] != f['watch_state']:
-                continue
-            item['watched'] = watched
+            item['watched'] = watches.get(item['id'], 0)
             items.append(item)
-        items = sort_items(items, f.get('sort', 'added'), f.get('descending', True))
         return items[offset:offset + limit if limit is not None else None]
 
     def filter_options(self, kinds=None, local=True):
-        """Full catalog facets without loading video files, images or watch history."""
-        tags, actors, years = set(), set(), set()
-        sql = 'SELECT kind,year,metadata FROM works'
+        """Facets via SQLite JSON1: no per-row Python JSON parsing for large catalogs."""
+        conditions, kind_args = [], []
         if local:
-            sql += ' WHERE EXISTS(SELECT 1 FROM files WHERE work_id=works.id)'
-        for row in self.db.execute(sql):
-            if kinds is not None and row['kind'] not in kinds:
-                continue
-            metadata = json.loads(row['metadata'])
-            tags.update(metadata.get('tags', []))
-            for actor in metadata.get('actors', []):
-                actors.update([actor['name'], *actor.get('aliases', [])])
-            if row['year']:
-                years.add(row['year'])
+            conditions.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
+        if kinds is not None:
+            conditions.append('kind IN (' + ','.join('?' for _ in kinds) + ')')
+            kind_args = list(kinds)
+        suffix = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
+        tags = {row[0] for row in self.db.execute(
+            'SELECT DISTINCT json_each.value FROM works, json_each(works.metadata,\'$.tags\')' + suffix, kind_args)}
+        actors = {row[0] for row in self.db.execute(
+            'SELECT DISTINCT json_extract(a.value,\'$.name\') FROM works, json_each(works.metadata,\'$.actors\') a' + suffix, kind_args)}
+        actors |= {row[0] for row in self.db.execute(
+            'SELECT DISTINCT je.value FROM works, json_each(works.metadata,\'$.actors\') a, '
+            'json_each(a.value,\'$.aliases\') je' + suffix, kind_args)}
+        actors.discard(None)
+        years = {row[0] for row in self.db.execute(
+            'SELECT DISTINCT year FROM works WHERE year IS NOT NULL'
+            + (' AND ' + ' AND '.join(conditions) if conditions else ''), kind_args)}
         return {'tags': sorted(tags, key=str.casefold), 'actors': sorted(actors, key=str.casefold),
                 'years': sorted(years, reverse=True)}
 
