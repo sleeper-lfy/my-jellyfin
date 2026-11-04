@@ -495,3 +495,11 @@ Android 图片下载独立使用两个工作线程，列表、详情和用户操
 新增反馈专项 **16 项通过**，覆盖实际退出、14 部作品的刮削范围、导入结果 ID、暂停关闭、忙碌期间真实 Qt 拖放、取消批次、窄窗口首页、季集范围与回调、httpx 等待取消、复制中断恢复及选集文件删除。最终全量 **648 项通过、3 项跳过、3 项既有失败**（152.19 秒）；既有失败仍为 Linux FFmpeg 文件名预期和两份 SQL 样本的换行字节差异。启动冒烟、实际 Qt 截图和 diff 检查通过。两项旧测试改为验证新的立即收起 / 安全退出与后台拖放语义，保留数据与导航恢复断言。
 
 本轮修改尚未打包或更新 Release。现有 `v0.4.14-preview.1` 安装包不包含这些修复；Windows 真机拖放和安装后验收尚未进行。
+
+## 0.4.14 Preview 3 修复包发布（2026-11-04）
+
+用户要求 git push 并打包 Release。修复代码推送到 work，实际构建源码 `520bbd16b0fff4d6f416df98c0cc1af88b8a9dde`，发布标签 `v0.4.14-preview.3`，Android versionCode 20。
+
+Preview 2 首轮 Windows 653 项通过，1 项拖入测试因比较 `/` 与 `\` 路径字符串失败，未构建或公开安装包。改为 Path 语义比较，保留原标签并从新标签完整重建。[最终构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41842869377)全部成功：Windows **654 项测试通过，零失败 / 错误 / 跳过**，安装、启动、mpv、插件 worker 和卸载验收通过；Android **97 项测试、lint、签名及 ZIP 对齐通过**。
+
+[Preview 3](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.3)六个公开附件已完整下载，验证哈希、源码绑定、安装包结构和 APK 持久签名。GitHub 当前仅保留 0.4.14 系列 Releases；保留此前 Preview 1。真机人工验收仍未完成，维持测试预发布，Gitee 自动更新渠道未同步。详见[发布验证记录](validation/preview-0.4.14-3.json)。

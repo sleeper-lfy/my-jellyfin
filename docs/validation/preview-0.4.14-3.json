@@ -1,0 +1,79 @@
+{
+  "tag": "v0.4.14-preview.3",
+  "source_commit": "520bbd16b0fff4d6f416df98c0cc1af88b8a9dde",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41842869377",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.3",
+  "prerelease": true,
+  "windows_tests": {
+    "tests": 654,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "6b63a006883ff904a9c4a0a328f6b1088279967910232b7cbfab2e37fd5a2428"
+  },
+  "android": {
+    "version": "0.4.14",
+    "version_code": 20,
+    "source_commit": "520bbd16b0fff4d6f416df98c0cc1af88b8a9dde",
+    "sha256": "b171a32cd8f4b77011919f104d041898d9f402a5c8d458183c77bcba64df87fc",
+    "bytes": 49245548,
+    "certificate_sha256": "cccf85baf3acf872d28632ad8a9102b94c3958aa67b5c8385435aafebb60d6b9",
+    "tests": {
+      "tests": 97,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "signature_verified": true,
+    "lint": "passed",
+    "manual_device_checks": "unverified"
+  },
+  "assets": [
+    {
+      "name": "Lumen-Setup-x64.exe",
+      "bytes": 91787635,
+      "sha256": "ade6797a1150e9babc210098eeed232775d86ef75b3bc0a3dac8055629f8b6c6"
+    },
+    {
+      "name": "Lumen-Setup-x64.exe.sha256",
+      "bytes": 86,
+      "sha256": "a3dfe46b3ce84b0ded5a6479ec9f1abc0b76b2d9c0e6ef6c0728d4be18e3d990"
+    },
+    {
+      "name": "Lumen-android-debug.apk",
+      "bytes": 49245548,
+      "sha256": "b171a32cd8f4b77011919f104d041898d9f402a5c8d458183c77bcba64df87fc"
+    },
+    {
+      "name": "Lumen-android-debug.apk.sha256",
+      "bytes": 90,
+      "sha256": "215274eb88becd830f751a29fea6eae41c0ec161dd3917a40b8caf416025b37e"
+    },
+    {
+      "name": "windows-acceptance.json",
+      "bytes": 1870,
+      "sha256": "810d2ceb3b068619fa7b444e15223e8e5a0d9b588d2f597e4b2716d1f89e6d02"
+    },
+    {
+      "name": "android-verification.json",
+      "bytes": 482,
+      "sha256": "50d7158e870a14b6cfa8017b6ea914b4013a153895fbda5e05703d4d9409739f"
+    }
+  ],
+  "anonymous_full_downloads_verified": true,
+  "manual_device_checks": "unverified",
+  "public_release_http_status": 200,
+  "remaining_release_tags": [
+    "v0.4.14-preview.3",
+    "v0.4.14-preview.1"
+  ],
+  "windows_build": "success",
+  "android_build": "success",
+  "publication": "success",
+  "verified_at": "2026-11-04T14:07:51.266938+00:00",
+  "earlier_failed_attempt": {
+    "tag": "v0.4.14-preview.2",
+    "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41841678862",
+    "reason": "Test compared Windows path separator spelling instead of path identity; normalized comparison before rebuilding on a new immutable tag."
+  }
+}
