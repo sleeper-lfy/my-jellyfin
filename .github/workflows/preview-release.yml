@@ -1,0 +1,110 @@
+name: Build and publish verified test prerelease
+on:
+  push:
+    tags: ['v*-preview.*']
+permissions:
+  contents: read
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check requested prerelease version
+        shell: pwsh
+        run: python scripts/preview-release.py version
+      - name: Install packaging tools
+        shell: pwsh
+        run: |
+          choco install ffmpeg innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging tools unavailable' }
+      - name: Test, build, install and uninstall the exact installer
+        shell: pwsh
+        run: |
+          ./scripts/build-windows.ps1
+          ./scripts/build-installer-windows.ps1
+          ./scripts/verify-installer-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-windows
+          path: |
+            dist/installer/Lumen-Setup-x64.exe
+            dist/installer/Lumen-Setup-x64.exe.sha256
+            dist/installer/acceptance.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: preview-windows-diagnostics
+          path: .local/*.json
+          if-no-files-found: ignore
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore the existing signing certificate
+        env:
+          SIGNING_KEY: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          test -n "$SIGNING_KEY" || { echo 'Persistent signing key is required'; exit 1; }
+          mkdir -p .local
+          printf '%s' "$SIGNING_KEY" | base64 --decode > .local/android-debug.keystore
+          echo "LUMEN_ANDROID_KEYSTORE=$GITHUB_WORKSPACE/.local/android-debug.keystore" >> "$GITHUB_ENV"
+      - name: Check version and install verified Android tools
+        run: |
+          python scripts/preview-release.py version
+          python -m pip install httpx==0.28.1
+          python scripts/setup-android-cloud.py
+      - name: Test, lint and build the signed APK
+        run: python scripts/build-android-cloud.py :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+      - name: Verify APK signature, version and tests
+        run: python scripts/preview-release.py android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-android
+          path: .local/preview-android/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: preview-android-diagnostics
+          path: android/app/build/reports/
+          if-no-files-found: ignore
+
+  publish:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: preview-windows
+          path: .local/preview-windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: preview-android
+          path: .local/preview-android
+      - name: Publish the verified prerelease without replacing stable latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python scripts/preview-release.py publish

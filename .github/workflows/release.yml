@@ -1,7 +1,7 @@
 name: Publish explicitly tagged Windows and Android release
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', '!v*-preview.*']
 permissions:
   contents: read
 concurrency:
