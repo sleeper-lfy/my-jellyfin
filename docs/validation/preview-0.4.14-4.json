@@ -1,0 +1,65 @@
+{
+  "tag": "v0.4.14-preview.4",
+  "source_commit": "57f8f162faaf334ef8aa591d5131975b4a998e3a",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41868601881",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.4",
+  "prerelease": true,
+  "windows_tests": {
+    "tests": 721,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "74ef2423fc6487e9021c9d292a26cb9c19e07500f87d86f1e38966e0c67aa21a"
+  },
+  "android": {
+    "version": "0.4.14",
+    "version_code": 21,
+    "source_commit": "57f8f162faaf334ef8aa591d5131975b4a998e3a",
+    "sha256": "8dae88010594996ea523b28df9f827d4b1c0040fd3b8acd6a3fc64794f8617dd",
+    "bytes": 49245920,
+    "certificate_sha256": "cccf85baf3acf872d28632ad8a9102b94c3958aa67b5c8385435aafebb60d6b9",
+    "tests": {
+      "tests": 97,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "signature_verified": true,
+    "lint": "passed",
+    "manual_device_checks": "unverified"
+  },
+  "assets": [
+    {
+      "name": "Lumen-Setup-x64.exe",
+      "bytes": 93787005,
+      "sha256": "d08d3d10669ead41d7dc80432c528b6a61be53a87297d50f697bcc3bab7ccba5"
+    },
+    {
+      "name": "Lumen-Setup-x64.exe.sha256",
+      "bytes": 86,
+      "sha256": "0ede89b5d4ec3f1d5e96cb7916cc9ec1aeac5d4f7811be75c14165bb84cf95ff"
+    },
+    {
+      "name": "Lumen-android-debug.apk",
+      "bytes": 49245920,
+      "sha256": "8dae88010594996ea523b28df9f827d4b1c0040fd3b8acd6a3fc64794f8617dd"
+    },
+    {
+      "name": "Lumen-android-debug.apk.sha256",
+      "bytes": 90,
+      "sha256": "7c7bd2f9a3a279bce08639c3ff338848b738b4889495216d67e1c06c742df7d3"
+    }
+  ],
+  "anonymous_full_downloads_verified": true,
+  "manual_device_checks": "unverified",
+  "public_release_http_status": 200,
+  "remaining_release_tags": [
+    "v0.4.14-preview.4",
+    "v0.4.14-preview.3",
+    "v0.4.14-preview.1"
+  ],
+  "windows_build": "success",
+  "android_build": "success",
+  "publication": "success",
+  "verified_at": "2026-11-04T17:18:21.691561+00:00"
+}
