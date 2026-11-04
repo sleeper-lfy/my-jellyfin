@@ -1,4 +1,4 @@
-param([string]$PythonPath = '')
+param([string]$PythonPath = '', [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $env:PYTHONUTF8 = '1'
 Set-Location (Join-Path $PSScriptRoot '..')
@@ -19,8 +19,14 @@ if (-not $LumenFfmpeg) { throw 'FFmpeg must be on PATH for the test suite; the i
 # and otherwise offers configuration or a one-time download at first run.
 ./scripts/fetch-mpv-windows.ps1
 $env:LUMEN_REQUIRE_MPV = '1'
-& $LumenPython -m pytest -q --junitxml=.local/test-results.xml
-if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
+if ($SkipTests) {
+    # Dependencies and the mpv bundle are still prepared; only the pytest gate is skipped.
+    Write-Host 'SKIPPED: unit tests (-SkipTests). This package is NOT test-verified; do not publish it.'
+    Remove-Item .local\test-results.xml -ErrorAction SilentlyContinue
+} else {
+    & $LumenPython -m pytest -q --junitxml=.local/test-results.xml
+    if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
+}
 & $LumenPython -m PyInstaller --noconfirm --clean --windowed --onedir --name Lumen --paths src --icon assets/lumen.ico `
   --hidden-import lumen.js_worker --hidden-import lumen.sandbox --hidden-import lumen.browser_http_worker --additional-hooks-dir scripts/pyinstaller-hooks --collect-all curl_cffi --collect-submodules PySide6.QtQml `
   --add-binary '.local/mpv-bundle/libmpv-2.dll;lumen/bin' `

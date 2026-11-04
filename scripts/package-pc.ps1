@@ -1,4 +1,4 @@
-param([string]$ConfigPath = '', [switch]$CheckOnly)
+param([string]$ConfigPath = '', [switch]$CheckOnly, [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $env:PYTHONUTF8 = '1'
 $TaskRoot = Split-Path $PSScriptRoot -Parent
@@ -6,7 +6,8 @@ Set-Location -LiteralPath $TaskRoot
 $TaskLogs = Join-Path $TaskRoot ('.local\pc-build-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
 New-Item -ItemType Directory -Path $TaskLogs -Force | Out-Null
 $TaskStatusPath = Join-Path $TaskRoot '.local\pc-last-build.json'
-$TaskStatus = @{ status = 'preflight'; started = (Get-Date).ToString('o'); log = (Join-Path $TaskLogs 'build.log'); published = $false }
+$TaskStatus = @{ status = 'preflight'; started = (Get-Date).ToString('o'); log = (Join-Path $TaskLogs 'build.log'); published = $false; tests_skipped = [bool]$SkipTests }
+if ($SkipTests) { Write-Host 'WARNING: -SkipTests is set. The unit-test gate will NOT run; the resulting package must not be published.' }
 $TaskStatus | ConvertTo-Json | Set-Content -LiteralPath $TaskStatusPath -Encoding UTF8
 Start-Transcript -Path $TaskStatus.log | Out-Null
 try {
@@ -55,7 +56,7 @@ if ($CheckOnly) {
 $TaskStatus.status = 'running'
 $TaskStatus | ConvertTo-Json | Set-Content -LiteralPath $TaskStatusPath -Encoding UTF8
     $TaskAcceptance = Join-Path $TaskLogs 'acceptance.json'
-    & (Join-Path $PSScriptRoot 'build-windows.ps1') -PythonPath $TaskPython
+    & (Join-Path $PSScriptRoot 'build-windows.ps1') -PythonPath $TaskPython -SkipTests:$SkipTests
     Copy-Item -LiteralPath '.local/pc-acceptance.json' -Destination $TaskAcceptance -Force
     & (Join-Path $PSScriptRoot 'build-installer-windows.ps1') -CompilerPath $TaskCompiler
     & (Join-Path $PSScriptRoot 'verify-installer-windows.ps1') -PythonPath $TaskPython
@@ -69,6 +70,7 @@ $TaskStatus | ConvertTo-Json | Set-Content -LiteralPath $TaskStatusPath -Encodin
     $TaskStatus.sha256 = (Get-FileHash -LiteralPath $TaskInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
     $TaskStatus | ConvertTo-Json | Set-Content -LiteralPath $TaskStatusPath -Encoding UTF8
     Write-Host "SUCCESS: $TaskInstaller"
+    if ($SkipTests) { Write-Host 'NOTICE: unit tests were SKIPPED for this build (-SkipTests). Do not publish this package.' }
     Write-Host 'UI, playback runtime, plugin worker, installation and uninstallation verified.'
     Write-Host 'Human acceptance (audio, fullscreen, DPI, upgrade, live plugins) remains unverified. See docs/release-acceptance.md.'
 } catch {
