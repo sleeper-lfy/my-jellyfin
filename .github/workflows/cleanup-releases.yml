@@ -1,0 +1,39 @@
+name: Remove explicitly listed old releases and retain 0.4.14
+on:
+  push:
+    branches: [work]
+    paths: ['scripts/release-cleanup-request.json']
+permissions:
+  contents: write
+concurrency:
+  group: explicit-release-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Snapshot releases and validate the exact deletion list
+        run: python scripts/cleanup-releases.py plan
+      - name: Preserve metadata before deleting releases
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-cleanup-plan
+          path: .local/release-cleanup-plan.json
+          if-no-files-found: error
+      - name: Remove old releases while preserving tags and 0.4.14 assets
+        run: python scripts/cleanup-releases.py apply
+      - name: Save the deletion and preservation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-cleanup-result
+          path: .local/release-cleanup-result.json
+          if-no-files-found: ignore

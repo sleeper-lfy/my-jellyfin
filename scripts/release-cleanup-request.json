@@ -1,0 +1,13 @@
+{
+  "repository": "sleeper-lfy/my-jellyfin",
+  "execute": true,
+  "keep_version": "0.4.14",
+  "required_tag": "v0.4.14-preview.1",
+  "delete_tags": [
+    "v0.4.12", "v0.4.11", "v0.4.10", "v0.4.9", "v0.4.8",
+    "v0.4.7", "v0.4.6", "v0.4.5", "v0.4.4", "v0.4.2",
+    "windows-d91a51c23cc7", "windows-a4b6197e88ec",
+    "windows-a289dec20a27", "windows-7620d7f5cfec"
+  ],
+  "request_id": "keep-only-0.4.14-2026-11-04"
+}
