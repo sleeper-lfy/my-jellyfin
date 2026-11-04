@@ -80,7 +80,8 @@ def test_missing_code_and_existing_targets_are_not_silently_replaced(library,tmp
 def test_target_symlink_escape_is_rejected(library,tmp_path):
     _,work=work_with_files(library,tmp_path,['ABC-123.mp4'])
     destination=tmp_path/'out';destination.mkdir();outside=tmp_path/'outside';outside.mkdir()
-    (destination/'ABC-123').symlink_to(outside,target_is_directory=True)
+    try:(destination/'ABC-123').symlink_to(outside,target_is_directory=True)
+    except OSError:pytest.skip('当前系统没有创建符号链接的特权（Windows 需要管理员或开发者模式）')
     with pytest.raises(ValueError,match='符号链接'):plan_move(library,work['id'],destination,{'folder':'{code}','filename':'{code}'})
     assert not list(outside.iterdir())
 

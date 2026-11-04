@@ -32,7 +32,10 @@ def release_url(name,tag):
 
 def validate_url(url):
     parsed=urlsplit(url)
-    if parsed.scheme!='https' or parsed.username is not None or parsed.password is not None or parsed.port not in (None,443) or parsed.fragment or parsed.hostname!='gitee.com':
+    host=parsed.hostname or ''
+    # Release attachments redirect to Gitee's own CDN (foruda.gitee.com).
+    allowed=host=='gitee.com' or host.endswith('.gitee.com')
+    if parsed.scheme!='https' or parsed.username is not None or parsed.password is not None or parsed.port not in (None,443) or parsed.fragment or not allowed:
         raise ValueError('更新地址必须来自 Gitee HTTPS')
 
 
@@ -89,16 +92,43 @@ def fetch(url,limit,proxy=None,cancelled=None):
         finally:result.close()
 
 
-def installer_candidate(new,assets,fetcher,notes):
+def install_size(url,client=None,proxy=None):
+    """Gitee's API omits attachment sizes, so ask the download itself."""
+    owned=client is None;client=client or client_for(proxy)
+    try:
+        for _ in range(6):
+            validate_url(url)
+            request=client.build_request('HEAD',url,headers={'User-Agent':'Lumen-PC-Updater','Accept-Encoding':'identity'})
+            result=client.send(request,stream=True)
+            try:
+                if result.is_redirect:
+                    location=result.headers.get('Location')
+                    if not location:raise ValueError('Gitee 重定向无效')
+                    url=urljoin(url,location);continue
+                result.raise_for_status()
+                length=result.headers.get('Content-Length')
+                if length is None:raise ValueError('无法确认安装包大小')
+                return int(length)
+            finally:result.close()
+        raise ValueError('Gitee 重定向次数过多')
+    finally:
+        if owned:client.close()
+
+
+def installer_candidate(new,assets,fetcher,notes,size_resolver=None):
     """Prefer a single installer attachment; Gitee's 100MB attachment limit otherwise requires split parts."""
+    size_resolver=size_resolver or install_size
+    def size_of(asset):
+        value=asset.get('size')
+        return value if type(value) is int and value>0 else size_resolver(asset['browser_download_url'])
     installer=assets.get(INSTALLER)
     if installer:
-        checksum=installer.get('digest','').removeprefix('sha256:')
+        checksum=(installer.get('digest') or '').removeprefix('sha256:')
         if not re.fullmatch('[a-f0-9]{64}',checksum):
             url=assets.get(INSTALLER+'.sha256',{}).get('browser_download_url','')
             if url!=release_url(INSTALLER+'.sha256',f'v{new}'):raise ValueError('缺少可信的安装包校验文件')
             checksum=fetcher(url,4096).decode('utf-8-sig').split()[0].lower()
-        return Candidate(new,installer['browser_download_url'],installer['size'],checksum,notes)
+        return Candidate(new,installer['browser_download_url'],size_of(installer),checksum,notes)
     numbered=[(name,asset) for name,asset in assets.items() if re.fullmatch(re.escape(INSTALLER)+r'\.part\d{3}',name)]
     if not numbered:return None
     ordered=[assets[f'{INSTALLER}.part{index:03d}'] for index in range(1,len(numbered)+1) if f'{INSTALLER}.part{index:03d}' in assets]
@@ -106,11 +136,11 @@ def installer_candidate(new,assets,fetcher,notes):
     url=assets.get(INSTALLER+'.sha256',{}).get('browser_download_url','')
     if url!=release_url(INSTALLER+'.sha256',f'v{new}'):raise ValueError('缺少可信的安装包校验文件')
     checksum=fetcher(url,4096).decode('utf-8-sig').split()[0].lower()
-    parts=tuple((part['browser_download_url'],part['size']) for part in ordered)
+    parts=tuple((part['browser_download_url'],size_of(part)) for part in ordered)
     return Candidate(new,'',sum(part[1] for part in parts),checksum,notes,parts)
 
 
-def check(current,fetcher=fetch,cancelled=None):
+def check(current,fetcher=fetch,cancelled=None,size_resolver=None):
     best=None;successful=0;latest=None
     try:
         check_cancelled(cancelled)
@@ -127,7 +157,7 @@ def check(current,fetcher=fetch,cancelled=None):
             if not release.get('draft') and not release.get('prerelease'):
                 if version(new)>version(current):
                     assets={entry['name']:entry for entry in release.get('assets',[])}
-                    best=installer_candidate(new,assets,fetcher,str(release.get('body') or '')[:3000])
+                    best=installer_candidate(new,assets,fetcher,str(release.get('body') or '')[:3000],size_resolver)
             latest=new
     except (ValueError,TypeError,AttributeError,KeyError,IndexError,UnicodeError,httpx.HTTPError,OSError):pass
     try:

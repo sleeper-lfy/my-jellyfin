@@ -35,10 +35,11 @@ class ImportDialog(QDialog):
         selected=self.scraper.currentData()
         self.scraper.clear();self.scraper.addItem('不刮削','')
         for plugin in Plugins(self.window.library).installed():
-            if plugin['config'].get('enabled') and 'search' in plugin['capabilities']:
+            if plugin['config'].get('enabled') and 'search' in plugin['capabilities'] and (not plugin.get('media_kinds') or self.kind.currentData() in plugin['media_kinds']):
                 self.scraper.addItem(plugin['name'],plugin['id'])
         self.scraper.setCurrentIndex(max(0,self.scraper.findData(selected) if selected else 0))
     def sync_kind(self):
+        self.refresh_scrapers()
         kind=self.kind.currentData()
         scrapable=kind in SCRAPABLE
         self.scraper.setEnabled(scrapable);self.destination.setEnabled(scrapable)

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QMessageBox, QInputDialog, QListWidget, QListWidgetItem, QAbstractItemView, QTreeWidget,
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
  QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter, QSizePolicy)
-from .core import Library, thumbnail, tool, set_tool_directory, ImportCancelled
+from .core import Library, thumbnail, tool, set_tool_directory, ImportCancelled, check_cancelled
 from .plugins import Plugins
 from .files import plan_move, execute_move
 from .player import Player
@@ -1097,15 +1097,19 @@ class Details(QWidget):
         return merge_catalog_work(self)
 
     def scrape(self):
-        available = [p for p in Plugins(self.library).installed() if p['config'].get('enabled') and ('search' in p['capabilities'] or 'detail' in p['capabilities'])]
+        available = [p for p in Plugins(self.library).installed() if p['config'].get('enabled') and self.work['kind'] in p.get('media_kinds', ['movie','series','vr']) and ('search' in p['capabilities'] or 'detail' in p['capabilities'])]
         if not available:
-            QMessageBox.information(self, '刮削插件', '请先在设置中安装并启用支持搜索或详情解析的插件。')
+            QMessageBox.information(self, '刮削插件', '请先在设置 → 按需刮削引擎中安装并启用 Javinizer-Go，或启用支持搜索的站点插件。')
             return
         name, ok = QInputDialog.getItem(self, '刮削来源', '按优先级选择插件', [p['name'] for p in available], 0, False)
         if not ok:
             return
         plugin = next(p for p in available if p['name'] == name)
-        text, ok = QInputDialog.getText(self, '匹配影片', '输入关键词或完整详情页 URL', text=self.work['title'])
+        initial = self.work['title']
+        if plugin.get('engine') == 'javinizer-go':
+            from .javinizer import work_query
+            initial = work_query(self.work)
+        text, ok = QInputDialog.getText(self, '匹配影片', plugin.get('input_hint', '输入关键词或完整详情页 URL'), text=initial)
         if not ok or not text.strip():
             return
         text = text.strip()
@@ -1117,8 +1121,9 @@ class Details(QWidget):
             if self.window.detail_page is not self:
                 return
             if not results:
-                self.library.task(__import__('uuid').uuid4().hex, 'match', 'pending', {'work_id': self.work_id, 'plugin': plugin['id']}, error='未找到候选，请手动指定详情页')
-                QMessageBox.information(self.window, '待处理', '未找到候选，已记录到任务列表。')
+                message = '所选来源未收录此番号，请核对番号或调整来源顺序。' if plugin.get('engine') else '未找到候选，请手动指定详情页'
+                self.library.task(__import__('uuid').uuid4().hex, 'match', 'pending', {'work_id': self.work_id, 'plugin': plugin['id']}, error=message)
+                QMessageBox.information(self.window, '待处理', message + '\n已记录到任务列表。')
                 return
             from .matching import CandidatePicker, apply_match
             picker = CandidatePicker(self.library.directory, plugin['id'], results, self.window)
@@ -1128,9 +1133,9 @@ class Details(QWidget):
             if accepted and candidate is not None:
                 work_id = self.work_id
                 self.window.run_job('保存刮削资料与图片',
-                    lambda lib, progress: apply_match(lib, plugin, operation, candidate, work_id),
+                    lambda lib, progress: apply_match(lib, plugin, operation, candidate, work_id, cancelled=progress.cancelled),
                     lambda result: self.window.reload_details(work_id))
-        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, **({'url': text.strip()} if operation == 'detail' else {'query': text.strip()})), complete)
+        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, cancelled=p.cancelled, progress=p, **({'url': text.strip()} if operation == 'detail' else {'query': text.strip()})), complete)
 
 
     def organize(self):

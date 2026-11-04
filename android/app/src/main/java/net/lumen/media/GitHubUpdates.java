@@ -18,6 +18,7 @@ final class GitHubUpdates {
     static final String TARGET="https://gitee.com/"+REPO+"/raw/main/target/";
     static final long MAX_APK=256L*1024*1024;
     interface Fetcher {byte[] get(String url,int limit)throws Exception;}
+    interface Sizer {long size(String url)throws Exception;}
     interface Progress {void update(long done,long total);}
     static final class Candidate {
         final String version,url,sha256,notes,source;final long code,size;
@@ -31,6 +32,9 @@ final class GitHubUpdates {
         try{for(int i=0;i<Math.max(a.length,b.length);i++){int value=Long.compare(i<a.length?Long.parseLong(a[i]):0,i<b.length?Long.parseLong(b[i]):0);if(value!=0)return value;}}catch(NumberFormatException ignored){return -1;}return 0;
     }
     static Candidate check(String installed,long installedCode,Fetcher fetch)throws Exception{
+        return check(installed,installedCode,fetch,GitHubUpdates::size);
+    }
+    static Candidate check(String installed,long installedCode,Fetcher fetch,Sizer sizer)throws Exception{
         Candidate best=null;int successful=0;String error="";
         try{
             JSONObject release=new JSONObject(new String(fetch.get(RELEASE,1024*1024),StandardCharsets.UTF_8));
@@ -38,7 +42,7 @@ final class GitHubUpdates {
             if(!release.optBoolean("draft")&&!release.optBoolean("prerelease")&&compare(version,installed)>0){
                 JSONArray assets=release.optJSONArray("assets");JSONObject apk=null,checksum=null;
                 if(assets!=null)for(int i=0;i<assets.length();i++){JSONObject asset=assets.getJSONObject(i);if(asset.optString("name").equals("Lumen-android-debug.apk"))apk=asset;if(asset.optString("name").equals("Lumen-android-debug.apk.sha256"))checksum=asset;}
-                if(apk!=null){String hash=apk.optString("digest").replaceFirst("^sha256:","");if(!hash.matches("[0-9a-fA-F]{64}")&&checksum!=null)hash=new String(fetch.get(checksum.getString("browser_download_url"),4096),StandardCharsets.UTF_8).trim().split("\\s+")[0];best=new Candidate(version,-1,apk.getString("browser_download_url"),apk.getLong("size"),hash,release.optString("body"),"Gitee Releases");}
+                if(apk!=null){String hash=apk.optString("digest").replaceFirst("^sha256:","");if(!hash.matches("[0-9a-fA-F]{64}")&&checksum!=null)hash=new String(fetch.get(checksum.getString("browser_download_url"),4096),StandardCharsets.UTF_8).trim().split("\\s+")[0];String url=apk.getString("browser_download_url");long size=apk.optLong("size",0);if(size<=0)size=sizer.size(url);best=new Candidate(version,-1,url,size,hash,release.optString("body"),"Gitee Releases");}
             }
         }catch(Exception failure){error=failure.getMessage();}
         try{
@@ -52,7 +56,9 @@ final class GitHubUpdates {
     }
     static void validateUrl(String value)throws Exception{
         URI uri=new URI(value);String host=uri.getHost();
-        if(!"https".equalsIgnoreCase(uri.getScheme())||uri.getRawUserInfo()!=null||uri.getFragment()!=null||uri.getPort()!=-1&&uri.getPort()!=443||host==null||!host.equals("gitee.com"))throw new IOException("更新地址必须来自 Gitee HTTPS");
+        // Release attachments redirect to Gitee's own CDN (foruda.gitee.com).
+        boolean allowed=host!=null&&(host.equals("gitee.com")||host.endsWith(".gitee.com"));
+        if(!"https".equalsIgnoreCase(uri.getScheme())||uri.getRawUserInfo()!=null||uri.getFragment()!=null||uri.getPort()!=-1&&uri.getPort()!=443||!allowed)throw new IOException("更新地址必须来自 Gitee HTTPS");
     }
     static HttpURLConnection open(String value)throws Exception{
         for(int redirects=0;redirects<6;redirects++){
@@ -63,6 +69,11 @@ final class GitHubUpdates {
             if(status!=200){connection.disconnect();throw new IOException("Gitee HTTP "+status);}
             return connection;
         }throw new IOException("Gitee 重定向次数过多");
+    }
+    static long size(String url)throws Exception{
+        // Gitee's API omits attachment sizes; the download itself reports them.
+        HttpURLConnection connection=open(url);
+        try{long length=connection.getContentLengthLong();if(length<=0)throw new IOException("无法确认安装包大小");return length;}finally{connection.disconnect();}
     }
     static byte[] fetch(String url,int limit)throws Exception{
         HttpURLConnection connection=open(url);

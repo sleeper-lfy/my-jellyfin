@@ -86,6 +86,8 @@ class Plugins:
         manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
         if manifest.get('id') == 'javsp-local' and folder.resolve() != self.builtin_numbered_plugin('javsp-local').resolve():
             raise ValueError('JavSP 本地引擎只能从应用内置副本安装')
+        if manifest.get('id') == 'javinizer-go':
+            raise ValueError('javinizer-go 是应用内置引擎的保留 ID，不能安装为脚本插件')
         import re
         if not re.fullmatch(r'[a-z][a-z0-9-]{1,50}', manifest['id']):
             raise ValueError('无效插件 ID')
@@ -118,6 +120,11 @@ class Plugins:
                     import re
                     manifest['domains']=list(dict.fromkeys(manifest['domains']+[host for host in hosts if isinstance(host,str) and re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?',host)]))
             result.append(manifest)
+        from .javinizer import provider
+        native = provider(self.library)
+        if native:
+            result = [p for p in result if p['id'] != native['id']]
+            result.append(native)
         return sorted(result, key=lambda p: p['config'].get('priority', 100))
 
     def configure(self, plugin_id, config):
@@ -203,6 +210,11 @@ class Plugins:
         return manifest
 
     def uninstall(self, plugin_id):
+        if plugin_id == 'javinizer-go':
+            from .javinizer import save_settings
+            config = save_settings(self.library, {'enabled': False})
+            self.library.set_setting('plugin:javinizer-go', {**config, 'configured': False})
+            return
         found = next(p for p in self.installed() if p['id'] == plugin_id)
         shutil.rmtree(self.root / found['id'])
         self.library.set_setting('plugin:' + plugin_id, {})
@@ -269,7 +281,11 @@ class Plugins:
     def _request_headers(self,plugin,url,browser=False):
         from .plugin_access import request_headers
         defaults={key:value for key,value in BROWSER_HEADERS.items() if not browser or key!='User-Agent'}
-        return request_headers(self.library,plugin,url,defaults)
+        headers=request_headers(self.library,plugin,url,defaults)
+        # DMM image CDNs reject requests without a same-site Referer.
+        if plugin.get('id')=='javinizer-go' and urlparse(url).hostname in {'pics.dmm.co.jp','awsimgsrc.dmm.com','awsimgsrc.dmm.co.jp','pics.r18.com'}:
+            headers['Referer']='https://www.dmm.co.jp/'
+        return headers
 
     def _fetch_browser(self,plugin,url,proxy,maximum):
         from .plugin_access import check_response
@@ -418,7 +434,7 @@ class Plugins:
                 return data, content_type
         raise ValueError('重定向次数过多（最多 3 次）')
 
-    def run(self, plugin_id, operation, *, cancelled=None, **parameters):
+    def run(self, plugin_id, operation, *, cancelled=None, progress=None, **parameters):
         self.cancelled=cancelled if cancelled is not None else getattr(self.library,'cancelled',None)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         if not plugin['config'].get('enabled'):
@@ -434,6 +450,15 @@ class Plugins:
         self.library.task(task_id, 'scrape', 'running', payload)
         try:
             check_cancelled(cancelled)
+            if plugin_id == 'javinizer-go' and plugin.get('engine') == plugin_id:
+                if parameters.get('tag'):
+                    raise ValueError('番号引擎不支持站点标签搜索')
+                from .javinizer import lookup
+                result = lookup(self.library, parameters.get('query', ''), cancelled, progress)
+                for item in result:
+                    validate_metadata(item)
+                self.library.task(task_id, 'scrape', 'done', payload, {'count': len(result)})
+                return result
             request = self.javascript(plugin_id, 'buildRequest', {'operation': operation, 'config': plugin['config'], **parameters})
             pending = [request]
             visited = set()
@@ -573,7 +598,14 @@ class Plugins:
                     updated += 1
         return {'updated': updated, 'skipped': skipped, 'name': actor_name}
 
-    def merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False):
+    def merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False, cancelled=None):
+        check_cancelled(cancelled)
+        if plugin_id == 'javinizer-go':
+            with self.library.db:
+                identifier = self._merge(plugin_id, metadata, work_id, replace_nfo=replace_nfo, cache_images=None)
+            from .javinizer import cache_images
+            cache_images(self.library, metadata, identifier, replace_nfo, cancelled)
+            return identifier
         with self.library.db:
             return self._merge(plugin_id,metadata,work_id,replace_nfo=replace_nfo)
 
@@ -646,7 +678,7 @@ class Plugins:
             self.library.db.execute('UPDATE works SET identity=?,metadata=?,title=?,year=? WHERE id=?',
                                     (key, json.dumps(merged, ensure_ascii=False), item['title'] if 'title' in protected else metadata['title'],
                                      item['year'] if 'year' in protected else metadata.get('year', item['year']), work_id))
-            if not cache_images and 'poster' not in protected and metadata.get('poster') and metadata['poster'] != item['metadata'].get('poster'):
+            if cache_images is False and 'poster' not in protected and metadata.get('poster') and metadata['poster'] != item['metadata'].get('poster'):
                 self.library.db.execute('UPDATE works SET thumbnail=NULL WHERE id=?', (work_id,))
             self.library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(key,work_id))
             for alias in merged['aliases']:

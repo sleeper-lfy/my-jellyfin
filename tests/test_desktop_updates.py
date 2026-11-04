@@ -140,3 +140,25 @@ def test_missing_release_is_not_a_network_failure():
         raise httpx.HTTPError('connection refused')
     with pytest.raises(ValueError,match='仓库还没有发布 Release'):
         updates.check('0.4.5',broken)
+
+
+def test_missing_api_size_is_resolved_from_the_download_and_gitee_cdn_is_allowed():
+    # Gitee omits attachment sizes/digests; the URL redirects to foruda.gitee.com.
+    value=candidate()
+    assets={'Lumen-Setup-x64.exe':{'browser_download_url':value.url,'size':None,'digest':None},
+            'Lumen-Setup-x64.exe.sha256':{'browser_download_url':value.url+'.sha256','size':None}}
+    def read(url,limit):
+        if url==updates.API:return json.dumps({'tag_name':'v0.4.6','assets':[
+            {'name':name,'browser_download_url':asset['browser_download_url'],'size':asset['size'],'digest':asset.get('digest')}
+            for name,asset in assets.items()]}).encode()
+        if url.endswith('.sha256'):return (value.sha256+'\n').encode()
+        return metadata(url,limit)
+    resolved=[]
+    def sizer(url):
+        resolved.append(url);return value.size
+    assert updates.check('0.4.5',read,size_resolver=sizer).size==value.size
+    assert resolved==[value.url]
+    for url in ('https://foruda.gitee.com/attach_file/123/a.exe?token=x','https://gitee.com/x/y','https://sub.gitee.com/a'):
+        updates.validate_url(url)
+    for url in ('https://gitee.com.evil.test/a','https://evil-gitee.com/a','https://gitee.com:444/a','http://foruda.gitee.com/a'):
+        with pytest.raises(ValueError):updates.validate_url(url)

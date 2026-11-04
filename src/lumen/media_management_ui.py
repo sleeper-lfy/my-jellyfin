@@ -61,11 +61,12 @@ def describe_directory_rule(library, entry, overrides=None):
         '文件名模板：' + (rule['naming'].get('filename') or '保留原文件名')])
 
 
-def add_provider_items(combo, library, selected, inherit=False):
+def add_provider_items(combo, library, selected, inherit=False, kind=None):
     if inherit: combo.addItem('继承分类默认来源', None)
     combo.addItem('不自动刮削', '')
     for provider in Plugins(library).installed():
-        if provider['config'].get('enabled') and {'search','detail'} <= set(provider['capabilities']):
+        if provider['config'].get('enabled') and 'search' in provider['capabilities'] \
+                and (kind is None or not provider.get('media_kinds') or kind in provider['media_kinds']):
             combo.addItem(provider['name'], provider['id'])
     if selected and combo.findData(selected) < 0: combo.addItem(selected + '（当前不可用）', selected)
     combo.setCurrentIndex(max(0, combo.findData(selected)))
@@ -124,8 +125,9 @@ class CategoryRules(QWidget):
             item=self.fallbacks.takeItem(index); self.fallbacks.insertItem(target,item); self.fallbacks.setCurrentItem(item)
     def reload(self):
         kind=self.kind.currentData(); rule=self.library.setting('partition:'+kind,{})
-        self.primary.clear(); add_provider_items(self.primary,self.library,rule.get('plugin',''))
-        providers={p['id']:p['name'] for p in Plugins(self.library).installed() if p['config'].get('enabled') and {'search','detail'}<=set(p['capabilities'])}
+        self.primary.clear(); add_provider_items(self.primary,self.library,rule.get('plugin',''),kind=self.kind.currentData())
+        # A source needs search only; the ingestion pipeline skips the detail step for search-only engines.
+        providers={p['id']:p['name'] for p in Plugins(self.library).installed() if p['config'].get('enabled') and 'search' in p['capabilities']}
         selected=self.library.setting('numbered_fallbacks:'+kind,[]); self.fallbacks.clear()
         for key in dict.fromkeys([*selected,*providers]):
             item=QListWidgetItem(providers.get(key,key+'（当前不可用）')); item.setData(Qt.ItemDataRole.UserRole,key)
@@ -163,7 +165,7 @@ class DirectoryRuleDialog(QDialog):
         content.addWidget(note(KINDS.get(entry['kind'],entry['kind'])+' · 监听源目录\n'+entry['path']))
         self.enabled=QCheckBox('启用自动监听（应用运行期间）');self.enabled.setChecked(entry.get('enabled',True));content.addWidget(self.enabled)
         form=QFormLayout();content.addLayout(form)
-        self.plugin=QComboBox();self.plugin.setObjectName('directoryPrimary');add_provider_items(self.plugin,self.library,entry.get('plugin'),True);form.addRow('首选来源',self.plugin)
+        self.plugin=QComboBox();self.plugin.setObjectName('directoryPrimary');add_provider_items(self.plugin,self.library,entry.get('plugin'),True,kind=entry.get('kind'));form.addRow('首选来源',self.plugin)
         self.inherit=QCheckBox('继承分类默认整理目标');self.inherit.setChecked('destination' not in entry);content.addWidget(self.inherit)
         row=QHBoxLayout();self.target=QLineEdit(entry.get('destination',''));self.target.setObjectName('directoryDestination');self.target.setPlaceholderText('留空保留原位置');row.addWidget(self.target)
         self.browse=QPushButton('选择目标…');row.addWidget(self.browse);content.addLayout(row)

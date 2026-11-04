@@ -98,6 +98,12 @@ class Settings(QDialog):
         media_layout.addWidget(button('目录与自动入库…',lambda:self.open_management('directories')))
         media_layout.addWidget(button('分类默认规则与来源…',lambda:self.open_management('sources')))
         media_layout.addStretch();tabs.addTab(media,'媒体管理')
+        from .javinizer_ui import JavinizerPanel
+        from PySide6.QtWidgets import QScrollArea
+        engine_scroll = QScrollArea()
+        engine_scroll.setWidgetResizable(True)
+        engine_scroll.setWidget(JavinizerPanel(window, self, changed=self.reload_engine_sources))
+        tabs.addTab(engine_scroll, '按需刮削引擎')
         downloads = QWidget()
         download_form = QFormLayout(downloads)
         from .downloads import default_download_root
@@ -207,12 +213,22 @@ class Settings(QDialog):
         self.ffmpeg_status.setText('正在后台下载 FFmpeg 组件（约 110MB，仅一次）…')
 
     def reload(self):
-        self.plugins = self.manager.installed()
+        self.plugins = [p for p in self.manager.installed() if not p.get('engine')]
         self.list.clear()
         for p in self.plugins:
             self.list.addItem(f"{'●' if p['config'].get('enabled') else '○'} {p['name']}  ·  {p['version']}")
         if self.plugins:
             self.list.setCurrentRow(0)
+
+    def reload_engine_sources(self):
+        for kind, (box, _destination) in getattr(self, 'partition_controls', {}).items():
+            previous = box.currentData()
+            box.clear()
+            box.addItem('手动刮削（默认）', '')
+            for plugin in self.manager.installed():
+                if 'search' in plugin['capabilities'] and kind in plugin.get('media_kinds', ['movie', 'series', 'vr']):
+                    box.addItem(plugin['name'], plugin['id'])
+            box.setCurrentIndex(max(0, box.findData(previous)))
 
     def select_plugin(self, index):
         if index < 0 or index >= len(self.plugins):

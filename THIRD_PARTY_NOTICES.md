@@ -1,5 +1,7 @@
 # Third-party notices
 
+- Optional Javinizer-Go 1.6.6 component: MIT License, Copyright (c) 2026 Javinizer contributors. Downloaded from the official release and verified against the pinned SHA-256; not bundled with Lumen. The component installer retains the upstream license as `LICENSE.txt` beside the executable. Source and license: https://github.com/javinizer/javinizer-go/tree/v1.6.6 / https://github.com/javinizer/javinizer-go/blob/v1.6.6/LICENSE . See [on-demand integration](docs/javinizer-go.md).
+
 - Python: Python Software Foundation License — https://www.python.org/psf/license/
 - PySide6 / Qt: LGPL v3, GPL v3 or commercial terms depending on module. This application dynamically links the selected Qt Core, GUI, Widgets, Multimedia and QML modules. Retain their license texts and users' ability to replace compatible shared libraries. https://doc.qt.io/qt-6/licensing.html
 - Qt FFmpeg backend libraries: the runtime reports FFmpeg 7.1 LGPL v2.1 or later for the tested PySide6 build. External FFmpeg binaries may have additional GPL codecs: inspect the exact build's `ffmpeg -L` and `ffmpeg -buildconf`, retain notices and provide corresponding-source information before public binary distribution. https://ffmpeg.org/legal.html

@@ -38,16 +38,16 @@ def preview_cover(library, plugin_id, record):
     return str(path)
 
 
-def apply_match(library, plugin, operation, candidate, work_id):
+def apply_match(library, plugin, operation, candidate, work_id, *, cancelled=None):
     manager = Plugins(library)
     if operation == 'search' and 'detail' in plugin['capabilities']:
-        records = manager.run(plugin['id'], 'detail', url=candidate['url'])
+        records = manager.run(plugin['id'], 'detail', url=candidate['url'], **({'cancelled': cancelled} if cancelled else {}))
         exact = [record for record in records if str(record['id']) == str(candidate['id'])]
         if len(exact) != 1:
             raise ValueError('详情来源标识与所选候选不匹配，未更新资料')
         candidate = exact[0]
     # Explicit selection updates unlocked NFO fields; background refresh still preserves them.
-    result = manager.merge(plugin['id'], candidate, work_id, replace_nfo=True)
+    result = manager.merge(plugin['id'], candidate, work_id, replace_nfo=True, cancelled=cancelled)
     from .ingestion import confirm
     confirm(library, work_id)
     return result
