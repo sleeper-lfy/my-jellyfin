@@ -473,3 +473,7 @@ Android 图片下载独立使用两个工作线程，列表、详情和用户操
 用户明确要求发布 Releases。统一此前不一致的 Python 包、程序、安装器和 Android 版本为 0.4.14 / versionCode 18，准备 `v0.4.14-preview.1`。旧 target 安装包属于 0.4.11，不能用于本轮发布；两端需要从同一标签重新构建。
 
 新增仅处理预发布标签的构建流程：Windows 自动测试、构建、安装与卸载验收；Android 测试、lint、版本、ZIP 对齐及与 0.4.12 测试版相同的持久证书检查。核对两端源码、哈希与自动证据后才上传附件并公开为 prerelease，保持稳定 Latest 不变。正式发布的人工验收门槛保留，未验证的真机项目不标为通过。发布验证相关 **24 项测试通过**；具体构建和发布结果以后续运行记录为准。
+
+发布已完成：[v0.4.14-preview.1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.1)，实际构建源码 `55ea4936f6811a3e5b2a6bc1d5c01f297dd78087`。[构建与发布流程](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41825355359) 三项任务全部成功：Windows **633 项测试通过，零失败 / 错误 / 跳过**，安装、启动、mpv、插件 worker 和卸载验收通过；Android **97 项测试与 lint 通过**，versionCode 18、签名和 ZIP 对齐验证通过。原先 Linux 的两份 SQL 样本哈希差异已确认为 LF / CRLF 字节差异，Windows 验证通过，未修改或跳过用例。
+
+六个公开附件（EXE、APK、两份 SHA-256 和两份验收记录）已匿名完整下载，核对文件哈希、版本与源码绑定；下载后的 APK 再次通过本地签名验证，证书与先前测试版一致。实际 Release 为 prerelease，稳定 Latest 保持原版本。真机验收仍未完成，Gitee 自动更新渠道未同步。大小、SHA-256 与完整验证证据见 [发布记录](validation/preview-0.4.14.json)。

@@ -2,6 +2,8 @@
 
 Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
+最新测试预发布：[Lumen 0.4.14 Preview 1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.1) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.1/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.1/Lumen-android-debug.apk)。Windows 633 项测试及安装 / 卸载验收、Android 97 项测试及 lint 通过；两个公开安装包已完整下载核对校验和。真机验收仍未完成，不替换稳定最新版，尚未同步 Gitee 自动更新渠道。[版本说明](docs/releases/0.4.14.md) · [发布验证记录](docs/validation/preview-0.4.14.json)。
+
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
 ## 软件界面
@@ -162,4 +164,4 @@ PC 支持按插件批量获取演员头像，以及将本地图片拖到演员�
 
 PC / Android 实时视频美颜支持本地 GPU 磨皮和肤色提亮，默认关闭，详见 [使用说明](docs/video-beauty.md)。0.4.12 首次以测试预发布提供，设备验收范围和手机签名变化见 [版本说明](docs/releases/0.4.12.md)。
 
-[下载 0.4.12 测试预发布（Windows + Android）](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1)。稳定最新版仍为 0.4.11。
+[历史 0.4.12 测试预发布（Windows + Android）](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.12-preview.1)。当前稳定版见 [Releases Latest](https://github.com/sleeper-lfy/my-jellyfin/releases/latest)；0.4.14 目前为测试预发布。
