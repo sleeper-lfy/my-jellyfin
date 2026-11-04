@@ -95,9 +95,9 @@ def test_drop_still_works_during_job_and_async_browse_and_preserves_batch(qapp,w
         QApplication.sendEvent(target,move);assert move.isAccepted()
         drop=QDropEvent(QPointF(20,20),Qt.DropAction.CopyAction,mime,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier)
         QApplication.sendEvent(target,drop);assert drop.isAccepted()
-        form=window.import_form;assert form.isVisible() and form.path.text()==str(folders[0])
+        form=window.import_form;assert form.isVisible() and Path(form.path.text())==folders[0]
         window.import_path(folders[1],pending=[str(folders[2])])
-        assert form.path.text()==str(folders[0]) and form.pending==list(map(str,folders[1:]))
+        assert Path(form.path.text())==folders[0] and form.pending==list(map(str,folders[1:]))
         form.submit();assert len(window.job_queue)==3
     finally:gate.set()
     until(qapp,lambda:not window.jobs and not window.job_queue)
