@@ -1,0 +1,73 @@
+{
+  "request_id": "keep-only-0.4.14-2026-11-04",
+  "deleted": [
+    {
+      "id": 429320231,
+      "tag": "v0.4.12"
+    },
+    {
+      "id": 423916185,
+      "tag": "v0.4.11"
+    },
+    {
+      "id": 423165674,
+      "tag": "v0.4.10"
+    },
+    {
+      "id": 422554504,
+      "tag": "v0.4.9"
+    },
+    {
+      "id": 422547755,
+      "tag": "v0.4.8"
+    },
+    {
+      "id": 422522931,
+      "tag": "v0.4.7"
+    },
+    {
+      "id": 422497686,
+      "tag": "v0.4.6"
+    },
+    {
+      "id": 422015143,
+      "tag": "v0.4.5"
+    },
+    {
+      "id": 421965524,
+      "tag": "v0.4.4"
+    },
+    {
+      "id": 421509757,
+      "tag": "v0.4.2"
+    },
+    {
+      "id": 421088748,
+      "tag": "windows-d91a51c23cc7"
+    },
+    {
+      "id": 421022983,
+      "tag": "windows-a4b6197e88ec"
+    },
+    {
+      "id": 421090478,
+      "tag": "windows-a289dec20a27"
+    },
+    {
+      "id": 421094437,
+      "tag": "windows-7620d7f5cfec"
+    }
+  ],
+  "remaining": [
+    {
+      "id": 433866989,
+      "tag": "v0.4.14-preview.1"
+    }
+  ],
+  "tags_deleted": false,
+  "success": true,
+  "retained_asset_count": 6,
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41827392785",
+  "public_remaining_verified": true,
+  "old_git_tags_preserved_verified": true
+}

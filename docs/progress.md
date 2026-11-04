@@ -477,3 +477,9 @@ Android 图片下载独立使用两个工作线程，列表、详情和用户操
 发布已完成：[v0.4.14-preview.1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.1)，实际构建源码 `55ea4936f6811a3e5b2a6bc1d5c01f297dd78087`。[构建与发布流程](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41825355359) 三项任务全部成功：Windows **633 项测试通过，零失败 / 错误 / 跳过**，安装、启动、mpv、插件 worker 和卸载验收通过；Android **97 项测试与 lint 通过**，versionCode 18、签名和 ZIP 对齐验证通过。原先 Linux 的两份 SQL 样本哈希差异已确认为 LF / CRLF 字节差异，Windows 验证通过，未修改或跳过用例。
 
 六个公开附件（EXE、APK、两份 SHA-256 和两份验收记录）已匿名完整下载，核对文件哈希、版本与源码绑定；下载后的 APK 再次通过本地签名验证，证书与先前测试版一致。实际 Release 为 prerelease，稳定 Latest 保持原版本。真机验收仍未完成，Gitee 自动更新渠道未同步。大小、SHA-256 与完整验证证据见 [发布记录](validation/preview-0.4.14.json)。
+
+## 清理旧 GitHub Releases（2026-11-04）
+
+按用户明确要求仅保留 0.4.14 系列。清理前保存完整 Release 元数据清单，限定删除已核对的 14 个旧 Release 及附件；检查目标版本及附件后执行，不删除 Git 标签。保护逻辑 5 项测试通过。
+
+[清理流程](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/41827392785)成功完成；公开列表已复核仅剩 `v0.4.14-preview.1`，其 6 个附件和 Release ID 保持不变。14 个旧 Git 标签经远程逐一核对仍存在。保留版本仍是预发布，未将其转成正式版；Gitee Releases 未操作。README 当前下载入口已更新，历史发布验证中的旧链接仅代表当时状态。详见[清理记录](validation/release-cleanup-0.4.14.json)。
