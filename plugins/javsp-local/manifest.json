@@ -1,0 +1,11 @@
+{
+  "api_version": 1,
+  "id": "javsp-local",
+  "name": "JavSP · 本地辅助刮削",
+  "version": "1.0.0",
+  "description": "调用用户独立安装的 JavSP Python 抓取器，只传入编号并接收元数据，不运行 JavSP 的扫描、整理、更新或文件移动入口。外部引擎按其 config.yml 访问网站；本软件补图仍受所列域名限制。",
+  "capabilities": ["search", "detail"],
+  "search_filters": ["name"],
+  "domains": ["pics.dmm.co.jp", "pics.dmm.com", "www.javbus.com", "javbus.com", "javdb.com", "c0.jdbstatic.com", "c1.jdbstatic.com"],
+  "base_url": "https://github.com/Yuukiy/JavSP"
+}

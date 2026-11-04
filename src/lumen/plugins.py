@@ -84,6 +84,8 @@ class Plugins:
     def install(self, folder):
         folder = Path(folder)
         manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
+        if manifest.get('id') == 'javsp-local' and folder.resolve() != self.builtin_numbered_plugin('javsp-local').resolve():
+            raise ValueError('JavSP 本地引擎只能从应用内置副本安装')
         import re
         if not re.fullmatch(r'[a-z][a-z0-9-]{1,50}', manifest['id']):
             raise ValueError('无效插件 ID')
@@ -109,6 +111,12 @@ class Plugins:
         for path in sorted(self.root.glob('*/manifest.json')):
             manifest = json.loads(path.read_text(encoding='utf-8'))
             manifest['config'] = self.library.setting('plugin:' + manifest['id'], {})
+            if manifest['id'] == 'javsp-local':
+                from .javsp_bridge import settings
+                hosts=settings(self.library).get('image_domains',[])
+                if isinstance(hosts,list):
+                    import re
+                    manifest['domains']=list(dict.fromkeys(manifest['domains']+[host for host in hosts if isinstance(host,str) and re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?',host)]))
             result.append(manifest)
         return sorted(result, key=lambda p: p['config'].get('priority', 100))
 
@@ -143,7 +151,7 @@ class Plugins:
     @staticmethod
     def builtin_numbered_plugin(plugin_id):
         """Metadata-only numbered-film providers bundled with this application."""
-        return Plugins._builtin_plugin_folder(plugin_id, {'javbus-films', 'javdb-films'})
+        return Plugins._builtin_plugin_folder(plugin_id, {'javbus-films', 'javdb-films', 'javsp-local'})
 
     def update_builtin_numbered_plugin(self, plugin_id):
         """Explicit install/update; callers show domains and enable separately."""
@@ -198,6 +206,7 @@ class Plugins:
         found = next(p for p in self.installed() if p['id'] == plugin_id)
         shutil.rmtree(self.root / found['id'])
         self.library.set_setting('plugin:' + plugin_id, {})
+        self.library.set_setting('plugin-access:' + plugin_id, {})
 
     def javascript(self, plugin_id, function, argument):
         script = (self.root / plugin_id / 'plugin.js').read_text(encoding='utf-8')
@@ -242,24 +251,61 @@ class Plugins:
 
     def fetch(self, plugin, url, image=False):
         check_cancelled(getattr(self,'cancelled',None))
+        from .plugin_access import session
+        transport=session(self.library,plugin).get('transport','auto')
         proxy = plugin['config'].get('proxy', 'inherit')
         if proxy == 'inherit':
             proxy = self.library.setting('proxy', '')
         if proxy and urlparse(proxy).scheme not in {'http', 'https', 'socks5', 'socks5h'}:
             raise ValueError('代理协议须为 HTTP、HTTPS 或 SOCKS5')
         maximum = 10_000_000 if image else 4_000_000
+        if transport=='browser' or transport=='auto' and plugin.get('id') in {'javbus-films','javdb-films','javbus-actors','javdb-actors'}:
+            return self._fetch_browser(plugin,url,proxy,maximum)
         curl = self._curl_binary()
         if curl:
             return self._fetch_curl(plugin, url, proxy, maximum, curl)
         return self._fetch_httpx(plugin, url, proxy, maximum)
 
+    def _request_headers(self,plugin,url,browser=False):
+        from .plugin_access import request_headers
+        defaults={key:value for key,value in BROWSER_HEADERS.items() if not browser or key!='User-Agent'}
+        return request_headers(self.library,plugin,url,defaults)
+
+    def _fetch_browser(self,plugin,url,proxy,maximum):
+        from .plugin_access import check_response
+        current=url
+        for redirects in range(4):
+            check_cancelled(self.cancelled);self._approved_url(plugin,current)
+            with tempfile.TemporaryDirectory(prefix='plugin-browser-',dir=self.library.directory) as temporary:
+                folder=Path(temporary);source,result,body=folder/'request.json',folder/'result.json',folder/'body'
+                source.write_text(json.dumps({'url':current,'proxy':proxy,'maximum':maximum,'headers':self._request_headers(plugin,current,True)}),encoding='utf-8')
+                source.chmod(0o600)
+                command=([sys.executable,'--browser-http-worker'] if getattr(sys,'frozen',False) else [sys.executable,'-m','lumen.browser_http_worker'])
+                try:media_process([*command,str(source),str(result),str(body)],25,self.cancelled)
+                except subprocess.TimeoutExpired:raise ValueError('浏览器兼容请求超时')
+                except subprocess.CalledProcessError:raise ValueError('浏览器兼容请求进程异常退出，请更新完整安装包')
+                if not result.is_file() or result.stat().st_size>16000:raise ValueError('兼容请求未返回有效响应')
+                response=json.loads(result.read_text(encoding='utf-8'))
+                if response.get('error'):raise ValueError(response['error'])
+                status=response['status'];headers=response['headers']
+                if status in {301,302,303,307,308}:
+                    location=headers.get('location','')
+                    if not location:raise ValueError('重定向缺少目标地址')
+                    if redirects>=3:raise ValueError('重定向次数过多（最多 3 次）')
+                    current=urljoin(current,location);continue
+                if not body.is_file() or body.stat().st_size>maximum:raise ValueError('响应大小超限')
+                data=body.read_bytes();check_response(status,headers,data,current)
+                return data,headers.get('content-type','')
+        raise ValueError('重定向次数过多（最多 3 次）')
+
     def _fetch_httpx(self, plugin, url, proxy, maximum):
+        from .plugin_access import check_response
         if getattr(self,'cancelled',None):return self._fetch_httpx_cancellable(plugin,url,proxy,maximum)
         current = url
         with httpx.Client(proxy=proxy or None, trust_env=False, timeout=20, follow_redirects=False) as client:
             for redirects in range(4):
                 self._approved_url(plugin, current)
-                with client.stream('GET', current, headers=BROWSER_HEADERS) as response:
+                with client.stream('GET', current, headers=self._request_headers(plugin,current)) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get('location', '')
                         if not location:
@@ -268,33 +314,35 @@ class Plugins:
                             raise ValueError('重定向次数过多（最多 3 次）')
                         current = urljoin(current, location)
                         continue
-                    response.raise_for_status()
                     data = bytearray()
                     deadline = time.monotonic() + 30
                     for block in response.iter_bytes():
                         data.extend(block)
                         if len(data) > maximum or time.monotonic() > deadline:
                             raise ValueError('响应大小或时间超限')
+                    check_response(response.status_code,response.headers,bytes(data),current)
                     return bytes(data), response.headers.get('content-type', '')
         raise ValueError('重定向次数过多（最多 3 次）')
 
     def _fetch_httpx_cancellable(self,plugin,url,proxy,maximum):
         import asyncio
+        from .plugin_access import check_response
         async def fetch():
             current=url
             async with httpx.AsyncClient(proxy=proxy or None,trust_env=False,timeout=20,follow_redirects=False) as client:
                 for redirects in range(4):
                     self._approved_url(plugin,current)
-                    async with client.stream('GET',current,headers=BROWSER_HEADERS) as response:
+                    async with client.stream('GET',current,headers=self._request_headers(plugin,current)) as response:
                         if response.status_code in {301,302,303,307,308}:
                             location=response.headers.get('location','')
                             if not location:raise ValueError('重定向缺少目标地址')
                             if redirects>=3:raise ValueError('重定向次数过多（最多 3 次）')
                             current=urljoin(current,location);continue
-                        response.raise_for_status();data=bytearray();deadline=time.monotonic()+30
+                        data=bytearray();deadline=time.monotonic()+30
                         async for block in response.aiter_bytes():
                             data.extend(block)
                             if len(data)>maximum or time.monotonic()>deadline:raise ValueError('响应大小或时间超限')
+                        check_response(response.status_code,response.headers,bytes(data),current)
                         return bytes(data),response.headers.get('content-type','')
         async def controlled():
             task=asyncio.create_task(fetch())
@@ -312,18 +360,20 @@ class Plugins:
 
     def _fetch_curl(self, plugin, url, proxy, maximum, curl):
         """Use the system curl when available: some sites reject Python's TLS fingerprint."""
+        from .plugin_access import check_response
         current = url
         for redirects in range(4):
             self._approved_url(plugin, current)
             with tempfile.TemporaryDirectory(prefix='plugin-http-', dir=self.library.directory) as directory:
                 body_path, header_path = Path(directory) / 'body', Path(directory) / 'headers'
+                request_headers=Path(directory)/'request-headers'
+                request_headers.write_text(''.join(key+': '+value+'\n' for key,value in self._request_headers(plugin,current).items()),encoding='utf-8')
+                request_headers.chmod(0o600)
                 command = [curl, '-q', '-sS', '--proto', '=http,https', '--connect-timeout', '10', '--max-time', '20',
                            '--max-filesize', str(maximum), '--compressed',
                            '-D', str(header_path), '-o', str(body_path),
                            '-w', '%{http_code}\n%{content_type}\n%{redirect_url}',
-                           '-A', BROWSER_HEADERS['User-Agent'],
-                           '-H', 'Accept: ' + BROWSER_HEADERS['Accept'],
-                           '-H', 'Accept-Language: ' + BROWSER_HEADERS['Accept-Language']]
+                           '-H', '@'+str(request_headers)]
                 command += ['--proxy', proxy] if proxy else ['--noproxy', '*']
                 command.append(current)
                 try:
@@ -355,11 +405,16 @@ class Plugins:
                         raise ValueError('重定向次数过多（最多 3 次）')
                     current = urljoin(current, location)
                     continue
-                if status >= 400 or status == 0:
-                    raise ValueError('插件请求返回 HTTP %d' % status)
                 data = body_path.read_bytes() if body_path.is_file() else b''
                 if len(data) > maximum:
                     raise ValueError('响应大小超限')
+                headers={}
+                if header_path.is_file():
+                    for line in header_path.read_bytes().decode('latin-1','replace').splitlines():
+                        if line.startswith('HTTP/'):headers={}
+                        elif ':' in line:
+                            key,value=line.split(':',1);headers[key.lower()]=value.strip()
+                check_response(status,headers,data,current)
                 return data, content_type
         raise ValueError('重定向次数过多（最多 3 次）')
 
@@ -370,6 +425,9 @@ class Plugins:
             raise ValueError('插件未启用')
         if operation not in plugin['capabilities']:
             raise ValueError('插件不支持该功能')
+        if plugin_id == 'javsp-local':
+            from .javsp_bridge import run
+            return run(self.library,operation,parameters,self.cancelled)
         import uuid
         task_id = uuid.uuid4().hex
         payload = {'plugin': plugin_id, 'operation': operation, 'parameters': parameters}

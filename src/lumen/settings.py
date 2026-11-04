@@ -65,6 +65,12 @@ class Settings(QDialog):
         controls = QHBoxLayout()
         controls.addWidget(button('安装插件文件夹…', self.install))
         controls.addWidget(button('卸载选中插件', self.uninstall))
+        def access_settings():
+            index=self.list.currentRow()
+            if index>=0:
+                from .plugin_access_ui import show_plugin_access
+                show_plugin_access(self.window,self.plugins[index]['id'])
+        controls.addWidget(button('站点访问设置…',access_settings))
         layout.addLayout(controls)
         self.description = label('安装前请查看插件权限。脚本只处理网络响应，不具有文件操作接口。')
         self.description.setWordWrap(True)

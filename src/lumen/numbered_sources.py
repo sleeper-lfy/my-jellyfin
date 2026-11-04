@@ -45,7 +45,10 @@ def resolve(library, work, primary, fallbacks=None, cancelled=None):
             attempts.append({'plugin':identifier,'state':'confirmation','message':str(error)})
             if candidates and not pending:pending=candidates[:40];pending_plugin=identifier
         except Exception as error:
-            transient=True;attempts.append({'plugin':identifier,'state':'failed','message':str(error)[:1000]})
+            transient=transient or getattr(error,'retryable',True)
+            attempt={'plugin':identifier,'state':'failed','message':str(error)[:1000]}
+            if hasattr(error,'reason'):attempt.update(reason=error.reason,http_status=error.status)
+            attempts.append(attempt)
     message='；'.join(row['plugin']+'：'+row['message'] for row in attempts) or '未配置可用影片来源'
     raise SourceLookupError(message,attempts,pending,pending_plugin,transient and not pending)
 
@@ -61,8 +64,9 @@ def check_source(library, plugin_id, query, cancelled=None):
         result=resolve(library,work,plugin_id,[],cancelled)
         value={'state':'available','message':'搜索与详情解析通过','title':result['candidate']['title'],'matched':True}
     except SourceLookupError as error:
-        state='failed' if error.retryable or not error.attempts or error.attempts[0]['state']=='unavailable' else 'no_unique_match'
+        state='failed' if error.retryable or not error.attempts or any(row['state'] in {'failed','unavailable'} for row in error.attempts) else 'no_unique_match'
         value={'state':state,'message':str(error),'matched':False}
+        value['attempts']=error.attempts
     value.update(plugin=plugin_id,query=code,checked_at=time.time(),seconds=round(time.monotonic()-started,2))
     library.set_setting('source-health:'+plugin_id,value)
     return value

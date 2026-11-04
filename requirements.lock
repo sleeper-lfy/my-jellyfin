@@ -1,6 +1,9 @@
 altgraph==0.17.5
 anyio==4.15.1
 certifi==2026.10.19
+cffi==2.1.1
+curl_cffi==0.17.0
+pycparser==3.12
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1

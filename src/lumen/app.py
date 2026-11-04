@@ -7,6 +7,10 @@ from .core import data_directory
 
 
 def main():
+    if '--browser-http-worker' in sys.argv:
+        from .browser_http_worker import main as worker
+        worker()
+        return
     if '--plugin-worker' in sys.argv:
         from .js_worker import run as worker
         worker()

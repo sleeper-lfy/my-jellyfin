@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 import tempfile
+from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+from threading import Thread
 
 executable = Path(sys.argv[1]).resolve(strict=True)
 with tempfile.TemporaryDirectory(prefix='lumen-package-') as directory:
@@ -20,4 +22,16 @@ with tempfile.TemporaryDirectory(prefix='lumen-package-') as directory:
                                  'function':'test','argument':{'a':2,'b':3}}),encoding='utf-8')
     subprocess.run([str(executable),'--plugin-worker',str(source),str(target)],check=True,timeout=15,env=environment)
     assert json.loads(target.read_text(encoding='utf-8'))['result']=={'result':5,'filesystem':'undefined'}
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200);self.send_header('Content-Type','text/plain');self.end_headers();self.wfile.write(b'compat-worker-ok')
+        def log_message(self,*args):pass
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        body=root/'http-body';source.write_text(json.dumps({'url':f'http://127.0.0.1:{server.server_port}/test','headers':{},'proxy':'','maximum':1000}),encoding='utf-8')
+        subprocess.run([str(executable),'--browser-http-worker',str(source),str(target),str(body)],check=True,timeout=30,env=environment)
+        assert json.loads(target.read_text(encoding='utf-8'))['status']==200
+        assert body.read_bytes()==b'compat-worker-ok'
+    finally:server.shutdown();server.server_close();thread.join(2)
 print('Packaged UI and isolated plugin worker passed.')

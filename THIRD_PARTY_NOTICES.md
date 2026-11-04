@@ -23,3 +23,11 @@ Android Gradle Plugin 和 Gradle 为构建工具，不打包进 APK。Android SD
 ## Windows libmpv
 
 python-mpv 1.0.8 和固定的 libmpv 构建包含 GPL 组件。版本、许可证和对应源码入口见 [docs/mpv-runtime.md](docs/mpv-runtime.md)。应用自带的 `gentle-sharpen.glsl` 是本项目源码。
+
+## Optional external JavSP integration
+
+The `javsp-local` provider interoperates with a separately installed, user-configured [JavSP](https://github.com/Yuukiy/JavSP) through its Python module interface. No JavSP implementation or dependency is bundled or copied into Lumen. JavSP's upstream license and additional terms apply to that separate installation; consult its current LICENSE and README. The Lumen bridge is maintained in this repository.
+
+## Browser-compatible HTTP worker
+
+curl_cffi 0.17.0 is used in a short-lived metadata request process (MIT). Its distributed native curl / TLS components retain their bundled licenses. CFFI uses the MIT license; pycparser uses BSD-3-Clause. The packaging license collector includes the installed distributions’ license files. https://github.com/lexiforest/curl_cffi

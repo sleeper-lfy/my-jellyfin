@@ -20,6 +20,7 @@ def show_numbered_providers(window):
     install_row=QHBoxLayout();layout.addLayout(install_row)
     shipped=QComboBox();shipped.addItem('JavBus · 编号影片资料','javbus-films');shipped.addItem('JavDB · 编号影片资料','javdb-films');install_row.addWidget(shipped,1)
     install=QPushButton('安装 / 更新并启用…');install_row.addWidget(install)
+    javsp=QPushButton('接入 JavSP 本地辅助引擎…');javsp.setObjectName('configureJavSP');layout.addWidget(javsp)
     configure=QPushButton('配置自动入库默认规则…');configure.setObjectName('configureIngestionDefaults');layout.addWidget(configure)
     def defaults():
         from .media_management_ui import show_media_management
@@ -31,12 +32,14 @@ def show_numbered_providers(window):
     status=QPlainTextEdit();status.setReadOnly(True);status.setObjectName('providerCheckResult');status.setPlainText('尚未检测。检测会真实请求来源，不修改影片资料。');layout.addWidget(status,1)
     actions=QHBoxLayout();layout.addLayout(actions)
     test=QPushButton('检测来源');test.setObjectName('primary');actions.addWidget(test);actions.addStretch()
+    access=QPushButton('站点访问设置…');access.setObjectName('providerAccessSettings');actions.addWidget(access)
     close=QPushButton('关闭');close.clicked.connect(dialog.close);actions.addWidget(close)
     def reload():
         selected=source.currentData();source.clear()
         providers=[item for item in Plugins(window.library).installed() if item['config'].get('enabled') and 'search' in item['capabilities'] and 'detail' in item['capabilities']]
         for item in providers:source.addItem(item['name'],item['id'])
         source.setCurrentIndex(max(0,source.findData(selected)));test.setEnabled(bool(providers))
+        access.setEnabled(bool(providers))
         if not providers:status.setPlainText('尚无已启用的影片来源。安装并启用来源后，可输入编号检测。')
     def install_source():
         identifier=shipped.currentData();folder=Plugins.builtin_numbered_plugin(identifier)
@@ -61,4 +64,12 @@ def show_numbered_providers(window):
             status.setPlainText(names.get(value['state'],value['state'])+'：'+value['message'])
         window.run_job('检测编号影片来源',run,done)
     install.clicked.connect(install_source);test.clicked.connect(test_source);query.returnPressed.connect(lambda:test.click() if test.isEnabled() else None)
+    def configure_javsp():
+        from .javsp_ui import show_javsp_settings
+        show_javsp_settings(window,lambda:reload() if window.numbered_sources_dialog is dialog else None)
+    javsp.clicked.connect(configure_javsp)
+    def configure_access():
+        from .plugin_access_ui import show_plugin_access
+        if source.currentData():show_plugin_access(window,source.currentData())
+    access.clicked.connect(configure_access)
     reload();dialog.show();return dialog

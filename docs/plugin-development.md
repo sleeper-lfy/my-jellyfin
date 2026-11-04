@@ -8,6 +8,7 @@
 - `plugins/tvmaze`：用户指定的优先站点；电视剧搜索、详情（含演员）、最新剧集索引发现。
 - `plugins/internet-archive`：可选公开影片目录；只读取元数据和图片，不下载视频。
 - `plugins/javbus-films` / `plugins/javdb-films`：独立编号影片搜索与详情资料来源，支持来源可用性检查和自动入库备用顺序；不返回视频或下载链接。配置与验证边界见 [编号影片来源](numbered-providers.md)。
+- `plugins/javsp-local`：固定的本地 JavSP 桥接来源，由专用配置窗口选择用户独立安装的 Python / 源码 / 配置；不经过 JS 执行器，不提供通用命令执行 API。编号元数据仍进入统一匹配与合并流程。安装与权限边界见 [JavSP 接入](javsp.md)。
 - `plugins/wikimedia-actors`：独立女演员头像搜索，Wikidata 女性人物 + Wikimedia Commons 公开肖像；保留文件页、许可和署名。没有照片或资料的演员不会编造头像。
 - `plugins/javbus-actors`：按姓名搜索 JavBus 女优头像；只读取公开姓名、别名与图片地址，不返回视频或下载链接。默认声明 `www.javbus.com` / `javbus.com` / `r.jina.ai`，直连被站点浏览器验证拦截时自动经 r.jina.ai 读取；头像许可与署名以来源页面为准，插件不编造。
 - `plugins/javdb-actors`：按姓名搜索 JavDB 演员资料，读取公开头像和逗号分隔的别名；占位头像不当作真实头像，`gender` 不据姓名推断。只读取元数据与头像，不返回视频、磁力或下载链接。部分网络需在应用内配置代理。
@@ -78,7 +79,7 @@ return {
 
 普通响应最大 4 MB，图片 10 MB；单次 HTTP 读超时 20 秒，流读取预算 30 秒；保持 TLS 校验，只跟随声明域名内最多 3 次重定向，跨域跳转拒绝。站点需要跳到未声明域名时配置最终域名和 URL，不能关闭校验。仅支持 GET；不支持任意自定义执行命令、视频资源下载或文件写入。
 
-宿主优先调用系统 `curl` 发送插件请求（Windows 10/11 自带，Linux/macOS 通常已安装），没有 curl 时回退 httpx。使用 curl 是为了兼容按 TLS 指纹拦截 Python 客户端的站点；两种方式共用相同的精确域名、协议、代理、TLS 校验、大小和请求预算，curl 不跟随重定向，跳转仍由宿主逐次校验。宿主请求携带常见浏览器的 `User-Agent`、`Accept` 和 `Accept-Language`，不执行交互式验证。
+JavBus / JavDB 影片和演员来源在自动模式下使用独立短时 curl_cffi Chrome 兼容请求进程，其他来源默认优先系统 curl，没有 curl 时回退 httpx；每个插件可以在“站点访问设置”显式选择兼容或标准模式。Cookie / User-Agent 会话保存在独立的宿主设置中，不传给 JS，Cookie 只按精确 origin 发送，跳转不跨 origin 转发。兼容模式不执行网页 JavaScript；验证、登录和限流错误分类及处理见 [站点访问](site-access.md)。使用 curl 是为了兼容按 TLS 指纹拦截 Python 客户端的站点；两种方式共用相同的精确域名、协议、代理、TLS 校验、大小和请求预算，curl 不跟随重定向，跳转仍由宿主逐次校验。宿主请求携带常见浏览器的 `User-Agent`、`Accept` 和 `Accept-Language`，不执行交互式验证。
 
 ## 标准影片记录
 
