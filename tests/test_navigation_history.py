@@ -136,7 +136,9 @@ def test_new_filter_supersedes_pending_history_scroll_restore(qapp,tmp_path,monk
         window.back_navigation();assert entered.wait(2)
         assert window._restore_browse_state is not None
         window.filters={'query':'new result'};window.refresh()
-        assert window._restore_browse_state is None and not window.cards.isEnabled()
+        assert window._restore_browse_state is None and window.cards.isEnabled()
+        assert window.cards.viewport().acceptDrops() and not window.shuffle_action.isEnabled()
+        assert window._browse_job is not None or window._browse_pending is not None
         release.set();settle(qapp,window)
         assert window.section=='recommend' and window.cards.isEnabled()
     finally:

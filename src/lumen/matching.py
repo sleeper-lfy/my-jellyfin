@@ -1,5 +1,6 @@
 """Visual, single-selection matching for the current detail page."""
 import hashlib
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, QSize, Qt, QTimer, QByteArray, QBuffer, QIODevice, QSaveFile
@@ -54,6 +55,8 @@ def apply_match(library, plugin, operation, candidate, work_id):
 
 class PreviewLoader(QObject):
     loaded = Signal(int, str)
+    def __init__(self):
+        super().__init__();self.cancelled=threading.Event()
 
 
 class PreviewTask(QRunnable):
@@ -65,6 +68,7 @@ class PreviewTask(QRunnable):
         library = None
         try:
             library = Library(self.directory, initialize=False)
+            library.cancelled=self.loader.cancelled.is_set
             path = preview_cover(library, self.plugin_id, self.record)
             self.loader.loaded.emit(self.index, path or '')
         except Exception:
@@ -116,6 +120,10 @@ class CandidatePicker(QDialog):
         controls.accepted.connect(self.accept); controls.rejected.connect(self.reject)
         layout.addWidget(controls)
         self.items.verticalScrollBar().valueChanged.connect(self.load_visible)
+
+    def done(self,result):
+        self.loader.cancelled.set()
+        super().done(result)
 
     def showEvent(self, event):
         super().showEvent(event)

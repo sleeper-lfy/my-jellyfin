@@ -1,7 +1,7 @@
 """Jellyfin-style media shortcuts and horizontal rows, backed exclusively by the library."""
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPainter, QPixmap, QColor, QLinearGradient, QFont
-from PySide6.QtWidgets import QScrollArea,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QListWidget,QListWidgetItem,QAbstractItemView,QLabel,QSizePolicy
+from PySide6.QtWidgets import QScrollArea,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QPushButton,QListWidget,QListWidgetItem,QAbstractItemView,QLabel,QSizePolicy
 
 
 class MediaTile(QPushButton):
@@ -56,18 +56,30 @@ class MediaTile(QPushButton):
 
 
 class MediaShortcuts(QScrollArea):
-    """Keep readable media category labels when the window is narrow."""
+    """Large media cards wrap into rows instead of shrinking five into one strip."""
     def __init__(self):
         super().__init__();self.setWidgetResizable(True)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.content=QWidget();self.row=QHBoxLayout(self.content);self.row.setContentsMargins(0,0,0,0);self.row.setSpacing(12)
-        self.setWidget(self.content);self.setFixedHeight(120)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.content=QWidget();self.row=QGridLayout(self.content)
+        self.row.setContentsMargins(0,0,0,0);self.row.setSpacing(12)
+        self.tiles=[];self.setWidget(self.content);self.setFixedHeight(300)
+    def add_tile(self,tile):
+        self.tiles.append(tile);self.reflow()
+    def reflow(self):
+        available=max(1,self.viewport().width());count=len(self.tiles)
+        columns=max(1,min(count,(available+12)//252))
+        if count==5 and columns==4:columns=3
+        width=min(360,max(1,(available-12*(columns-1))//columns));height=round(width*9/16)
+        while self.row.count():self.row.takeAt(0)
+        for index,tile in enumerate(self.tiles):
+            tile.setFixedSize(width,height);self.row.addWidget(tile,index//columns,index%columns)
+        rows=(count+columns-1)//columns
+        total=rows*height+max(0,rows-1)*12+4
+        self.content.setMinimumHeight(total-4)
+        if self.height()!=total:self.setFixedHeight(total)
     def resizeEvent(self,event):
-        super().resizeEvent(event)
-        count=max(1,self.row.count());width=min(230,max(160,(self.viewport().width()-12*(count-1))//count))
-        for i in range(self.row.count()):self.row.itemAt(i).widget().setFixedSize(width,round(width*9/16))
-        self.setFixedHeight(round(width*9/16)+self.horizontalScrollBar().sizeHint().height()+4)
+        super().resizeEvent(event);self.reflow()
 
 
 class HomePage(QScrollArea):
@@ -84,7 +96,7 @@ class HomePage(QScrollArea):
         self.shortcuts=MediaShortcuts();tiles=self.shortcuts.row
         for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('fans','Fans'),('other','其他视频')]:
             tile=MediaTile(title,'0 位作者' if kind=='fans' else '0 部作品',None,lambda checked=False,kind=kind:window.navigate(kind))
-            self.tiles[kind]=tile;tiles.addWidget(tile)
+            self.tiles[kind]=tile;self.shortcuts.add_tile(tile)
         self.layout.addWidget(self.shortcuts)
         for title in ['继续观看','最新电影','最新电视剧','最新VR电影','最新Fans作者','为你推荐']:
             heading=label(title,'sectionTitle')
@@ -96,7 +108,7 @@ class HomePage(QScrollArea):
             cards.favoriteRequested.connect(window.toggle_favorite)
             cards.watchlistRequested.connect(lambda work_id:window.toggle_card_personal(work_id,'watchlist'))
             cards.setObjectName('posters');cards.setViewMode(QListWidget.ViewMode.IconMode);cards.setFlow(QListWidget.Flow.LeftToRight)
-            cards.setWrapping(False);cards.setResizeMode(QListWidget.ResizeMode.Adjust);cards.setMovement(QListWidget.Movement.Static)
+            cards.setWrapping(False);cards.setResizeMode(QListWidget.ResizeMode.Adjust);cards.setMovement(QListWidget.Movement.Static);cards.viewport().setAcceptDrops(True)
             cards.setMouseTracking(True);cards.setItemDelegate(PosterDelegate(cards));cards.setSpacing(2)
             cards.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
             cards.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded);cards.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

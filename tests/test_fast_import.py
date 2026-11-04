@@ -165,9 +165,10 @@ def test_close_window_cancels_import_without_losing_library(qapp,tmp_path):
     assert entered
     window.close()
     deadline=time.monotonic()+3
-    while window.isVisible() and time.monotonic()<deadline:
+    assert not window.isVisible()  # Closing hides the window immediately while workers stop safely.
+    while not getattr(window,'_shutdown_complete',False) and time.monotonic()<deadline:
         loop=QEventLoop();QTimer.singleShot(20,loop.quit);loop.exec()
-    assert not window.isVisible() and not window.jobs
+    assert not window.isVisible() and not window.jobs and window._shutdown_complete
     reopened=core.Library(tmp_path/'closing')
     assert reopened.setting('saved-before-close') is True
     reopened.close()

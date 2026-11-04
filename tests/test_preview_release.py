@@ -50,7 +50,8 @@ def test_preview_rejects_mismatched_or_unverified_artifacts(tmp_path,fault):
 
 
 def test_only_matching_preview_tag_is_accepted(monkeypatch):
-    monkeypatch.setenv('GITHUB_REF_NAME','v0.4.14-preview.1');assert preview.version()=='0.4.14'
+    for number in (1,2):
+        monkeypatch.setenv('GITHUB_REF_NAME',f'v0.4.14-preview.{number}');assert preview.version()=='0.4.14'
     for tag in ('v0.4.14','v0.4.13-preview.1','v0.4.14-preview.0','other'):
         monkeypatch.setenv('GITHUB_REF_NAME',tag)
         with pytest.raises(AssertionError):preview.version()

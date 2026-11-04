@@ -76,7 +76,7 @@ def enqueue(library, work, plugin, destination, force=False, fallback_plugins=No
     previous = library.db.execute('SELECT status,payload FROM tasks WHERE id=?', (identifier,)).fetchone()
     file_ids = sorted(file['id'] for file in work['files'])
     if previous:
-        if previous['status'] != 'done': return
+        if previous['status']=='running' or previous['status']!='done' and not force:return
         if not force and json.loads(previous['payload']).get('file_ids') == file_ids: return
     payload = {'work_id': work['id'], 'title': work['title'], 'plugin': plugin or '', 'destination': destination or '',
                'stage': 'identify', 'attempts': 0, 'next_attempt': 0, 'file_ids': file_ids,
@@ -85,18 +85,25 @@ def enqueue(library, work, plugin, destination, force=False, fallback_plugins=No
     library.task(identifier, 'ingest', 'queued', payload)
 
 
-def process_pending(library, progress=None, cancelled=None, limit=10, clock=time.time):
+def process_pending(library, progress=None, cancelled=None, limit=10, clock=time.time, work_ids=None):
     # Multiple manually queued imports may run concurrently; only one worker owns stages.
     while not _processing.acquire(timeout=.1):
         check_cancelled(cancelled)
     try:
-        return _process_pending(library, progress, cancelled, limit, clock)
+        return _process_pending(library, progress, cancelled, limit, clock, work_ids)
     finally:
         _processing.release()
 
 
-def _process_pending(library, progress=None, cancelled=None, limit=10, clock=time.time):
-    rows = library.db.execute("SELECT * FROM tasks WHERE kind='ingest' AND status IN ('queued','running','retry') AND COALESCE(json_extract(payload, '$.next_attempt'),0)<=? ORDER BY updated LIMIT ?", (clock(), limit)).fetchall()
+def _process_pending(library, progress=None, cancelled=None, limit=10, clock=time.time, work_ids=None):
+    scoped='';parameters=[clock()]
+    if work_ids is not None:
+        work_ids=list(dict.fromkeys(work_ids))
+        if not work_ids:return {'completed':0,'pending':0,'retry':0}
+        scoped=" AND json_extract(payload,'$.work_id') IN ("+','.join('?' for _ in work_ids)+')'
+        parameters.extend(work_ids)
+    parameters.append(limit)
+    rows = library.db.execute("SELECT * FROM tasks WHERE kind='ingest' AND status IN ('queued','running','retry') AND COALESCE(json_extract(payload, '$.next_attempt'),0)<=?"+scoped+" ORDER BY updated LIMIT ?", parameters).fetchall()
     summary = {'completed': 0, 'pending': 0, 'retry': 0}
     for index, row in enumerate(rows):
         check_cancelled(cancelled)
@@ -122,7 +129,8 @@ def _process_pending(library, progress=None, cancelled=None, limit=10, clock=tim
                         raise NeedsConfirmation(str(error)) from error
                     payload['source_attempts']=found['attempts']
                     payload['matched_plugin']=found['plugin']
-                    Plugins(library).merge(found['plugin'],found['candidate'],work['id'])
+                    manager=Plugins(library);manager.cancelled=cancelled
+                    manager.merge(found['plugin'],found['candidate'],work['id'])
                 payload.pop('candidates', None)
                 payload['stage'] = 'organize'
                 save('running')
@@ -132,9 +140,9 @@ def _process_pending(library, progress=None, cancelled=None, limit=10, clock=tim
                 move_id = payload['move_id']
                 exists = library.db.execute('SELECT status FROM tasks WHERE id=?', (move_id,)).fetchone()
                 if exists:
-                    if exists['status'] != 'done': execute_move(library, task_id=move_id)
+                    if exists['status'] != 'done': execute_move(library, task_id=move_id,cancelled=cancelled)
                 else:
-                    execute_move(library, plan_move(library, work['id'], payload['destination']), task_id=move_id)
+                    execute_move(library, plan_move(library, work['id'], payload['destination'],cancelled=cancelled), task_id=move_id,cancelled=cancelled)
             save('done'); summary['completed'] += 1
         except ImportCancelled:
             save('queued'); raise

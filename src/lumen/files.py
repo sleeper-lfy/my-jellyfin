@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import re
 import uuid
-from .core import fingerprint, SIDECARS, check_cancelled
+from .core import fingerprint, SIDECARS, check_cancelled, ImportCancelled
 
 
 def related_files(source):
@@ -13,9 +13,14 @@ def related_files(source):
             (p.stem == source.stem or p.name.startswith(source.stem + '.'))]
 
 
-def plan_delete(library, work_id):
+def plan_delete(library, work_id, file_ids=None):
     """Recorded paths and cached sizes only: planning must not touch offline drives."""
     work = library.work(work_id)
+    all_files=work['files']
+    if file_ids is not None:
+        wanted=set(file_ids)
+        if not wanted or not wanted<={file['id'] for file in all_files}:raise ValueError('所选季集已改变或不属于当前作品，请重新选择')
+        work={**work,'files':[file for file in all_files if file['id'] in wanted]}
     if not work['files']:
         raise ValueError('该条目没有本地视频文件')
     sizes = []
@@ -26,14 +31,20 @@ def plan_delete(library, work_id):
     return {'paths': [f['path'] for f in work['files']], 'known_size': all(size is not None for size in sizes), 'bytes': total}
 
 
-def execute_delete(library, work_id, progress=None, cancelled=None):
+def execute_delete(library, work_id, progress=None, cancelled=None, file_ids=None):
     """Delete every recorded video plus its sidecars, then drop the library entry.
 
     Any missing or undeletable file aborts with the entry intact for a retry."""
     work = library.work(work_id)
+    all_files=work['files']
+    if file_ids is not None:
+        wanted=set(file_ids)
+        if not wanted or not wanted<={file['id'] for file in all_files}:raise ValueError('所选季集已改变或不属于当前作品，请重新选择')
+        work={**work,'files':[file for file in all_files if file['id'] in wanted]}
     if not work['files']:
         raise ValueError('该条目没有本地视频文件')
-    if library.db.execute('SELECT 1 FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id=? AND s.ended IS NULL', (work_id,)).fetchone():
+    marks=','.join('?' for file in work['files'])
+    if library.db.execute(f'SELECT 1 FROM sessions WHERE file_id IN ({marks}) AND ended IS NULL', [file['id'] for file in work['files']]).fetchone():
         raise ValueError('请先停止该作品的播放，再删除本地文件')
     videos, missing = [], []
     sidecars = []
@@ -49,6 +60,8 @@ def execute_delete(library, work_id, progress=None, cancelled=None):
             missing.append(str(source))
     if missing:
         raise ValueError('以下视频当前不存在或所在磁盘离线，未执行删除；如文件已永久移除请改用“仅移出媒体库”：\n' + '\n'.join(missing))
+    untouched=[Path(file['path']) for file in all_files if file['id'] not in {item['id'] for item in work['files']}]
+    sidecars=[path for path in sidecars if not any(path.parent==other.parent and (path.stem==other.stem or path.name.startswith(other.stem+'.')) for other in untouched)]
     targets = list(dict.fromkeys([*sidecars, *videos]))
     total = len(targets)
     errors = []
@@ -64,8 +77,11 @@ def execute_delete(library, work_id, progress=None, cancelled=None):
         progress(total, total, '删除完成')
     if errors:
         raise ValueError('以下文件未能删除，条目已保留，可重试或改用“仅移出媒体库”：\n' + '\n'.join(errors))
-    library.remove_catalog(work_id)
-    return {'deleted': total}
+    if file_ids is None:
+        library.remove_catalog(work_id)
+        return {'deleted':total}
+    result=library.remove_local_records(work_id,file_ids)
+    return {'deleted':total,**result}
 
 
 def safe_name(value):
@@ -75,15 +91,18 @@ def safe_name(value):
     return value
 
 
-def plan_move(library, work_id, destination, rule=None):
+def plan_move(library, work_id, destination, rule=None, cancelled=None):
     """Build a read-only, fully checked move plan; execution revalidates its hashes."""
     from .organize_templates import load_rule, validate_rule, destinations, companion_copies
+    def hash_file(path):return fingerprint(path,cancelled=cancelled) if cancelled else fingerprint(path)
+    check_cancelled(cancelled)
     work = library.work(work_id)
     root = Path(destination).resolve()
     selected = load_rule(library, work['kind'], root) if rule is None else validate_rule(rule)
     pairs = []
     items = destinations(work, root, selected)
     for item in items:
+        check_cancelled(cancelled)
         f, folder, stem = item['file'], item['folder'], item['stem']
         source = Path(f['path'])
         if source.is_symlink():
@@ -101,7 +120,7 @@ def plan_move(library, work_id, destination, rule=None):
                 continue
             if target.exists():
                 raise FileExistsError(f'目标已存在：{target}')
-            pairs.append({'source': str(p), 'target': str(target), 'digest': fingerprint(p), 'file_id': f['id'] if p == source else None,
+            pairs.append({'source': str(p), 'target': str(target), 'digest': hash_file(p), 'file_id': f['id'] if p == source else None,
                           'root': str(root), 'state': 'pending'})
     copies = companion_copies(work, items, pairs, root)
     shared = {str(source) for source, target in copies}
@@ -113,9 +132,9 @@ def plan_move(library, work_id, destination, rule=None):
             raise ValueError('NFO 配套图片目标越过整理根目录')
         if source.resolve() == target.resolve():
             continue
-        digest = fingerprint(source)
+        digest = hash_file(source)
         if target.exists():
-            if not target.is_symlink() and target.is_file() and fingerprint(target) == digest:
+            if not target.is_symlink() and target.is_file() and hash_file(target) == digest:
                 continue
             raise FileExistsError('配套资料目标已存在：' + str(target))
         pairs.append({'source':str(source),'target':str(target),'digest':digest,'file_id':None,
@@ -135,7 +154,8 @@ def plan_move(library, work_id, destination, rule=None):
     return pairs
 
 
-def execute_move(library, pairs=None, task_id=None):
+def execute_move(library, pairs=None, task_id=None, cancelled=None):
+    def hash_file(path):return fingerprint(path,cancelled=cancelled) if cancelled else fingerprint(path)
     task_id = task_id or uuid.uuid4().hex
     if pairs is None:
         row = library.db.execute('SELECT payload FROM tasks WHERE id=? AND kind="move"', (task_id,)).fetchone()
@@ -147,12 +167,13 @@ def execute_move(library, pairs=None, task_id=None):
     save('running')
     try:
         for p in pairs:
+            check_cancelled(cancelled)
             if p['state'] == 'done':
                 continue
             source, target = Path(p['source']), Path(p['target'])
             target.parent.mkdir(parents=True, exist_ok=True)
             if p['state'] in {'pending', 'copying'}:
-                if not source.is_file() or fingerprint(source) != p['digest']:
+                if not source.is_file() or hash_file(source) != p['digest']:
                     raise ValueError(f'源文件已改变：{source}')
                 if p['state'] == 'pending':
                     if target.exists():
@@ -164,10 +185,11 @@ def execute_move(library, pairs=None, task_id=None):
                 # Only the uniquely journaled temporary file belongs to this task.
                 with source.open('rb') as incoming, temporary.open('wb') as outgoing:
                     for block in iter(lambda: incoming.read(4 * 1024 * 1024), b''):
+                        check_cancelled(cancelled)
                         outgoing.write(block)
                     outgoing.flush()
                     os.fsync(outgoing.fileno())
-                if fingerprint(temporary) != p['digest'] or fingerprint(source) != p['digest']:
+                if hash_file(temporary) != p['digest'] or hash_file(source) != p['digest']:
                     raise IOError('复制校验失败，原文件保留')
                 p['state'] = 'verified'
                 save('running')
@@ -188,20 +210,20 @@ def execute_move(library, pairs=None, task_id=None):
                     save('running')
                     if temporary.exists():
                         temporary.unlink()
-                elif os.name == 'nt' and target.is_file() and fingerprint(target) == p['digest']:
+                elif os.name == 'nt' and target.is_file() and hash_file(target) == p['digest']:
                     # Recover a crash immediately after the atomic Windows rename.
                     p['state'] = 'published'
                     save('running')
                 else:
                     raise IOError('校验后的临时文件丢失；保留原文件，需人工检查')
             if p['state'] == 'published':
-                if not target.is_file() or fingerprint(target) != p['digest']:
+                if not target.is_file() or hash_file(target) != p['digest']:
                     raise IOError('目标文件校验失败，原文件保留')
                 temporary = Path(p.get('temporary', ''))
                 if temporary.is_file() and os.path.samefile(temporary, target):
                     temporary.unlink()
                 if source.exists() and not p.get('keep_source',False):
-                    if fingerprint(source) != p['digest']:
+                    if hash_file(source) != p['digest']:
                         raise IOError('源文件在整理期间发生改变，保留两份文件')
                     source.unlink()
                 if p['file_id']:
@@ -210,6 +232,8 @@ def execute_move(library, pairs=None, task_id=None):
                 p['state'] = 'done'
                 save('running')
         save('done')
+    except ImportCancelled:
+        save('cancelled','整理已停止，原文件保留，可恢复任务');raise
     except Exception as exc:
         save('failed', str(exc))
         raise

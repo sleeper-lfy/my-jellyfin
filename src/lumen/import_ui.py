@@ -8,6 +8,7 @@ SCRAPABLE={'movie','series','vr'}
 class ImportDialog(QDialog):
     def __init__(self,window):
         super().__init__(window);self.window=window;self.browser=None;self.pending=[]
+        self.setAcceptDrops(True)
         self.setWindowTitle('添加媒体');self.resize(640,300)
         layout=QVBoxLayout(self);note=QLabel('选择或粘贴资源目录。原文件保留；重复导入会跳过未变化文件并更新 NFO。');note.setWordWrap(True);layout.addWidget(note)
         form=QFormLayout();layout.addLayout(form);row=QHBoxLayout()
@@ -24,6 +25,7 @@ class ImportDialog(QDialog):
         form.addRow('整理目标',destination_row)
         self.message=QLabel();self.message.setWordWrap(True);layout.addWidget(self.message)
         self.kind.currentIndexChanged.connect(lambda:self.sync_kind())
+        self.scraper.currentIndexChanged.connect(lambda:self.message.setText(self.hint()))
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);buttons.button(QDialogButtonBox.StandardButton.Ok).setText('开始导入 / 加入队列')
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
         buttons.accepted.connect(self.submit);buttons.rejected.connect(self.reject);layout.addWidget(buttons)
@@ -52,9 +54,19 @@ class ImportDialog(QDialog):
         if kind=='fans':text='Fans 按总目录的第一层作者文件夹归组，包含作者下级目录的视频；不要求季集编号、不自动影视刮削。'
         elif kind in SCRAPABLE:text='导入后按所选插件刮削，编号或标题、年份、类型唯一匹配后自动补全资料；歧义在任务页待确认；整理目标留空则不移动文件。'
         else:text='此类型按原文件名入库，不自动刮削。'
+        if kind in SCRAPABLE and not self.scraper.currentData():text+='当前未选择刮削来源，导入后只入库；要自动刮削，请先选择来源。'
         text+='已有后台任务时会排队处理，仍可继续添加其他目录。'
         if self.pending:text+=f'本次拖入共 {len(self.pending)+1} 个文件夹，确认后其余将按相同设置依次加入队列。'
         return text
+    def add_folders(self,paths):
+        current=self.path.text().strip()
+        for path in paths:
+            if not current:self.path.setText(path);current=path
+            elif path!=current and path not in self.pending:self.pending.append(path)
+        self.message.setText(self.hint())
+    def dragEnterEvent(self,event):self.window.dragEnterEvent(event)
+    def dragMoveEvent(self,event):self.window.dragMoveEvent(event)
+    def dropEvent(self,event):self.window.dropEvent(event)
     def choose_destination(self):
         from .dialogs import existing_directory
         path=existing_directory(self,'选择整理目标目录',self.destination.text())

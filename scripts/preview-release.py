@@ -78,7 +78,7 @@ def validate_artifacts(windows,android,acceptance,proof,source,value):
 
 
 def publish():
-    value=version();tag=os.environ['GITHUB_REF_NAME'];source=os.environ['GITHUB_SHA']
+    value=version();tag=os.environ['GITHUB_REF_NAME'];source=os.environ['GITHUB_SHA'];number=tag.rsplit('.',1)[1]
     assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==source
     remote_tag=subprocess.check_output(['git','ls-remote','origin','refs/tags/'+tag],text=True).split()
     assert remote_tag and remote_tag[0]==source,'Release tag changed during the build'
@@ -94,7 +94,7 @@ def publish():
     assets=[windows,Path(str(windows)+'.sha256'),apk,Path(str(apk)+'.sha256'),review,proof_path]
     existing=subprocess.run(['gh','release','view',tag,'--json','isDraft,isPrerelease'],capture_output=True,text=True)
     if existing.returncode:
-        gh('release','create',tag,'--verify-tag','--draft','--prerelease','--title',f'Lumen {value} Preview 1 · Windows + Android','--notes-file',str(notes))
+        gh('release','create',tag,'--verify-tag','--draft','--prerelease','--title',f'Lumen {value} Preview {number} · Windows + Android','--notes-file',str(notes))
     else:
         state=json.loads(existing.stdout);assert state['isDraft'] or state['isPrerelease'],'Refusing to replace a stable release'
     gh('release','upload',tag,*map(str,assets),'--clobber')

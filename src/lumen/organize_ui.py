@@ -111,7 +111,7 @@ class Organizer(QDialog):
         self.invalidate(); generation = self.generation; work_id = self.work_id
         self.status.setText('正在后台检查目标路径并校验源文件，尚未移动文件…')
         def prepare(lib, progress):
-            try: return {'plan': plan_move(lib, work_id, target, rule=rule)}
+            try: return {'plan': plan_move(lib, work_id, target, rule=rule,cancelled=getattr(progress,'cancelled',None))}
             except (ValueError, OSError) as error: return {'error': str(error)}
         def ready(result):
             if self.closed or generation != self.generation or not self.isVisible(): return
@@ -138,7 +138,7 @@ class Organizer(QDialog):
             except ValueError as error: self.status.setText(str(error)); return
         window=self.window
         self.accept()
-        window.run_job('按预览整理文件', lambda lib,p:execute_move(lib,plan), lambda _:window.reload_details(work_id))
+        window.run_job('按预览整理文件', lambda lib,p:execute_move(lib,plan,cancelled=getattr(p,'cancelled',None)), lambda _:window.reload_details(work_id))
 
 
 def show_organizer(details):

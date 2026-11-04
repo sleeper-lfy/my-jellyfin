@@ -69,6 +69,7 @@ def main():
     from PySide6.QtCore import QTimer, QLockFile
     from .ui import MainWindow
     app = QApplication(sys.argv[:1])
+    app.setQuitOnLastWindowClosed(False)
     from .diagnostics import UiWatchdog
     watchdog=UiWatchdog(directory,app)
     app.aboutToQuit.connect(watchdog.stop)
@@ -93,6 +94,7 @@ def main():
         watchdog.stop()
         lock.unlock()
         return 1
+    window.shutdownFinished.connect(app.quit)
     window.show()
     if sys.platform=='win32' and getattr(sys,'frozen',False) and not args.smoke:
         QTimer.singleShot(15000,lambda:window.updater().startup())

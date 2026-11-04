@@ -9,7 +9,7 @@ import tempfile
 import time
 from urllib.parse import urljoin, urlparse
 import httpx
-from .core import identity, now, check_cancelled, ImportCancelled
+from .core import identity, now, check_cancelled, ImportCancelled, media_process
 
 CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
 
@@ -77,6 +77,7 @@ def validate_metadata(item):
 class Plugins:
     def __init__(self, library):
         self.library = library
+        self.cancelled=getattr(library,'cancelled',None)
         self.root = library.directory / 'plugins'
         self.root.mkdir(exist_ok=True)
 
@@ -206,8 +207,13 @@ class Plugins:
         with tempfile.TemporaryDirectory(prefix='plugin-', dir=self.library.directory) as directory:
             input_path, output_path = Path(directory) / 'input.json', Path(directory) / 'output.json'
             input_path.write_text(json.dumps({'script': script, 'function': function, 'argument': argument}), encoding='utf-8')
-            result = subprocess.run([*command, str(input_path), str(output_path)], text=True, capture_output=True, timeout=8,
-                                    creationflags=0x08000000 if sys.platform == 'win32' else 0)
+            if getattr(self,'cancelled',None):
+                try:result=media_process([*command,str(input_path),str(output_path)],8,self.cancelled)
+                except subprocess.CalledProcessError as error:result=subprocess.CompletedProcess(error.cmd,error.returncode,error.stdout,error.stderr)
+                result.stderr=result.stderr.decode('utf-8','replace')
+            else:
+                result = subprocess.run([*command, str(input_path), str(output_path)], text=True, capture_output=True, timeout=8,
+                                        creationflags=0x08000000 if sys.platform == 'win32' else 0)
             if result.returncode:
                 raise RuntimeError(result.stderr[-2000:] or f'插件进程被终止（资源限制 / exit={result.returncode}）')
             if not output_path.is_file() or output_path.stat().st_size > 4_000_000:
@@ -235,6 +241,7 @@ class Plugins:
         return None
 
     def fetch(self, plugin, url, image=False):
+        check_cancelled(getattr(self,'cancelled',None))
         proxy = plugin['config'].get('proxy', 'inherit')
         if proxy == 'inherit':
             proxy = self.library.setting('proxy', '')
@@ -247,6 +254,7 @@ class Plugins:
         return self._fetch_httpx(plugin, url, proxy, maximum)
 
     def _fetch_httpx(self, plugin, url, proxy, maximum):
+        if getattr(self,'cancelled',None):return self._fetch_httpx_cancellable(plugin,url,proxy,maximum)
         current = url
         with httpx.Client(proxy=proxy or None, trust_env=False, timeout=20, follow_redirects=False) as client:
             for redirects in range(4):
@@ -270,6 +278,38 @@ class Plugins:
                     return bytes(data), response.headers.get('content-type', '')
         raise ValueError('重定向次数过多（最多 3 次）')
 
+    def _fetch_httpx_cancellable(self,plugin,url,proxy,maximum):
+        import asyncio
+        async def fetch():
+            current=url
+            async with httpx.AsyncClient(proxy=proxy or None,trust_env=False,timeout=20,follow_redirects=False) as client:
+                for redirects in range(4):
+                    self._approved_url(plugin,current)
+                    async with client.stream('GET',current,headers=BROWSER_HEADERS) as response:
+                        if response.status_code in {301,302,303,307,308}:
+                            location=response.headers.get('location','')
+                            if not location:raise ValueError('重定向缺少目标地址')
+                            if redirects>=3:raise ValueError('重定向次数过多（最多 3 次）')
+                            current=urljoin(current,location);continue
+                        response.raise_for_status();data=bytearray();deadline=time.monotonic()+30
+                        async for block in response.aiter_bytes():
+                            data.extend(block)
+                            if len(data)>maximum or time.monotonic()>deadline:raise ValueError('响应大小或时间超限')
+                        return bytes(data),response.headers.get('content-type','')
+        async def controlled():
+            task=asyncio.create_task(fetch())
+            cancelled=getattr(self.cancelled,'process_cancelled',self.cancelled)
+            try:
+                while not task.done():
+                    check_cancelled(cancelled)
+                    await asyncio.wait({task},timeout=.1)
+                check_cancelled(cancelled)
+                return await task
+            finally:
+                if not task.done():task.cancel()
+                await asyncio.gather(task,return_exceptions=True)
+        return asyncio.run(controlled())
+
     def _fetch_curl(self, plugin, url, proxy, maximum, curl):
         """Use the system curl when available: some sites reject Python's TLS fingerprint."""
         current = url
@@ -287,8 +327,13 @@ class Plugins:
                 command += ['--proxy', proxy] if proxy else ['--noproxy', '*']
                 command.append(current)
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, timeout=25, stdin=subprocess.DEVNULL,
-                                            creationflags=0x08000000 if sys.platform == 'win32' else 0)
+                    if getattr(self,'cancelled',None):
+                        try:result=media_process(command,25,self.cancelled)
+                        except subprocess.CalledProcessError as error:result=subprocess.CompletedProcess(error.cmd,error.returncode,error.stdout,error.stderr)
+                        result.stdout=result.stdout.decode('utf-8','replace');result.stderr=result.stderr.decode('utf-8','replace')
+                    else:
+                        result = subprocess.run(command, capture_output=True, text=True, timeout=25, stdin=subprocess.DEVNULL,
+                                                creationflags=0x08000000 if sys.platform == 'win32' else 0)
                 except subprocess.TimeoutExpired:
                     raise ValueError('插件请求超时')
                 if result.returncode:
@@ -319,6 +364,7 @@ class Plugins:
         raise ValueError('重定向次数过多（最多 3 次）')
 
     def run(self, plugin_id, operation, *, cancelled=None, **parameters):
+        self.cancelled=cancelled if cancelled is not None else getattr(self.library,'cancelled',None)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         if not plugin['config'].get('enabled'):
             raise ValueError('插件未启用')
@@ -376,6 +422,7 @@ class Plugins:
             raise
 
     def merge_actor(self, plugin_id, metadata, actor_name, *, replace=False, exact_name=False, work_ids=None, cancelled=None):
+        self.cancelled=cancelled if cancelled is not None else getattr(self.library,'cancelled',None)
         """Cache a confirmed portrait once, then update matching local cast entries.
 
         Run this on a worker: downloading/decoding happens before any write
@@ -578,6 +625,7 @@ class Plugins:
                         actor['photo_cache'] = str(path)
                         actor['photo_revision'] = hashlib.sha256(data).hexdigest()
                         self.library.db.execute('UPDATE works SET metadata=? WHERE id=?', (json.dumps(merged, ensure_ascii=False), work_id))
+            except ImportCancelled:raise
             except Exception as exc:
                 import uuid
                 self.library.task(uuid.uuid4().hex, 'image', 'failed', {'url': image_url, 'plugin': plugin_id}, error=str(exc))
@@ -604,6 +652,7 @@ class Plugins:
                     if picture.isNull() or not picture.save(str(path),'JPG'):
                         raise ValueError('剧照解码或保存失败')
                     cached[image_url]={'url':image_url,'path':str(path)}
+                except ImportCancelled:raise
                 except Exception as exc:
                     import uuid
                     self.library.task(uuid.uuid4().hex,'image','failed',{'url':image_url,'plugin':plugin_id,'role':'still'},error=str(exc))
@@ -618,6 +667,7 @@ class Plugins:
                 if poster and poster!=current['thumbnail']:
                     with self.library.db:
                         self.library.db.execute('UPDATE works SET thumbnail=? WHERE id=?',(poster,work_id))
+            except ImportCancelled:raise
             except Exception as exc:
                 import uuid
                 self.library.task(uuid.uuid4().hex,'image','failed',{'plugin':plugin_id,'role':'poster-from-still'},error=str(exc))

@@ -126,6 +126,7 @@ class Job(QThread):
             def cancellable():return self.cancelled()
             cancellable.process_cancelled=self.isInterruptionRequested
             report.cancelled=cancellable
+            library.cancelled=cancellable
             if self.cancelled():raise ImportCancelled('任务已停止')
             result=self.function(library, report)
             if latest[0] is not None and latest[0]!=last_report[1]:self.progress.emit(*latest[0])
@@ -153,6 +154,9 @@ class PosterList(QListWidget):
     def __init__(self, play, parent=None):
         super().__init__(parent)
         self.play = play
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+        self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
 
     def portrait_drop_path(self,event):
         urls=event.mimeData().urls()
@@ -162,6 +166,7 @@ class PosterList(QListWidget):
 
     def dragEnterEvent(self,event):
         if self.portrait_drop_path(event):event.setDropAction(Qt.DropAction.CopyAction);event.accept()
+        elif event.mimeData().hasUrls():self.window().dragEnterEvent(event)
         else:super().dragEnterEvent(event)
 
     def dragMoveEvent(self,event):
@@ -169,6 +174,7 @@ class PosterList(QListWidget):
         data=item.data(Qt.ItemDataRole.UserRole) if item else {}
         if self.portrait_drop_path(event) and data and 'work_ids' in data:
             self.setCurrentItem(item);event.setDropAction(Qt.DropAction.CopyAction);event.accept()
+        elif event.mimeData().hasUrls():self.window().dragMoveEvent(event)
         else:event.ignore()
 
     def dropEvent(self,event):
@@ -177,6 +183,7 @@ class PosterList(QListWidget):
         if path and data and 'work_ids' in data:
             event.setDropAction(Qt.DropAction.CopyAction);event.accept()
             self.actorPortraitDropped.emit(data,path)
+        elif not path and event.mimeData().hasUrls():self.window().dropEvent(event)
         else:event.ignore()
 
     def wheelEvent(self,event):
@@ -686,6 +693,16 @@ class Details(QWidget):
                 for i in range(self.files.count()):
                     if not self.files.item(i).isHidden():self.files.setCurrentRow(i);break
             self.season_filter.currentIndexChanged.connect(choose_season);outer.addWidget(self.season_filter)
+            self.files.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+            episode_actions=FlowLayout(spacing=8)
+            self.remove_episodes_action=button('移除选中集…',lambda:self.remove_selected_episodes(False));episode_actions.addWidget(self.remove_episodes_action)
+            self.remove_season_action=button('移除整季…',lambda:self.remove_selected_episodes(True));episode_actions.addWidget(self.remove_season_action)
+            self.delete_episode_files_action=ActionButton('删除视频文件…','more')
+            delete_menu=QMenu(self.delete_episode_files_action)
+            delete_menu.addAction('删除选中集的本地视频…',lambda:self.delete_selected_episode_files(False))
+            delete_menu.addAction('删除整季的本地视频…',lambda:self.delete_selected_episode_files(True))
+            self.delete_episode_files_action.setMenu(delete_menu);episode_actions.addWidget(self.delete_episode_files_action)
+            outer.addLayout(episode_actions)
         watch_row=QHBoxLayout()
         def mark_episode(state):
             item=self.files.currentItem()
@@ -1144,7 +1161,7 @@ class Details(QWidget):
                         return lib.remove_local_records(origin,[f['id'] for f in work['files'] if f['path'] in wanted])
                     def removed(result):
                         if result.get('removed_work'):self.window.back_details();self.window.refresh()
-                        elif self.detail_page is not None and self.detail_page.work_id==origin:self.window.reload_details(origin)
+                        elif self.window.detail_page is not None and self.window.detail_page.work_id==origin:self.window.reload_details(origin)
                         self.window.status.setText(f"已移除 {result['removed']} 条缺失记录，文件保留在磁盘")
                     self.window.run_job('移除缺失记录',apply,removed)
             else:
@@ -1165,16 +1182,42 @@ class Details(QWidget):
                            lambda:self.remove_episode_records([f['id'] for f in self.work['files'] if f['season']==season]))
         menu.exec(self.files.mapToGlobal(position))
 
+    def selected_episode_ids(self,whole_season=False):
+        selected=[item.data(Qt.ItemDataRole.UserRole) for item in self.files.selectedItems() if not item.isHidden()]
+        if whole_season:
+            season=self.season_filter.currentData()
+            if season is None and selected:season=selected[0].get('season')
+            if season is None:
+                QMessageBox.information(self.window,'选择季','请先选择一个季，或选择带有季号的视频。');return
+            selected=[file for file in self.work['files'] if file.get('season')==season]
+        if not selected:
+            QMessageBox.information(self.window,'选择集','请先选中要移除的集，可使用 Ctrl / Shift 多选。');return
+        return [file['id'] for file in selected]
+
+    def remove_selected_episodes(self,whole_season=False):
+        ids=self.selected_episode_ids(whole_season)
+        if ids:self.remove_episode_records(ids)
+
+    def delete_selected_episode_files(self,whole_season=False):
+        ids=self.selected_episode_ids(whole_season)
+        if ids:self.window.delete_work_files(self.work_id,ids)
+
     def remove_episode_records(self, file_ids):
+        file_ids=[file['id'] for file in self.work['files'] if file['id'] in set(file_ids)]
+        if not file_ids:return
         count=len(file_ids)
-        if QMessageBox.question(self.window,'移除季集记录',
-                f'将从媒体库移除 {count} 条记录，观看进度与书签一并清除；视频文件保留在磁盘。继续？')!=QMessageBox.StandardButton.Yes:return
+        names='\n'.join(Path(file['path']).name for file in self.work['files'] if file['id'] in file_ids)
+        prompt=QMessageBox(self.window);prompt.setWindowTitle('移除季集记录')
+        prompt.setText(f'将从媒体库移除 {count} 集，观看进度与书签一并清除；视频文件保留在磁盘，下次扫描可能重新入库。')
+        prompt.setDetailedText(names);prompt.setStandardButtons(QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.Cancel)
+        prompt.button(QMessageBox.StandardButton.Yes).setText('仅移除记录');prompt.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if prompt.exec()!=QMessageBox.StandardButton.Yes:return
         origin=self.work_id
         def apply(lib, progress):
             return lib.remove_local_records(origin,file_ids)
         def done(result):
             if result.get('removed_work'):self.window.back_details();self.window.refresh()
-            elif self.detail_page is not None and self.detail_page.work_id==origin:self.window.reload_details(origin)
+            elif self.window.detail_page is not None and self.window.detail_page.work_id==origin:self.window.reload_details(origin)
             self.window.status.setText(f"已移除 {result['removed']} 条季集记录，文件保留在磁盘")
         self.window.run_job('移除季集记录',apply,done)
 
@@ -1198,6 +1241,7 @@ class Details(QWidget):
 
 
 class MainWindow(QMainWindow):
+    shutdownFinished=Signal()
     # Production browsing always runs on a worker. GUI regression fixtures may
     # opt into deterministic small-catalog rendering without changing workers.
     synchronous_small_catalog = False
@@ -1775,7 +1819,7 @@ class MainWindow(QMainWindow):
                 self.library.db.execute('SELECT COUNT(*) FROM works').fetchone()[0]>=250 or
                 self.library.db.execute('SELECT COUNT(*) FROM files').fetchone()[0]>=1000):
                 self._browse_pending=(self._browse_epoch,request)
-                self.cards.setEnabled(False);self.home_page.setEnabled(False);self.shuffle_action.setEnabled(False)
+                self.shuffle_action.setEnabled(False)
                 self.subtitle.setText('正在后台读取媒体库…')
                 if not self.jobs:self.status.setText('正在后台读取媒体库，页面仍可操作…')
                 self._start_browse_read()
@@ -1817,7 +1861,7 @@ class MainWindow(QMainWindow):
         self.actor_photo_action.setVisible(actresses)
         self.actor_batch_action.setVisible(actresses)
         self.cards.setProperty('actorPortraitDrop',actresses)
-        self.cards.setAcceptDrops(actresses)
+        self.cards.setAcceptDrops(True);self.cards.viewport().setAcceptDrops(True)
         self.source_filter.setVisible(self.section == 'discover')
         self.category_filter.setVisible(self.section == 'discover')
         self.discovery_panel.setVisible(self.section=='discover')
@@ -2088,27 +2132,30 @@ class MainWindow(QMainWindow):
         except Exception as error:QMessageBox.warning(self,'未移除',str(error));return
         self.back_details();self.refresh()
 
-    def delete_work_files(self, work_id):
+    def delete_work_files(self, work_id, file_ids=None):
         from .files import plan_delete
         try:
-            plan = plan_delete(self.library, work_id)
+            plan = plan_delete(self.library, work_id,file_ids=file_ids)
         except Exception as error:
             QMessageBox.warning(self, '无法删除', str(error)); return
         size = f"（共 {plan['bytes'] / 1073741824:.2f} GB）" if plan['known_size'] else ''
         dialog = QMessageBox(self)
         dialog.setWindowTitle('删除本地文件')
-        dialog.setText(f"将永久删除 {len(plan['paths'])} 个视频及同名字幕 / NFO / 图片{size}，并把该条目移出媒体库。\n此操作不经过回收站，无法恢复。")
+        scope='并把该条目移出媒体库' if file_ids is None else '并移除所选季集的媒体库记录，其他季集保留'
+        dialog.setText(f"将永久删除 {len(plan['paths'])} 个视频及同名字幕 / NFO / 图片{size}，{scope}。\n此操作不经过回收站，无法恢复。")
         dialog.setDetailedText('\n'.join(plan['paths']))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         dialog.button(QMessageBox.StandardButton.Ok).setText('永久删除')
         dialog.button(QMessageBox.StandardButton.Cancel).setText('取消')
         if dialog.exec() != QMessageBox.StandardButton.Ok:return
-        if self.player.file and self.player.file['work_id']==work_id:self.player.finish();self.player.hide()
+        if self.player.file and self.player.file['work_id']==work_id and (file_ids is None or self.player.file['id'] in file_ids):self.player.finish();self.player.hide()
         from .files import execute_delete
         def done(result):
             self.status.setText(f"已删除 {result['deleted']} 个文件并移出媒体库")
-            self.back_details();self.refresh()
-        self.run_job('删除本地文件', lambda lib, progress: execute_delete(lib, work_id, progress, progress.cancelled), done)
+            if file_ids is None or result.get('removed_work'):self.back_details()
+            elif self.detail_page is not None and self.detail_page.work_id==work_id:self.reload_details(work_id)
+            self.refresh()
+        self.run_job('删除本地文件', lambda lib, progress: execute_delete(lib, work_id, progress, progress.cancelled,file_ids=file_ids), done)
 
     def change_movie_kind(self, work_id, kind):
         try:
@@ -2143,9 +2190,9 @@ class MainWindow(QMainWindow):
         query = self.search.text()
         if self.section=='discover':
             self.discovery_panel.name.setText(query);self.discovery_panel.apply_local();return
-        if self.section not in {'recommend','discover'}:
-            self.navigate('home')
-            self.tabs.setCurrentIndex(2)
+        if self.section=='stats':self.navigate('home');self.tabs.setCurrentIndex(2)
+        elif self.section=='home' and self.subtab==0:self.tabs.setCurrentIndex(2)
+        self._close_details()
         self.search.setText(query)
         self.refresh()
 
@@ -2295,7 +2342,9 @@ class MainWindow(QMainWindow):
         from .import_ui import ImportDialog
         dialog=getattr(self,'import_form',None)
         if dialog is None:dialog=self.import_form=ImportDialog(self)
-        dialog.pending=list(pending or [])
+        if dialog.isVisible() and path:
+            dialog.add_folders([str(path),*map(str,pending or [])]);path=None
+        elif not dialog.isVisible():dialog.pending=list(pending or [])
         dialog.refresh_scrapers()
         if path:dialog.path.setText(str(path))
         # A minimized or buried dialog makes drops look dead; restore and force it forward.
@@ -2315,25 +2364,26 @@ class MainWindow(QMainWindow):
             self.status.setText(f"导入 {result['imported']} · NFO 更新 {result.get('nfo_updated',0)} · 重复 {result['duplicates']} · 失败 {len(result['errors'])} · 警告 {len(result['warnings'])}")
             if self.detail_page is None and (self.section,self.subtab)==origin and self.section!=kind:self.navigate(kind)
             if kind in {'movie','series','vr'}:
-                self.auto_scrape_import(path, kind, plugin, destination)
-        self.run_job('快速导入 · 时长与缺失图片稍后补充', lambda lib, p: lib.import_folder(path, kind, p, fast=True, cancelled=p.cancelled), complete)
+                self.auto_scrape_import(path, kind, plugin, destination, work_ids=result.get('work_ids',[]))
+        self.run_job('快速导入 · 时长与缺失图片稍后补充', lambda lib, p: lib.import_folder(path, kind, p, fast=True, cancelled=p.cancelled,include_work_ids=True), complete)
         for folder in (batch or []):
             self.start_import(folder, kind, plugin, destination)
 
-    def auto_scrape_import(self, path, kind, plugin_id=None, destination=None):
+    def auto_scrape_import(self, path, kind, plugin_id=None, destination=None, work_ids=None):
         if kind not in {'movie','series','vr'}:return
         config = self.library.setting('partition:' + kind, {})
         # None falls back to the saved partition rule; '' explicitly disables it.
         plugin_id = config.get('plugin') if plugin_id is None else plugin_id
         destination = config.get('destination','') if destination is None else destination
         if not plugin_id and not destination:
+            self.status.setText(self.status.text()+' · 未启用导入后刮削，请在添加媒体中选择来源或配置分类默认来源')
             return
         def scrape(lib, progress):
             from .ingestion import enqueue, process_pending
-            works = lib.query({'kinds': [kind], 'folder': str(Path(path).resolve())})
+            works = lib.query({'kinds': [kind], **({'ids':work_ids} if work_ids is not None else {'folder':str(Path(path).resolve())})})
             for work in works:
-                enqueue(lib, work, plugin_id, destination)
-            return process_pending(lib, progress, getattr(progress, 'cancelled', None))
+                enqueue(lib, work, plugin_id, destination,force=True)
+            return process_pending(lib, progress, getattr(progress, 'cancelled', None), limit=max(1,len(works)),work_ids=[work['id'] for work in works])
         self.run_job('自动识别、补图与整理', scrape)
 
     def dragEnterEvent(self, event):
@@ -2341,6 +2391,9 @@ class MainWindow(QMainWindow):
         # unreliable (and IO-churning) while hovering; validate on drop instead.
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
+
+    def dragMoveEvent(self,event):
+        if event.mimeData().hasUrls():event.acceptProposedAction()
 
     def import_hint(self, text):
         QMessageBox.information(self, '导入', text)
@@ -2356,6 +2409,7 @@ class MainWindow(QMainWindow):
         if not folders:
             self.import_hint('拖入的内容里没有识别到文件夹；单个文件请先放入文件夹后拖入。')
             return
+        event.acceptProposedAction()
         self.import_path(folders[0], pending=folders[1:])
         if len(folders) > 1:
             self.status.setText(f'本次拖入 {len(folders)} 个文件夹；确认设置后其余文件夹按相同选项加入队列。')
@@ -2550,6 +2604,7 @@ class MainWindow(QMainWindow):
         for plugin_id in ids:
             try:
                 Plugins(library).refresh(plugin_id)
+            except ImportCancelled:raise
             except Exception as exc:
                 errors.append(f'{plugin_id}: {exc}')
         if errors:
@@ -2685,7 +2740,7 @@ class MainWindow(QMainWindow):
                 title,function,callback,quiet=self._job_functions[task['id']];dialog.accept();self.run_job(title,function,callback,quiet=quiet)
             elif task['kind'] == 'move':
                 dialog.accept()
-                self.run_job('恢复文件整理', lambda lib, p: execute_move(lib, task_id=task['id']))
+                self.run_job('恢复文件整理', lambda lib, p: execute_move(lib, task_id=task['id'],cancelled=p.cancelled))
             elif task['kind'] == 'import':
                 dialog.accept()
                 candidates=task.get('candidates') or None
@@ -2829,7 +2884,10 @@ class MainWindow(QMainWindow):
         if self.detail_page is not None:self.reload_details(self.detail_page.work_id)
 
     def closeEvent(self, event):
+        if getattr(self,'_shutdown_complete',False):event.accept();return
+        if not self._closing:self.player.close()
         self._closing = True
+        self.task_budget.set_playback(False);self.task_budget.set_paused(False)
         self.discovery_images.stop()
         if getattr(self,'import_form',None):self.import_form.reject()
         self.resource_scheduler.stop();self.watch_scheduler.stop();self.remote.timer.stop();self.remote.clear()
@@ -2845,9 +2903,10 @@ class MainWindow(QMainWindow):
             self.media_scheduler.stop()
             self.status.setText('正在停止任务并保存已完成记录…')
             for job in self.jobs:
-                job.requestInterruption()
+                job.paused.clear();job.requestInterruption()
+            self.hide()
             event.ignore()
-            if not self.discovery_images.idle:QTimer.singleShot(100,self.close)
+            QTimer.singleShot(100,self.close)
             return
         self.player.close()
         if not self.player.playback_journal.stop():
@@ -2872,8 +2931,9 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 if keep_open:
                     self._closing=False
+                    self.showNormal()
                     self.discovery_images.resume()
-                    for timer in (self.scheduler,self.media_scheduler,self.watch_scheduler,self.remote.timer):timer.start()
+                    for timer in (self.scheduler,self.media_scheduler,self.watch_scheduler,self.resource_scheduler,self.remote.timer):timer.start()
                     self.status.setText('已取消退出，播放记录将在后台重试保存')
                 else:QTimer.singleShot(100,self.close)
                 return
@@ -2883,5 +2943,7 @@ class MainWindow(QMainWindow):
             self.lan_server.stop()
         self.task_journal.stop()
         self.library.close()
+        self._shutdown_complete=True
         event.accept()
+        self.shutdownFinished.emit()
         if getattr(self,'_update_pending',False):QApplication.instance().quit()

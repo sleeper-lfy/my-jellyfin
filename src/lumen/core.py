@@ -335,7 +335,7 @@ class Library(CatalogActions):
         from .fans import merge_folders
         return merge_folders(self,work_ids,target_id,creator)
 
-    def import_folder(self, root, kind, progress=None, fast=False, cancelled=None, candidates=None):
+    def import_folder(self, root, kind, progress=None, fast=False, cancelled=None, candidates=None, include_work_ids=False):
         if kind=='fans':
             from .fans import import_folder
             return import_folder(self,root,progress,fast,cancelled,candidates)
@@ -348,6 +348,11 @@ class Library(CatalogActions):
         payload = {'root': str(root), 'kind': kind, 'fast': fast}
         self.task(task_id, 'import', 'running', payload)
         results = {'imported': 0, 'duplicates': 0, 'errors': [], 'warnings': []}
+        affected_ids=set()
+        if include_work_ids:results['work_ids']=[]
+        def remember(work_id):
+            if include_work_ids and work_id not in affected_ids:
+                affected_ids.add(work_id);results['work_ids'].append(work_id)
         def report(done, total, stage, path='', force=True):
             payload['progress'] = {'completed': done, 'total': total, 'stage': stage, 'path': str(path)}
             if force or time.monotonic() - report.saved >= 1:
@@ -404,6 +409,7 @@ class Library(CatalogActions):
                                         existing_file = {'id': existing_file['id'], 'work_id': group['known']}
                                 self.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)', (group['key'], existing_file['work_id']))
                                 self.db.execute('UPDATE files SET season=?,episode=? WHERE id=?', (*series_plan.numbers[path], existing_file['id']))
+                    if existing_file:remember(existing_file['work_id'])
                     cache = self.db.execute('SELECT * FROM import_cache WHERE file_id=?', (existing_file['id'],)).fetchone() if existing_file else None
                     unchanged = cache and cache['size'] == stat.st_size and cache['modified'] == stat.st_mtime_ns
                     if fast and unchanged and cache['sidecars'] == signature:
@@ -495,6 +501,7 @@ class Library(CatalogActions):
                         if local['work'] or local['entry'] or local['poster'] or local.get('backdrop'):
                             nfo.apply(self,work_id,file_id,local,not bool(known),True,root,results['warnings'])
 
+                    remember(work_id)
                     results['imported'] += 1
                 except ImportCancelled:
                     file_finished = False

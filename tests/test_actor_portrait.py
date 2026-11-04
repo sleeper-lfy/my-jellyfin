@@ -63,7 +63,8 @@ def test_drag_local_image_onto_actor_card_updates_in_background(qapp,tmp_path):
         remote=QMimeData();remote.setUrls([QUrl('https://example.test/photo.png')])
         event=QDragEnterEvent(position,Qt.DropAction.CopyAction,remote,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier)
         assert window.cards.portrait_drop_path(event) is None
-        window.navigate('movie');assert not window.cards.acceptDrops()
+        window.navigate('movie');assert not window.cards.property('actorPortraitDrop')
+        assert window.cards.viewport().acceptDrops()  # Folder import remains available outside the actor wall.
     finally:
         window.close()
         deadline=time.monotonic()+5
