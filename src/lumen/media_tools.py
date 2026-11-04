@@ -15,10 +15,14 @@ def media_file(library, file_id):
 
 
 def preferences(library, file_id, changes=None):
-    media_file(library, file_id)
+    file = media_file(library, file_id)
     row = library.db.execute('SELECT value FROM playback_preferences WHERE file_id=?', (file_id,)).fetchone()
     value = json.loads(row[0]) if row else {}
     if changes is not None:
+        # Older clients may echo the read-only defaults marker along with effective
+        # values. Do not turn those unchanged defaults into per-file overrides.
+        echoed_defaults = isinstance(changes, dict) and '_vr_inherited' in changes
+        if echoed_defaults: changes = {key: val for key, val in changes.items() if key != '_vr_inherited'}
         if not isinstance(changes, dict) or not changes.keys() <= {'subtitle_delay','subtitle_size','subtitle_position','vr','beauty'}:
             raise ValueError('无效播放设置')
         if 'beauty' in changes:
@@ -32,18 +36,26 @@ def preferences(library, file_id, changes=None):
             if type(number) not in (int,float) or not math.isfinite(number) or not low <= number <= high:
                 raise ValueError('字幕参数超出范围')
         if 'vr' in changes:
-            vr = changes['vr']
-            if not isinstance(vr,dict) or not vr.keys() <= {'fish','headset','swap','tracking','swipe_seek','fov','yaw','pitch','tracking_sensitivity','tracking_smoothing','tracking_invert_pitch'}:
-                raise ValueError('无效 VR 参数')
-            for key,number in vr.items():
-                if key in {'fov','yaw','pitch','tracking_sensitivity','tracking_smoothing'}:
-                    low, high = {'fov':(50,110),'yaw':(-180,180),'pitch':(-85,85),'tracking_sensitivity':(.25,1.5),'tracking_smoothing':(0,150)}[key]
-                    if type(number) not in (int,float) or not math.isfinite(number) or not low <= number <= high: raise ValueError('VR 参数超出范围')
-                elif type(number) is not bool: raise ValueError('VR 开关须为布尔值')
-            changes = {**changes, 'vr':{**value.get('vr',{}),**vr}}
+            from .vr_presets import validate_vr
+            if changes['vr'] is None:
+                value.pop('vr', None)
+                changes = {key: val for key, val in changes.items() if key != 'vr'}
+            else:
+                patch = validate_vr(changes['vr'])
+                if echoed_defaults:
+                    from .vr_presets import inherited_vr
+                    defaults = inherited_vr(library, file['path'])
+                    patch = {key: val for key, val in patch.items()
+                             if key in value.get('vr', {}) or key not in defaults or val != defaults[key]}
+                changes = {**changes, 'vr': {**value.get('vr', {}), **patch}}
         value.update(changes)
         with library.db:
             library.db.execute('INSERT OR REPLACE INTO playback_preferences VALUES (?,?)', (file_id,json.dumps(value)))
+    from .vr_presets import inherited_vr
+    inherited = inherited_vr(library, file['path'])
+    if inherited:
+        # Return effective settings but never persist the inherited fields.
+        value = {**value, 'vr': {**inherited, **value.get('vr', {})}, '_vr_inherited': inherited}
     return value
 
 
@@ -113,6 +125,16 @@ def watch_folders(library,progress=None,clock=time.time,cancelled=None):
             batch = library.import_folder(root,config['kind'],progress,fast=True,cancelled=cancelled,candidates=ready)
             result['imported']+=batch['imported'];result['updated']+=batch.get('nfo_updated',0)
             result['errors'].extend(batch['errors'])
+            from .ingestion import enqueue
+            rule = library.setting('partition:' + config['kind'], {})
+            plugin = config.get('plugin', rule.get('plugin', ''))
+            destination = config.get('destination', rule.get('destination', ''))
+            ready_paths = {str(path) for path in ready}
+            for work in library.query({'kinds': [config['kind']], 'folder': str(root)}):
+                if any(file['path'] in ready_paths for file in work['files']):
+                    # A new file in an existing multi-part work needs a fresh organize pass.
+                    old = library.db.execute('SELECT status FROM tasks WHERE id=?', ('ingest-' + str(work['id']),)).fetchone()
+                    enqueue(library, work, plugin, destination, force=bool(old and old['status'] == 'done'))
             failed = {error['path'] for error in batch['errors']}
             for path in ready:
                 if str(path) not in failed: state[str(path)]['imported']=state[str(path)]['signature']

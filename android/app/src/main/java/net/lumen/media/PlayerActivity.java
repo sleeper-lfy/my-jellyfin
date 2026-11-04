@@ -47,7 +47,8 @@ public final class PlayerActivity extends Activity {
     private boolean beautyUnavailable=false;
     private boolean usesGlVideo(){return vrEnabled||beauty.enabled&&!beautyUnavailable;}
     private FrameLayout root,overlay;
-    private LinearLayout topBar,bottomBar,vrBar;
+    private LinearLayout topBar,bottomBar,vrBar,playbackRow,transportControls;
+    private boolean compactTransport=false;
     private PlayerController controller;
     private Button projection;
     private TextView gestureHint;
@@ -64,6 +65,7 @@ public final class PlayerActivity extends Activity {
     private TextView time;
     private Button pause,previousVideo,nextVideo;
     private Button beautyControl;
+    private int playbackDialogs=0;
     private Button personalRating,personalFavorite,personalDisliked;
     private boolean personalDialogOpen=false;
     private final java.util.Set<Long> personalPending=new java.util.HashSet<>();
@@ -75,7 +77,7 @@ public final class PlayerActivity extends Activity {
     private android.media.AudioFocusRequest audioFocus;
     private TextView title,status;
     private JSONObject work,file;
-    private JSONObject filePreferences=new JSONObject();
+    private JSONObject filePreferences=new JSONObject(),vrPreferenceBaseline=new JSONObject();
     private boolean preferencesDirty=false,pauseAfterStyleChange=false;
     private final Runnable persistPreferences=this::flushPreferences;
     private JSONArray subtitles=new JSONArray();
@@ -122,9 +124,15 @@ public final class PlayerActivity extends Activity {
         button.setOnClickListener(v->{showControls(true);action.run();scheduleHide();});return button;
     }
     private Button addButton(LinearLayout layout,String label,Runnable action){
-        // Dense rows share one slot each: smaller text and padding keep every label on one line.
-        Button button=button(label,action);button.setTextSize(13);button.setPadding(dp(2),0,dp(2),0);
+        Button button=button(label,action);button.setTextSize(13);button.setSingleLine(true);button.setPadding(dp(2),0,dp(2),0);
         layout.addView(button,new LinearLayout.LayoutParams(0,dp(48),1));return button;
+    }
+    private PlaybackIconButton iconButton(String symbol,String description,Runnable action){
+        PlaybackIconButton control=new PlaybackIconButton(this,symbol,description);
+        control.setOnClickListener(v->{showControls(true);action.run();scheduleHide();});return control;
+    }
+    private PlaybackIconButton addIcon(LinearLayout row,String symbol,String description,Runnable action){
+        PlaybackIconButton control=iconButton(symbol,description,action);row.addView(control,new LinearLayout.LayoutParams(0,dp(48),1));return control;
     }
     private GradientDrawable shade(boolean top){
         return new GradientDrawable(top?GradientDrawable.Orientation.TOP_BOTTOM:GradientDrawable.Orientation.BOTTOM_TOP,
@@ -133,7 +141,16 @@ public final class PlayerActivity extends Activity {
     private void buildPlayerUi(android.content.SharedPreferences prefs){
         root=new FrameLayout(this){
             @Override protected void onMeasure(int widthSpec,int heightSpec){
-                boolean compact=View.MeasureSpec.getSize(heightSpec)<dp(340);
+                int safeHeight=View.MeasureSpec.getSize(heightSpec)-(overlay==null?0:overlay.getPaddingTop()+overlay.getPaddingBottom());
+                boolean compact=safeHeight<dp(340);
+                if(transportControls!=null){
+                    boolean combined=compact&&View.MeasureSpec.getSize(widthSpec)-overlay.getPaddingLeft()-overlay.getPaddingRight()>=dp(432);
+                    if(combined!=compactTransport){
+                        compactTransport=combined;transportControls.setOrientation(combined?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+                        playbackRow.setLayoutParams(new LinearLayout.LayoutParams(combined?0:-1,dp(48),combined?5:0));
+                        vrBar.setLayoutParams(new LinearLayout.LayoutParams(combined?0:-1,dp(48),combined?4:0));
+                    }
+                }
                 if(status!=null)status.setVisibility(compact?View.GONE:View.VISIBLE);
                 if(time!=null)time.setVisibility(compact?View.GONE:View.VISIBLE);
                 super.onMeasure(widthSpec,heightSpec);
@@ -159,42 +176,43 @@ public final class PlayerActivity extends Activity {
         gestureHint.setBackgroundColor(0xDD101010);gestureHint.setVisibility(View.GONE);
         overlay.addView(gestureHint,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));
         topBar=new LinearLayout(this);topBar.setGravity(Gravity.CENTER_VERTICAL);topBar.setBackground(shade(true));
-        Button back=button("返回",this::finish);topBar.addView(back,new LinearLayout.LayoutParams(dp(64),dp(48)));
+        Button back=iconButton("back","返回影片详情",this::finish);topBar.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
         title=label("正在载入…",16);title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);
         topBar.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        Button bookmarks=button("书签",()->{});bookmarks.setContentDescription("时间点书签");
+        Button bookmarks=iconButton("bookmark","时间点书签",()->{});
         bookmarks.setOnClickListener(view->{PopupMenu menu=new PopupMenu(this,view);menu.getMenu().add("添加当前时间点");menu.getMenu().add("查看 / 跳转书签");for(int i=0;i<menu.getMenu().size();i++)menu.getMenu().getItem(i).setEnabled(file!=null);menu.setOnMenuItemClickListener(item->{if(item.getTitle().toString().startsWith("添加"))addBookmark();else showBookmarks();return true;});menu.show();});
-        topBar.addView(bookmarks,new LinearLayout.LayoutParams(dp(64),dp(48)));
-        topBar.addView(button("设置",this::playbackSettings),new LinearLayout.LayoutParams(dp(64),dp(48)));
+        topBar.addView(bookmarks,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        topBar.addView(iconButton("fullscreen","切换全屏",()->{setPlayerImmersive(!immersive);showControls(true);}),new LinearLayout.LayoutParams(dp(48),dp(48)));
+        topBar.addView(iconButton("settings","播放选项",this::playbackSettings),new LinearLayout.LayoutParams(dp(48),dp(48)));
         overlay.addView(topBar,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
         bottomBar=new LinearLayout(this);bottomBar.setOrientation(LinearLayout.VERTICAL);bottomBar.setBackground(shade(false));
-        LinearLayout personal=new LinearLayout(this);
+        LinearLayout personal=new LinearLayout(this);personal.setBaselineAligned(false);personal.setGravity(Gravity.CENTER_VERTICAL);
         personalRating=button("评分",this::choosePersonalRating);personalRating.setContentDescription("我的评分");
-        personalFavorite=button("喜欢／收藏",()->togglePersonal("favorite"));personalDisliked=button("不喜欢",()->togglePersonal("disliked"));
-        for(Button action:new Button[]{personalRating,personalFavorite,personalDisliked}){action.setTextSize(12);action.setPadding(dp(4),0,dp(4),0);action.setMinWidth(0);action.setMinimumWidth(0);action.setCompoundDrawablePadding(dp(2));action.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->centerPersonalAction(action));personal.addView(action,new LinearLayout.LayoutParams(0,dp(48),1));}bottomBar.addView(personal);refreshPersonal();
+        personalFavorite=button("收藏",()->togglePersonal("favorite"));personalDisliked=button("不喜欢",()->togglePersonal("disliked"));
+        for(Button action:new Button[]{personalRating,personalFavorite,personalDisliked}){action.setTextSize(12);action.setPadding(dp(2),0,dp(2),0);action.setMinWidth(0);action.setMinimumWidth(0);action.setCompoundDrawablePadding(dp(2));action.setGravity(Gravity.CENTER);personal.addView(action,new LinearLayout.LayoutParams(0,-2,1));}bottomBar.addView(personal);refreshPersonal();
         status=label("正在连接视频…",12);status.setMaxLines(1);status.setEllipsize(TextUtils.TruncateAt.END);bottomBar.addView(status);
         time=label("0:00:00 / 0:00:00",12);bottomBar.addView(time);
         seek=new SeekBar(this);seek.setMax(10000);seek.setContentDescription("播放进度");
-        bottomBar.addView(seek,new LinearLayout.LayoutParams(-1,dp(32)));
+        bottomBar.addView(seek,new LinearLayout.LayoutParams(-1,dp(48)));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onStartTrackingTouch(SeekBar bar){dragging=true;handler.removeCallbacks(hideControls);}
             public void onProgressChanged(SeekBar bar,int value,boolean user){if(user)time.setText(clock(durationMs()*value/10000)+" / "+clock(durationMs()));}
             public void onStopTrackingTouch(SeekBar bar){dragging=false;seekTo(durationMs()*bar.getProgress()/10000);scheduleHide();}
         });
-        LinearLayout playback=new LinearLayout(this);
-        previousVideo=addButton(playback,"",()->stepVideo(-1));MediaStyle.icon(previousVideo,"previous",false);previousVideo.setCompoundDrawablePadding(0);previousVideo.setContentDescription("上个视频");previousVideo.setTooltipText("上个视频 / 上一集");
-        addButton(playback,"−10 秒",()->performAction(ControllerBindings.Action.BACKWARD));
-        pause=addButton(playback,"播放",()->performAction(ControllerBindings.Action.TOGGLE));
-        addButton(playback,"+10 秒",()->performAction(ControllerBindings.Action.FORWARD));
-        nextVideo=addButton(playback,"",()->stepVideo(1));MediaStyle.icon(nextVideo,"next",false);nextVideo.setCompoundDrawablePadding(0);nextVideo.setContentDescription("下个视频");nextVideo.setTooltipText("下个视频 / 下一集");
-        beautyControl=addButton(playback,"美颜",this::beautySettings);beautyControl.setContentDescription("实时美颜");
-        addButton(playback,"全屏",()->{setPlayerImmersive(!immersive);showControls(true);});bottomBar.addView(playback);
-        vrBar=new LinearLayout(this);
-        addButton(vrBar,"回正",()->performAction(ControllerBindings.Action.RECENTER));
-        addButton(vrBar,"拉远 −",()->performAction(ControllerBindings.Action.ZOOM_OUT));
-        addButton(vrBar,"拉近 +",()->performAction(ControllerBindings.Action.ZOOM_IN));
+        LinearLayout playback=new LinearLayout(this);playbackRow=playback;playback.setBaselineAligned(false);
+        transportControls=new LinearLayout(this);transportControls.setOrientation(LinearLayout.VERTICAL);transportControls.setBaselineAligned(false);
+        previousVideo=addIcon(playback,"previous","上个视频",()->stepVideo(-1));previousVideo.setTooltipText("上个视频 / 上一集");
+        addIcon(playback,"backward","后退 10 秒",()->performAction(ControllerBindings.Action.BACKWARD));
+        pause=addIcon(playback,"play","播放",()->performAction(ControllerBindings.Action.TOGGLE));
+        addIcon(playback,"forward","快进 10 秒",()->performAction(ControllerBindings.Action.FORWARD));
+        nextVideo=addIcon(playback,"next","下个视频",()->stepVideo(1));nextVideo.setTooltipText("下个视频 / 下一集");transportControls.addView(playback,new LinearLayout.LayoutParams(-1,dp(48)));
+        vrBar=new LinearLayout(this);vrBar.setBaselineAligned(false);
+        addIcon(vrBar,"recenter","VR 视角回正",()->performAction(ControllerBindings.Action.RECENTER));
+        addIcon(vrBar,"zoom-out","VR 视角拉远",()->performAction(ControllerBindings.Action.ZOOM_OUT));
+        addIcon(vrBar,"zoom-in","VR 视角拉近",()->performAction(ControllerBindings.Action.ZOOM_IN));
         projection=addButton(vrBar,vrFish?"鱼眼":"标准",()->performAction(ControllerBindings.Action.PROJECTION));
-        bottomBar.addView(vrBar);vrBar.setVisibility(View.GONE);
+        projection.setContentDescription("切换 VR 投影方式");
+        transportControls.addView(vrBar,new LinearLayout.LayoutParams(-1,dp(48)));bottomBar.addView(transportControls);vrBar.setVisibility(View.GONE);
         overlay.addView(bottomBar,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
         setContentView(root);
         if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
@@ -250,7 +268,7 @@ public final class PlayerActivity extends Activity {
     }
     private void scheduleHide(){
         handler.removeCallbacks(hideControls);
-        if(!personalDialogOpen&&personalPending.isEmpty()&&player!=null&&player.isPlaying()&&!dragging)handler.postDelayed(hideControls,4500);
+        if(playbackDialogs==0&&!personalDialogOpen&&personalPending.isEmpty()&&player!=null&&player.isPlaying()&&!dragging)handler.postDelayed(hideControls,4500);
     }
     private void showControls(boolean visible){
         controlsVisible=visible;
@@ -267,12 +285,6 @@ public final class PlayerActivity extends Activity {
             (enabled?View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY:0));
         root.requestApplyInsets();
     }
-    private void centerPersonalAction(Button button){
-        android.graphics.drawable.Drawable image=button.getCompoundDrawables()[0];
-        int content=Math.round(button.getPaint().measureText(button.getText().toString()))+(image==null?0:image.getBounds().width()+dp(2));
-        int side=Math.max(dp(4),(button.getWidth()-content)/2);button.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-        if(button.getPaddingLeft()!=side||button.getPaddingRight()!=side)button.setPadding(side,0,side,0);
-    }
     private void refreshPersonal(){
         if(personalRating==null)return;
         boolean available=work!=null&&file!=null;
@@ -280,9 +292,9 @@ public final class PlayerActivity extends Activity {
         for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked})control.setEnabled(enabled);
         if(!available)return;
         personalRating.setText(work.isNull("rating")?"评分":work.optInt("rating")+" 分");MediaStyle.icon(personalRating,"star",!work.isNull("rating"));
-        personalFavorite.setText("喜欢／收藏");MediaStyle.icon(personalFavorite,"heart",work.optInt("favorite")==1);
+        personalFavorite.setText(work.optInt("favorite")==1?"已收藏":"收藏");MediaStyle.icon(personalFavorite,"heart",work.optInt("favorite")==1);
         personalDisliked.setText("不喜欢");MediaStyle.icon(personalDisliked,"ban",work.optInt("disliked")==1);
-        for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked}){control.setCompoundDrawablePadding(dp(2));centerPersonalAction(control);}
+        for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked}){control.setCompoundDrawablePadding(dp(2));}
         personalFavorite.setSelected(work.optInt("favorite")==1);personalDisliked.setSelected(work.optInt("disliked")==1);
         personalFavorite.setContentDescription(work.optInt("favorite")==1?"取消喜欢 / 收藏":"喜欢 / 收藏");personalDisliked.setContentDescription(work.optInt("disliked")==1?"取消不喜欢":"不喜欢");
     }
@@ -320,14 +332,38 @@ public final class PlayerActivity extends Activity {
         dialog.setOnDismissListener(d->{personalDialogOpen=false;scheduleHide();});dialog.show();
     }
 
+    private AlertDialog playerOptions(String heading,String[] names,Runnable[] actions){
+        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(16),dp(8),dp(16),dp(12));
+        ScrollView scroll=new ScrollView(this);scroll.addView(page);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(heading).setView(scroll).setNegativeButton("关闭",null).create();
+        for(int index=0;index<names.length;index++){
+            String name=names[index];Runnable action=actions[index];
+            if(action==null){TextView caption=label(name,13);caption.setTextColor(0xffaaaaaa);caption.setPadding(dp(8),dp(16),dp(8),dp(6));page.addView(caption);continue;}
+            Button control=button(name,()->{dialog.dismiss();action.run();});control.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);control.setPadding(dp(12),dp(8),dp(12),dp(8));
+            page.addView(control,new LinearLayout.LayoutParams(-1,-2));
+            if(name.equals("实时美颜")){beautyControl=control;refreshBeauty();}
+        }
+        playbackDialogs++;handler.removeCallbacks(hideControls);
+        dialog.setOnDismissListener(d->{playbackDialogs--;scheduleHide();});dialog.show();return dialog;
+    }
     private void playbackSettings(){
-        new AlertDialog.Builder(this).setTitle("播放设置").setItems(new String[]{"音轨","字幕","解码模式","屏幕方向","VR 设置","蓝牙 / 手柄映射","下个视频","下一作品","字幕同步与样式","添加时间点书签","查看时间点书签","播放诊断","上个视频","播放速度","自动播放下一集","实时美颜"},(d,index)->{
-            switch(index){case 0:tracks(false);break;case 1:tracks(true);break;case 2:decoder();break;case 3:orientationSettings();break;
-                case 4:vrSettings();break;case 5:controller.settings();break;case 6:stepVideo(1);break;case 7:nextWork(false);break;
-                case 8:subtitleSettings();break;case 9:addBookmark();break;case 10:showBookmarks();break;case 11:diagnostics();break;case 12:stepVideo(-1);break;case 13:new AlertDialog.Builder(this).setTitle("播放速度").setItems(new String[]{"0.5×","0.75×","1×","1.25×","1.5×","1.75×","2×"},(a,n)->{float rate=new float[]{.5f,.75f,1f,1.25f,1.5f,1.75f,2f}[n];getSharedPreferences("player",0).edit().putFloat("speed",rate).apply();if(player!=null)player.setRate(rate);}).show();break;
-                case 14:new AlertDialog.Builder(this).setTitle("自动播放下一集").setSingleChoiceItems(new String[]{"开启","关闭"},getSharedPreferences("player",0).getBoolean("auto_next",true)?0:1,(a,n)->{getSharedPreferences("player",0).edit().putBoolean("auto_next",n==0).apply();a.dismiss();}).show();break;
-                case 15:beautySettings();break;}
-        }).setNegativeButton("关闭",null).show();
+        playerOptions("播放选项",new String[]{"常用","音轨","字幕","播放速度","自动播放下一集","画面与控制","画面设置","蓝牙 / 手柄映射","高级","解码模式","播放诊断","播放队列","播放下一作品"},
+            new Runnable[]{null,()->tracks(false),this::subtitleOptions,this::speedSettings,this::autoNextSettings,null,this::pictureSettings,()->{if(controller!=null)controller.settings();},null,this::decoder,this::diagnostics,null,()->nextWork(false)});
+    }
+    private void pictureSettings(){
+        playerOptions("画面设置",new String[]{"屏幕方向","VR 设置","实时美颜"},new Runnable[]{this::orientationSettings,this::vrSettings,this::beautySettings});
+    }
+    private void subtitleOptions(){
+        playerOptions("字幕",new String[]{"选择字幕轨道","字幕同步与样式"},new Runnable[]{()->tracks(true),this::subtitleSettings});
+    }
+    private void speedSettings(){
+        new AlertDialog.Builder(this).setTitle("播放速度").setSingleChoiceItems(new String[]{"0.5×","0.75×","1×","1.25×","1.5×","1.75×","2×"},
+            java.util.Arrays.binarySearch(new float[]{.5f,.75f,1f,1.25f,1.5f,1.75f,2f},getSharedPreferences("player",0).getFloat("speed",1)),(d,n)->{
+                float rate=new float[]{.5f,.75f,1f,1.25f,1.5f,1.75f,2f}[n];getSharedPreferences("player",0).edit().putFloat("speed",rate).apply();if(player!=null)player.setRate(rate);d.dismiss();
+            }).setNegativeButton("取消",null).show();
+    }
+    private void autoNextSettings(){
+        new AlertDialog.Builder(this).setTitle("自动播放下一集").setSingleChoiceItems(new String[]{"开启","关闭"},getSharedPreferences("player",0).getBoolean("auto_next",true)?0:1,(d,n)->{getSharedPreferences("player",0).edit().putBoolean("auto_next",n==0).apply();d.dismiss();}).setNegativeButton("取消",null).show();
     }
     private void orientationSettings(){
         new AlertDialog.Builder(this).setTitle("屏幕方向").setSingleChoiceItems(new String[]{"自动：按视频显示比例","横屏","竖屏"},orientationMode,(d,index)->{
@@ -511,7 +547,7 @@ public final class PlayerActivity extends Activity {
         if(player==null)return;
         long position=positionMs();if(ready)lastPosition=position;
         long duration=durationMs();if(!dragging&&duration>0)seek.setProgress((int)(Math.max(0,position)*10000/duration));
-        seek.setEnabled(player.isSeekable());pause.setText(player.isPlaying()?"暂停":"播放");
+        seek.setEnabled(player.isSeekable());((PlaybackIconButton)pause).setSymbol(player.isPlaying()?"pause":"play",player.isPlaying()?"暂停":"播放");
         time.setText(clock(position)+" / "+clock(duration));
         updateVideoGeometry();
         if(controller!=null)controller.state(player.isPlaying(),buffering,position,duration,title.getText().toString());
@@ -533,6 +569,7 @@ public final class PlayerActivity extends Activity {
         startPlayback();
     }
     private void vrSettings(){
+        final AlertDialog[] vrDialog={null};
         LinearLayout choices=new LinearLayout(this);choices.setOrientation(LinearLayout.VERTICAL);choices.setPadding(24,12,24,12);
         TextView info=new TextView(this);info.setText("VR180 · 180° 全景 · 左右 3D · 立体声音频\n默认单指横滑调进度、双指缩放；可关闭横滑调进度以拖动转向。普通视频请关闭 VR。");choices.addView(info);
         CheckBox enabled=new CheckBox(this);enabled.setText("启用 VR180 播放");enabled.setChecked(vrEnabled);choices.addView(enabled);
@@ -559,8 +596,12 @@ public final class PlayerActivity extends Activity {
             public void onProgressChanged(SeekBar b,int value,boolean user){if(user){vrVideo.setFov(value+50);saveFov(value+50);}}
             public void onStopTrackingTouch(SeekBar b){}
         });
+        if(filePreferences.has("_vr_inherited")){
+            Button directoryReset=new Button(this);directoryReset.setText("恢复目录 VR 预设（清除本片覆盖）");
+            directoryReset.setOnClickListener(view->{if(vrDialog[0]!=null)vrDialog[0].dismiss();restoreDirectoryVrPreferences();});choices.addView(directoryReset);
+        }
         ScrollView scroll=new ScrollView(this);scroll.addView(choices);
-        new AlertDialog.Builder(this).setTitle("VR 播放设置").setView(scroll).setPositiveButton("应用",(d,w)->{
+        vrDialog[0]=new AlertDialog.Builder(this).setTitle("VR 播放设置").setView(scroll).setPositiveButton("应用",(d,w)->{
             vrFish=fish.isChecked();vrHeadset=headset.isChecked();vrSwap=swap.isChecked();vrTracking=tracking.isChecked();vrSwipeSeek=swipeMode.isChecked();
             vrVideo.setSwipeSeeking(vrSwipeSeek);
             getSharedPreferences("playback",0).edit().putBoolean("vr_fish",vrFish).putBoolean("vr_headset",vrHeadset)
@@ -584,9 +625,9 @@ public final class PlayerActivity extends Activity {
     }
     private void refreshBeauty(){
         if(beautyControl==null)return;
-        // The label stays short so the dense playback row never wraps; state lives in color and description.
+        // Beauty belongs to the picture options; its state remains visible when that sheet opens.
         boolean on=beauty.enabled&&!beautyUnavailable;
-        beautyControl.setText("美颜");
+        beautyControl.setText("实时美颜");
         beautyControl.setTextColor(on?0xFF00A4DC:Color.WHITE);
         beautyControl.setContentDescription(on?"实时美颜，已开启":"实时美颜");
     }
@@ -619,9 +660,9 @@ public final class PlayerActivity extends Activity {
     private String preferenceKey(long id){return api.connection.base+"#"+id;}
     private JSONObject readPreferences(long id){
         JSONObject local=new JSONObject();try{local=new JSONObject(getSharedPreferences("media-preferences",0).getString(preferenceKey(id),"{}"));}catch(Exception ignored){}
-        try{JSONObject remote=api.get("/api/files/"+id+"/preferences");if(remote.length()>0){
+        try{JSONObject remote=api.get("/api/files/"+id+"/preferences");if(remote.length()>0||local.has("_vr_inherited")){
             JSONObject oldVr=local.optJSONObject("vr"),remoteVr=remote.optJSONObject("vr");
-            if(oldVr!=null){if(remoteVr==null){remoteVr=new JSONObject();remote.put("vr",remoteVr);}for(String key:new String[]{"tracking_sensitivity","tracking_smoothing","tracking_invert_pitch"})if(!remoteVr.has(key)&&oldVr.has(key))remoteVr.put(key,oldVr.get(key));}
+            if(oldVr!=null&&!local.has("_vr_inherited")&&!remote.has("_vr_inherited")){if(remoteVr==null){remoteVr=new JSONObject();remote.put("vr",remoteVr);}for(String key:new String[]{"tracking_sensitivity","tracking_smoothing","tracking_invert_pitch"})if(!remoteVr.has(key)&&oldVr.has(key))remoteVr.put(key,oldVr.get(key));}
             if(!remote.has("beauty")&&local.has("beauty"))remote.put("beauty",local.get("beauty"));
             local=remote;
         }}catch(Exception ignored){/* Per-file local settings also work with older servers. */}
@@ -636,11 +677,34 @@ public final class PlayerActivity extends Activity {
         vrVideo.configure(vrFish,vrHeadset,vrSwap,vrTracking);vrVideo.setSwipeSeeking(vrSwipeSeek);vrVideo.setFov((float)bounded(vr,"fov",defaults.getInt("vr_fov",90),50,110));
         vrVideo.setTrackingParameters((float)bounded(vr,"tracking_sensitivity",defaults.getFloat("vr_tracking_sensitivity",vrHeadset?1f:.75f),.25,1.5),(int)bounded(vr,"tracking_smoothing",defaults.getInt("vr_tracking_smoothing",40),0,150),vr.optBoolean("tracking_invert_pitch",defaults.getBoolean("vr_tracking_invert_pitch",false)));
         vrVideo.setViewAngles((float)bounded(vr,"yaw",0,-180,180),(float)bounded(vr,"pitch",0,-85,85));projection.setText(vrFish?"鱼眼":"标准");setVrImmersive(vrEnabled&&vrHeadset);
+        try{vrPreferenceBaseline=currentVrPreferences();}catch(Exception error){featureError(error);}
+    }
+    private JSONObject currentVrPreferences() throws org.json.JSONException {
+        return new JSONObject().put("fish",vrFish).put("headset",vrHeadset).put("swap",vrSwap).put("tracking",vrTracking).put("swipe_seek",vrSwipeSeek)
+            .put("fov",vrVideo.getFov()).put("yaw",vrVideo.getViewYaw()).put("pitch",vrVideo.getViewPitch()).put("tracking_sensitivity",vrVideo.getTrackingSensitivity()).put("tracking_smoothing",vrVideo.getTrackingSmoothing()).put("tracking_invert_pitch",vrVideo.getTrackingInvertPitch());
     }
     private void saveVrPreferences(){
         if(file==null)return;
-        try{filePreferences.put("vr",new JSONObject().put("fish",vrFish).put("headset",vrHeadset).put("swap",vrSwap).put("tracking",vrTracking).put("swipe_seek",vrSwipeSeek)
-            .put("fov",vrVideo.getFov()).put("yaw",vrVideo.getViewYaw()).put("pitch",vrVideo.getViewPitch()).put("tracking_sensitivity",vrVideo.getTrackingSensitivity()).put("tracking_smoothing",vrVideo.getTrackingSmoothing()).put("tracking_invert_pitch",vrVideo.getTrackingInvertPitch()));changedPreferences();}catch(Exception error){featureError(error);}
+        try{
+            JSONObject current=currentVrPreferences();
+            VrPreferencePatch.record(filePreferences,vrPreferenceBaseline,current);
+            vrPreferenceBaseline=new JSONObject(current.toString());changedPreferences();
+        }catch(Exception error){featureError(error);}
+    }
+    private void restoreDirectoryVrPreferences(){
+        if(file==null||api==null)return;
+        flushPreferences();final long id=file.optLong("id");final int ticket=generation;
+        network.execute(()->{
+            try{
+                JSONObject effective=api.post("/api/files/"+id+"/preferences",new JSONObject().put("vr",JSONObject.NULL));
+                runOnUiThread(()->{
+                    if(isDestroyed()||ticket!=generation||file==null||file.optLong("id")!=id)return;
+                    filePreferences=effective;preferencesDirty=false;handler.removeCallbacks(persistPreferences);applyFilePreferences();
+                    getSharedPreferences("media-preferences",0).edit().putString(preferenceKey(id),effective.toString()).apply();
+                    Toast.makeText(this,"已恢复目录 VR 预设",Toast.LENGTH_SHORT).show();
+                });
+            }catch(Exception error){featureError(error);}
+        });
     }
     private void changedPreferences(){
         if(file==null)return;preferencesDirty=true;getSharedPreferences("media-preferences",0).edit().putString(preferenceKey(file.optLong("id")),filePreferences.toString()).apply();
@@ -648,7 +712,8 @@ public final class PlayerActivity extends Activity {
     }
     private void flushPreferences(){
         handler.removeCallbacks(persistPreferences);if(!preferencesDirty||file==null||api==null)return;preferencesDirty=false;
-        long id=file.optLong("id");String value=filePreferences.toString();
+        long id=file.optLong("id");final String value;
+        try{value=VrPreferencePatch.upload(filePreferences).toString();}catch(Exception error){featureError(error);return;}
         network.execute(()->{try{api.post("/api/files/"+id+"/preferences",new JSONObject(value));}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())Toast.makeText(this,"设置已保存在本机，服务端同步失败",Toast.LENGTH_SHORT).show();});}});
     }
     private void featureError(Exception error){runOnUiThread(()->{if(!isDestroyed())Toast.makeText(this,error.getMessage(),Toast.LENGTH_LONG).show();});}

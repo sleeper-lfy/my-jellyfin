@@ -131,30 +131,31 @@ public class PlayerUiTest {
         }
     }
 
-    @Test public void beautyControlIsFirstLevelAndOpensBeautySettings()throws Exception{
+    private Button findButton(android.view.ViewGroup parent,String title){
+        for(int i=0;i<parent.getChildCount();i++){
+            View child=parent.getChildAt(i);
+            if(child instanceof Button&&title.equals(((Button)child).getText().toString()))return (Button)child;
+            if(child instanceof android.view.ViewGroup){Button found=findButton((android.view.ViewGroup)child,title);if(found!=null)return found;}
+        }
+        return null;
+    }
+    @Test public void groupedPlayerOptionsKeepBeautyAccessibleAndShowItsState()throws Exception{
         try(ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
             PlayerActivity activity=lifecycle.get();
             call(activity,"buildPlayerUi",android.content.SharedPreferences.class,activity.getSharedPreferences("playback",0));
-            Button beauty=(Button)field(activity,"beautyControl");
-            LinearLayout playback=(LinearLayout)beauty.getParent();
-            assertEquals("美颜",beauty.getText().toString());
-            int full=-1;
-            for(int i=0;i<playback.getChildCount();i++){Button child=(Button)playback.getChildAt(i);if("全屏".equals(child.getText().toString()))full=i;}
-            assertTrue("美颜按钮应位于一级播放栏且在全屏之前",full>=0&&playback.indexOfChild(beauty)<full);
-            java.lang.reflect.Field settings=PlayerActivity.class.getDeclaredField("beauty");
-            settings.setAccessible(true);
-            settings.set(activity,new BeautySettings(new org.json.JSONObject().put("enabled",true)));
-            java.lang.reflect.Method refresh=PlayerActivity.class.getDeclaredMethod("refreshBeauty");
-            refresh.setAccessible(true);refresh.invoke(activity);
-            assertEquals("美颜",beauty.getText().toString());
-            assertEquals(0xFF00A4DC,beauty.getTextColors().getDefaultColor());
-            assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
-            java.lang.reflect.Field file=PlayerActivity.class.getDeclaredField("file");
-            file.setAccessible(true);file.set(activity,new org.json.JSONObject().put("id",1L));
-            beauty.performClick();
-            AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals("实时美颜",shadowOf(dialog).getTitle());
-            dialog.dismiss();
+            Method options=PlayerActivity.class.getDeclaredMethod("playbackSettings");options.setAccessible(true);options.invoke(activity);
+            AlertDialog menu=ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("播放选项",shadowOf(menu).getTitle());
+            assertNotNull(findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"音轨"));
+            assertNull("上下集已归到播放控制行",findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"下个视频"));
+            Button picture=findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"画面设置");assertNotNull(picture);
+            picture.performClick();AlertDialog settingsMenu=ShadowAlertDialog.getLatestAlertDialog();assertEquals("画面设置",shadowOf(settingsMenu).getTitle());
+            Button beauty=(Button)field(activity,"beautyControl");assertNotNull(beauty);assertEquals("实时美颜",beauty.getText().toString());
+            Field settings=PlayerActivity.class.getDeclaredField("beauty");settings.setAccessible(true);settings.set(activity,new BeautySettings(new org.json.JSONObject().put("enabled",true)));
+            Method refresh=PlayerActivity.class.getDeclaredMethod("refreshBeauty");refresh.setAccessible(true);refresh.invoke(activity);
+            assertEquals(0xFF00A4DC,beauty.getTextColors().getDefaultColor());assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
+            Field file=PlayerActivity.class.getDeclaredField("file");file.setAccessible(true);file.set(activity,new org.json.JSONObject().put("id",1L));
+            beauty.performClick();AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();assertEquals("实时美颜",shadowOf(dialog).getTitle());dialog.dismiss();
         }
     }
 
@@ -170,8 +171,8 @@ public class PlayerUiTest {
                     root.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
                     root.layout(0,0,width,height);
                 }
-                Button beauty=(Button)field(activity,"beautyControl");
-                assertRowFitsShare((LinearLayout)beauty.getParent());
+                Button play=(Button)field(activity,"pause");
+                assertRowFitsShare((LinearLayout)play.getParent());
                 Button favorite=(Button)field(activity,"personalFavorite");
                 assertRowFitsShare((LinearLayout)favorite.getParent());
             }

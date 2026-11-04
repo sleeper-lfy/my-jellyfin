@@ -53,7 +53,7 @@ def media_process(command, timeout, cancelled=None):
         start = time.monotonic()
         try:
             while True:
-                check_cancelled(cancelled)
+                check_cancelled(getattr(cancelled,'process_cancelled',cancelled))
                 remaining = timeout - (time.monotonic() - start)
                 if remaining <= 0:
                     raise subprocess.TimeoutExpired(command, timeout)
@@ -301,6 +301,8 @@ class Library(CatalogActions):
 
     def edit_metadata(self, work_id, metadata, locked):
         item = self.work(work_id)
+        # Presentation defaults must never be persisted by unrelated edits.
+        item['metadata'] = json.loads(self.db.execute('SELECT metadata FROM works WHERE id=?',(work_id,)).fetchone()[0])
         item['metadata'].update(metadata)
         with self.db:
             self.db.execute('UPDATE works SET title=?,year=?,metadata=?,locked=? WHERE id=?',
@@ -910,11 +912,8 @@ class Library(CatalogActions):
         return queue['ids'][queue['index']] if queue['index'] < len(queue['ids']) else None
 
     def resume_file(self, work_id):
-        files = self.work(work_id)['files']
-        if not files:
-            raise ValueError('该影片未入库')
-        unfinished = [f for f in files if not f['completed']]
-        return next((f for f in unfinished if f['position'] > 0), None) or next(iter(unfinished), files[0])
+        from .continuation import resume_target
+        return resume_target(self, self.work(work_id))
 
     def actresses(self, minimum=0, order='average'):
         actors = {}

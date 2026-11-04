@@ -81,7 +81,7 @@ def test_jellyfin_home_navigation_and_favorites(qapp,tmp_path,video_factory):
     work=window.library.query()[0]
     window.library.update_personal(work['id'],favorite=True)
     window.show();window.navigate('home');qapp.processEvents()
-    assert window.home_page.isVisible() and not window.drawer.isVisible()
+    assert window.home_page.isVisible() and window.drawer.isVisible()
     assert len(window.home_page.rows)>=2
     tiles=window.home_page.findChildren(MediaTile)
     QTest.mouseClick(tiles[0],Qt.MouseButton.LeftButton)

@@ -28,7 +28,7 @@ def test_fans_navigation_import_monitor_and_detail_never_offer_film_scraping(qap
         window.library.set_setting('watched_folders',[{'path':'/media/fans','kind':'fans','enabled':True}])
         tools=LibraryTools(window);assert 'Fans' in tools.list.item(0).text();tools.close()
         window.open_details(work_id,fetch=False);detail=window.detail_page
-        actions=[action.text() for action in detail.management_menu.actions()]
+        actions=[action.text() for group in detail.management_menu.actions() for action in (group.menu().actions() if group.menu() else [group])]
         assert '合并同作者文件夹…' in actions
         assert '刮削匹配…' not in actions and '从 NFO 补充图片…' not in actions
         assert detail.refresh_resources.isHidden() and detail.resources_heading.isHidden()

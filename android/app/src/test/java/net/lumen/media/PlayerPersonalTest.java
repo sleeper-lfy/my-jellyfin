@@ -53,7 +53,7 @@ public class PlayerPersonalTest {
         CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
         try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
             server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){assertEquals("/api/works/7/personal",request.getPath());entered.countDown();try{release.await(4,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}return new MockResponse().setBody("{\"ok\":true,\"personal\":{\"favorite\":1,\"liked\":0,\"disliked\":0,\"rating\":null,\"watchlist\":0}}");}});server.start();PlayerActivity activity=lifecycle.get();JSONObject old=build(activity,server);((Button)get(activity,"personalFavorite")).performClick();assertTrue(entered.await(3,TimeUnit.SECONDS));
-            JSONObject next=new JSONObject().put("id",8).put("title","Next").put("favorite",0);put(activity,"work",next);put(activity,"file",new JSONObject().put("id",80));call(activity,"refreshPersonal");release.countDown();waitFor(()->old.optInt("favorite")==1);assertEquals(0,next.optInt("favorite"));assertEquals("喜欢／收藏",((Button)get(activity,"personalFavorite")).getText().toString());
+            JSONObject next=new JSONObject().put("id",8).put("title","Next").put("favorite",0);put(activity,"work",next);put(activity,"file",new JSONObject().put("id",80));call(activity,"refreshPersonal");release.countDown();waitFor(()->old.optInt("favorite")==1);assertEquals(0,next.optInt("favorite"));assertEquals("收藏",((Button)get(activity,"personalFavorite")).getText().toString());
         }finally{release.countDown();}
     }
 }

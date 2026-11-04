@@ -14,7 +14,7 @@ class MediaTile(QPushButton):
         policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
-        self.setMinimumWidth(120)
+        self.setMinimumWidth(160)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clicked.connect(action)
         self.setAccessibleName(title)
@@ -44,15 +44,30 @@ class MediaTile(QPushButton):
         shade.setColorAt(1,QColor(0,0,0,220))
         painter.fillRect(self.rect(),shade)
         painter.setPen(QColor('white'))
-        painter.setFont(QFont('Segoe UI',23,QFont.Weight.DemiBold))
-        painter.drawText(self.rect().adjusted(20,0,-20,-32),Qt.AlignmentFlag.AlignBottom,self.title)
+        font=QFont('Segoe UI');font.setPixelSize(22);font.setWeight(QFont.Weight.DemiBold);painter.setFont(font)
+        painter.drawText(self.rect().adjusted(12,0,-12,-32),Qt.AlignmentFlag.AlignBottom,self.title)
         painter.setFont(QFont('Segoe UI',10))
         painter.setPen(QColor('#cccccc'))
-        painter.drawText(self.rect().adjusted(20,0,-20,-12),Qt.AlignmentFlag.AlignBottom,self.subtitle)
+        painter.drawText(self.rect().adjusted(12,0,-12,-12),Qt.AlignmentFlag.AlignBottom,self.subtitle)
         if self.underMouse() or self.hasFocus():
             painter.setPen(QColor('#00a4dc'))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(self.rect().adjusted(1,1,-1,-1))
+
+
+class MediaShortcuts(QScrollArea):
+    """Keep readable media category labels when the window is narrow."""
+    def __init__(self):
+        super().__init__();self.setWidgetResizable(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.content=QWidget();self.row=QHBoxLayout(self.content);self.row.setContentsMargins(0,0,0,0);self.row.setSpacing(12)
+        self.setWidget(self.content);self.setFixedHeight(120)
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        count=max(1,self.row.count());width=min(230,max(160,(self.viewport().width()-12*(count-1))//count))
+        for i in range(self.row.count()):self.row.itemAt(i).widget().setFixedSize(width,round(width*9/16))
+        self.setFixedHeight(round(width*9/16)+self.horizontalScrollBar().sizeHint().height()+4)
 
 
 class HomePage(QScrollArea):
@@ -66,17 +81,17 @@ class HomePage(QScrollArea):
         self.layout.setContentsMargins(0,0,12,0);self.layout.setSpacing(12)
         self.setWidget(self.content);self.rows=[];self.tiles={};self.sections={}
         self.layout.addWidget(label('我的媒体','sectionTitle'))
-        tiles=QHBoxLayout();tiles.setSpacing(16)
+        self.shortcuts=MediaShortcuts();tiles=self.shortcuts.row
         for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('fans','Fans'),('other','其他视频')]:
             tile=MediaTile(title,'0 位作者' if kind=='fans' else '0 部作品',None,lambda checked=False,kind=kind:window.navigate(kind))
             self.tiles[kind]=tile;tiles.addWidget(tile)
-        self.layout.addLayout(tiles)
-        links=QHBoxLayout()
-        for title,section in [('为我推荐  ›','recommend'),('影片发现  ›','discover'),('观影统计  ›','stats')]:
-            control=button(title,lambda checked=False,section=section:window.navigate(section));control.setObjectName('headerButton');links.addWidget(control)
-        links.addStretch();self.layout.addLayout(links)
+        self.layout.addWidget(self.shortcuts)
         for title in ['继续观看','最新电影','最新电视剧','最新VR电影','最新Fans作者','为你推荐']:
-            heading=label(title,'sectionTitle');self.layout.addWidget(heading)
+            heading=label(title,'sectionTitle')
+            if title=='为你推荐':
+                heading_row=QWidget();row=QHBoxLayout(heading_row);row.setContentsMargins(0,0,0,0);row.addWidget(heading,1)
+                row.addWidget(button('查看全部推荐',lambda:window.navigate('recommend')));heading=heading_row
+            self.layout.addWidget(heading)
             cards=PosterList(window.play_work)
             cards.favoriteRequested.connect(window.toggle_favorite)
             cards.watchlistRequested.connect(lambda work_id:window.toggle_card_personal(work_id,'watchlist'))
@@ -86,6 +101,8 @@ class HomePage(QScrollArea):
             cards.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
             cards.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded);cards.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             cards.itemClicked.connect(window.open_item);self.layout.addWidget(cards);self.sections[title]=(heading,cards)
+            if title=='继续观看':
+                self.layout.removeWidget(heading);self.layout.removeWidget(cards);self.layout.insertWidget(0,heading);self.layout.insertWidget(1,cards)
         self.empty=QWidget();empty_layout=QVBoxLayout(self.empty)
         message=label('开始建立你的媒体库\n添加电影、电视剧或视频文件夹，封面和观看记录将在这里显示。')
         message.setAlignment(Qt.AlignmentFlag.AlignCenter);message.setMinimumHeight(210);message.setStyleSheet('color: #aaaaaa; font-size: 16px;')
@@ -94,7 +111,10 @@ class HomePage(QScrollArea):
 
     def refresh(self,works=None,recommendations=None):
         from .ui import update_poster_items
-        if works is None:works=self.window.library.query()
+        if works is None:
+            from .continuation import continue_works
+            continuing={item['id']:item for item in continue_works(self.window.library)}
+            works=[continuing.get(item['id'],item) for item in self.window.library.query()]
         position=self.verticalScrollBar().value()
         for kind,tile in self.tiles.items():
             items=[work for work in works if work['kind']==kind];cover=None
@@ -102,7 +122,7 @@ class HomePage(QScrollArea):
                 record=self.window.card_data(work,True);cover=record.get('_cover') or record.get('thumbnail')
                 if cover:break
             tile.subtitle=f'{len(items)} 位作者' if kind=='fans' else f'{len(items)} 部作品';tile.cover_path=cover;tile.update()
-        continuing=[work for work in works if any(file['position']>0 and not file['completed'] for file in work['files'])]
+        continuing=sorted([work for work in works if work.get('_resume')],key=lambda work:(work.get('_last_played',''),work['id']),reverse=True)
         if recommendations is None:recommendations=self.window.library.recommendations()
         sections=[('继续观看',continuing,True),('最新电影',[work for work in works if work['kind']=='movie'],False),
                   ('最新电视剧',[work for work in works if work['kind']=='series'],False),('最新VR电影',[work for work in works if work['kind']=='vr'],False),('最新Fans作者',[work for work in works if work['kind']=='fans'],False),('为你推荐',recommendations,False)]
@@ -111,7 +131,10 @@ class HomePage(QScrollArea):
             heading,cards=self.sections[title];landscape=landscape or self.window.view_mode.currentData()=='thumbnail'
             width=self.window.library.setting('thumbnail_width' if landscape else 'poster_width',280 if landscape else 190)
             cards.setFixedHeight(round((width-16)*(9/16 if landscape else 3/2))+114)
-            update_poster_items(cards,[self.window.card_data(work,landscape) for work in items[:24]])
+            records=[self.window.card_data(work,landscape) for work in items[:24]]
+            update_poster_items(cards,records)
+            if title=='继续观看':
+                for index,work in enumerate(items[:24]):cards.item(index).setToolTip(work['_resume']['label'])
             heading.setVisible(bool(items));cards.setVisible(bool(items))
             if items:self.rows.append(cards)
         self.empty.setVisible(not works);self.layout.activate();self.verticalScrollBar().setValue(position)

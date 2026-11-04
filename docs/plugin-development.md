@@ -7,6 +7,7 @@
 - `plugins/example`：通用 JSON 影片目录协议；默认连接用户自己运行的本地目录服务；没有内置假影片。
 - `plugins/tvmaze`：用户指定的优先站点；电视剧搜索、详情（含演员）、最新剧集索引发现。
 - `plugins/internet-archive`：可选公开影片目录；只读取元数据和图片，不下载视频。
+- `plugins/javbus-films` / `plugins/javdb-films`：独立编号影片搜索与详情资料来源，支持来源可用性检查和自动入库备用顺序；不返回视频或下载链接。配置与验证边界见 [编号影片来源](numbered-providers.md)。
 - `plugins/wikimedia-actors`：独立女演员头像搜索，Wikidata 女性人物 + Wikimedia Commons 公开肖像；保留文件页、许可和署名。没有照片或资料的演员不会编造头像。
 - `plugins/javbus-actors`：按姓名搜索 JavBus 女优头像；只读取公开姓名、别名与图片地址，不返回视频或下载链接。默认声明 `www.javbus.com` / `javbus.com` / `r.jina.ai`，直连被站点浏览器验证拦截时自动经 r.jina.ai 读取；头像许可与署名以来源页面为准，插件不编造。
 - `plugins/javdb-actors`：按姓名搜索 JavDB 演员资料，读取公开头像和逗号分隔的别名；占位头像不当作真实头像，`gender` 不据姓名推断。只读取元数据与头像，不返回视频、磁力或下载链接。部分网络需在应用内配置代理。

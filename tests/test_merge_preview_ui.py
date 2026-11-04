@@ -32,7 +32,7 @@ def test_history_entry_undo_restores_records_and_current_player_owner(qapp,tmp_p
     apply_merge(window.library,preview_merge(window.library,[source],target))
     window.open_details(target,fetch=False);window.show();refresh_after_merge(window,target)
     assert window.player.file['work_id']==target
-    assert '合并记录 / 撤销…' in [action.text() for action in window.detail_page.management_menu.actions()]
+    assert '合并记录 / 撤销…' in [action.text() for group in window.detail_page.management_menu.actions() for action in (group.menu().actions() if group.menu() else [group])]
     monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.StandardButton.Yes)
     show_merge_history(window.detail_page)
     wait(lambda:not window._auxiliary_jobs)

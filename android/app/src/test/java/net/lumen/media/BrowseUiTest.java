@@ -163,9 +163,9 @@ public class BrowseUiTest {
             activity.onBackPressed();assertEquals(42,selected.getLong(activity));
             String restored=(String)path.invoke(activity);assertTrue(restored.contains("kind=series"));assertTrue(restored.contains("q=Original%20search"));
             activity.onBackPressed();
-            View discovery=findText(activity.findViewById(android.R.id.content),"影片发现");assertNotNull(discovery);discovery.performClick();
+            View discovery=activity.findViewById(android.R.id.content).findViewWithTag("nav:discover");assertNotNull(discovery);discovery.performClick();
             assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
-            View recommendation=findText(activity.findViewById(android.R.id.content),"为我推荐");assertNotNull(recommendation);recommendation.performClick();
+            activity.findViewById(android.R.id.content).findViewWithTag("nav:home").performClick();View recommendation=findText(activity.findViewById(android.R.id.content),"为我推荐");assertNotNull(recommendation);recommendation.performClick();
             assertTrue(((String)path.invoke(activity)).startsWith("/api/recommendations?"));
         }
     }
@@ -210,7 +210,7 @@ public class BrowseUiTest {
         java.lang.reflect.Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(object);
     }
 
-    @Test public void homeTilesShareWidthEquallyWithoutOverflow()throws Exception{
+    @Test public void homeTilesReflowWithEqualWidthsWithoutOverflow()throws Exception{
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
                 return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
@@ -230,12 +230,11 @@ public class BrowseUiTest {
             for(int[] size:new int[][]{{360,800},{320,640}}){
                 root.measure(View.MeasureSpec.makeMeasureSpec(size[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(size[1],View.MeasureSpec.EXACTLY));
                 root.layout(0,0,size[0],size[1]);
-                int share=(tiles.getWidth()-tiles.getPaddingLeft()-tiles.getPaddingRight())/tiles.getChildCount();
+                assertTrue("Narrow home must use multiple rows",tiles.getChildAt(2).getTop()>tiles.getChildAt(0).getTop());
+                assertEquals(tiles.getChildAt(0).getWidth(),tiles.getChildAt(1).getWidth());
+                assertEquals("Each row aligns to its top",tiles.getChildAt(0).getTop(),tiles.getChildAt(1).getTop());
                 for(int i=0;i<tiles.getChildCount();i++){
-                    View tile=tiles.getChildAt(i);
-                    ViewGroup.MarginLayoutParams params=(ViewGroup.MarginLayoutParams)tile.getLayoutParams();
-                    int expected=share-params.leftMargin-params.rightMargin;
-                    assertTrue("磁贴超出均分宽度会整行变形（"+size[0]+"dp 第"+i+"个）",tile.getMeasuredWidth()<=expected+1);
+                    View tile=tiles.getChildAt(i);assertTrue("Tile overflow",tile.getRight()<=tiles.getWidth());assertTrue(tile.getMeasuredWidth()>100);
                 }
             }
         }
@@ -250,8 +249,8 @@ public class BrowseUiTest {
             }});server.start();MainActivity activity=lifecycle.get();
             field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
             call(activity,"showLibrary");
-            View nav=findText(activity.findViewById(android.R.id.content),"女演员");assertNotNull("导航应包含女演员分区",nav);
-            nav.performClick();
+            activity.findViewById(android.R.id.content).findViewWithTag("nav:library").performClick();
+            android.widget.Spinner category=activity.findViewById(android.R.id.content).findViewWithTag("libraryCategory");assertNotNull(category);category.setSelection(6);shadowOf(Looper.getMainLooper()).idle();
             long deadline=System.currentTimeMillis()+5000;
             while(findText(activity.findViewById(android.R.id.content),"Star")==null&&System.currentTimeMillis()<deadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
             assertNotNull("女演员墙应渲染演员卡片",findText(activity.findViewById(android.R.id.content),"Star"));

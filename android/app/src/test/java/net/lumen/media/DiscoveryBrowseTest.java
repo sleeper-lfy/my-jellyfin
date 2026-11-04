@@ -144,7 +144,7 @@ public class DiscoveryBrowseTest {
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return json("{\"items\":[],\"total\":0}");}});server.start();MainActivity activity=lifecycle.get();
             set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));call(activity,"showLibrary");
-            View fans=text(root(activity),"Fans视频",false);assertNotNull(fans);fans.performClick();assertTrue(path(activity).contains("kind=fans"));
+            View categories=root(activity).findViewWithTag("homeCategories");assertNotNull(categories);View fans=text(categories,"Fans",false);assertNotNull(fans);fans.performClick();assertTrue(path(activity).contains("kind=fans"));
             JSONObject work=new JSONObject("{\"id\":42,\"title\":\"Author example\",\"kind\":\"fans\",\"file_count\":2,\"files\":[{\"id\":101,\"name\":\"First video\",\"duration\":120},{\"id\":102,\"name\":\"Second video\",\"duration\":180}]}");
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
             assertNotNull(text(root(activity),"作者视频",false));assertNull(text(root(activity),"季与集",false));assertFalse(VrProjection.autoEnable("fans"));

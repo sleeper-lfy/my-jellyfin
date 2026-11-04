@@ -35,7 +35,7 @@ def test_nested_metadata_results_return_to_exact_source_page(qapp,tmp_path,video
     window.detail_page.accept()
     assert window.section=='movie' and window.filters==original_filters and not window.navigation_history
     window.navigate('recommend')
-    assert window.heading.text()=='为我推荐' and window.nav_buttons['recommend'].isChecked()
+    assert window.heading.text()=='为我推荐' and window.nav_buttons['home'].isChecked()
     window.close()
 
 

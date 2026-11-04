@@ -3,7 +3,7 @@ import threading
 import time
 from pathlib import Path
 import pytest
-from PySide6.QtCore import QEventLoop,QTimer,Qt,QSize
+from PySide6.QtCore import QEventLoop,QTimer,Qt,QSize,QObject,QEvent
 from PySide6.QtGui import QImage,QColor
 from PySide6.QtWidgets import QDialog,QLineEdit,QPlainTextEdit,QDoubleSpinBox,QDialogButtonBox,QPushButton,QListWidget,QFileDialog
 from lumen.ui import MainWindow
@@ -28,7 +28,13 @@ def window(qapp,tmp_path):
 
 
 def test_progress_long_paths_and_chained_jobs_never_resize_content(qapp,window):
-    baseline=window.pages.geometry();samples=[];timer=QTimer();timer.setInterval(10)
+    baseline=window.pages.geometry();samples=[];resizes=[];timer=QTimer();timer.setInterval(10)
+    assert not window.job_area.isVisible()
+    class ResizeMonitor(QObject):
+        def eventFilter(self,watched,event):
+            if event.type()==QEvent.Type.Resize:resizes.append(window.pages.geometry())
+            return False
+    monitor=ResizeMonitor();window.pages.installEventFilter(monitor)
     timer.timeout.connect(lambda:samples.append(window.pages.geometry()));timer.start()
     def progress(lib,report):
         for number in range(12):
@@ -36,10 +42,17 @@ def test_progress_long_paths_and_chained_jobs_never_resize_content(qapp,window):
             time.sleep(.025)
         return {}
     window.run_job('快速导入布局检查',progress);window.run_job('后续处理',progress)
-    until(qapp,lambda:not window.jobs and not window.job_queue);timer.stop()
-    assert len(samples)>20 and all(rect==baseline for rect in samples)
+    until(qapp,lambda:not window.jobs and not window.job_queue);spin(qapp);timer.stop()
+    busy=baseline.adjusted(0,0,0,-window.job_area.height())
+    # The task strip appears once for the whole chain, then releases its height.
+    # Long paths, progress changes and the hand-off between jobs must not reflow.
+    assert len(samples)>20 and busy in samples
+    assert all(rect in (baseline,busy) for rect in samples)
+    assert all(rect.topLeft()==baseline.topLeft() and rect.width()==baseline.width() for rect in samples)
+    assert resizes==[busy,baseline]
     assert window.status.height()==28 and not window.status.wordWrap()
-    assert not window.job_progress.isVisible() and window.pages.geometry()==baseline
+    assert not window.job_area.isVisible() and not window.job_progress.isVisible() and window.pages.geometry()==baseline
+    window.pages.removeEventFilter(monitor)
     assert not window._job_functions  # Completed closures must not retain old pages.
 
 

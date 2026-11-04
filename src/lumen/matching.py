@@ -46,7 +46,10 @@ def apply_match(library, plugin, operation, candidate, work_id):
             raise ValueError('详情来源标识与所选候选不匹配，未更新资料')
         candidate = exact[0]
     # Explicit selection updates unlocked NFO fields; background refresh still preserves them.
-    return manager.merge(plugin['id'], candidate, work_id, replace_nfo=True)
+    result = manager.merge(plugin['id'], candidate, work_id, replace_nfo=True)
+    from .ingestion import confirm
+    confirm(library, work_id)
+    return result
 
 
 class PreviewLoader(QObject):

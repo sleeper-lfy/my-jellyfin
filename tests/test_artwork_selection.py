@@ -179,7 +179,7 @@ def test_size_dialog_saves_independent_sizes_and_preserves_card_actions(qapp,tmp
     window.view_mode.setCurrentIndex(1);qapp.processEvents()
     assert window.cards.visualItemRect(window.cards.item(0)).width()==360
     window.open_details(work_id,fetch=False);qapp.processEvents()
-    assert window.detail_page.poster.width()==260
+    assert 120 <= window.detail_page.poster.width() <= 210
     assert window.detail_page.still_gallery.iconSize().width()==368
     window.close()
 

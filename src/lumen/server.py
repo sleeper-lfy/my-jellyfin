@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 import hmac
+import hashlib
 import json
 import logging
 import math
@@ -86,6 +87,91 @@ def public_work(work, detail=False):
     return result
 
 
+TASK_STATES = {
+    'active': ('queued', 'running', 'importing', 'paused'),
+    'pending': ('pending', 'retry'),
+    'failed': ('failed', 'partial'),
+    'history': ('done', 'cancelled', 'external'),
+}
+TASK_LABELS = {'ingest': '自动入库', 'import': '扫描入库', 'move': '整理文件',
+               'media': '读取媒体信息', 'inspect': '目录巡检', 'match': '刮削匹配',
+               'download-library': '下载与入库', 'download': '下载', 'magnet': '外部下载',
+               'health-image': '图片修复', 'discovery-search': '站点搜索', 'background': '后台任务'}
+TASK_STATUS_LABELS = {'queued': '等待执行', 'running': '正在处理', 'importing': '正在入库',
+                      'paused': '已暂停', 'retry': '等待自动重试', 'pending': '待确认',
+                      'failed': '失败', 'partial': '部分完成', 'done': '已完成',
+                      'cancelled': '已停止', 'external': '已交给外部程序'}
+
+
+def public_tasks(library, query):
+    """Bounded, read-only task status. Raw reports can contain paths and credentials."""
+    state = query.get('state', ['all'])[0]
+    if state not in {'all', *TASK_STATES}: raise ApiError(400, '无效任务分类')
+    offset = max(0, int(query.get('offset', ['0'])[0]))
+    limit = max(1, min(100, int(query.get('limit', ['30'])[0])))
+    work_id = int(query.get('work_id', ['0'])[0])
+    if work_id < 0: raise ApiError(400, '无效影片编号')
+    # JSON fields are optional on old/background tasks; malformed payloads stay visible.
+    payload = "CASE WHEN length(t.payload)<=32768 AND json_valid(t.payload) THEN t.payload ELSE '{}' END"
+    work = f"CASE WHEN json_type({payload},'$.work_id')='integer' THEN json_extract({payload},'$.work_id') END"
+    where, values = [], []
+    if state != 'all':
+        where.append('t.status IN (' + ','.join('?' for _ in TASK_STATES[state]) + ')')
+        values.extend(TASK_STATES[state])
+    if work_id:
+        where.append(work + '=?'); values.append(work_id)
+    condition = ' WHERE ' + ' AND '.join(where) if where else ''
+    total = library.db.execute('SELECT COUNT(*) FROM tasks t' + condition, values).fetchone()[0]
+    rows = library.db.execute(f'''SELECT t.id,t.kind,t.status,t.updated,
+        substr(t.error,1,2000) AS error,{payload} AS payload,w.id AS work_id,w.title AS work_title
+        FROM tasks t LEFT JOIN works w ON w.id={work}{condition}
+        ORDER BY t.updated DESC,t.id DESC LIMIT ? OFFSET ?''', [*values, limit, offset]).fetchall()
+    items = []
+    for row in rows:
+        data = json.loads(row['payload'])
+        data = data if isinstance(data, dict) else {}
+        status = row['status'] if row['status'] in TASK_STATUS_LABELS else 'unknown'
+        reason = ''
+        error = (row['error'] or '').lower()
+        # Do not pass through exception strings, URLs, payload titles or file locations.
+        if status in {'pending', 'retry', 'failed', 'partial'}:
+            if row['kind'] == 'inspect' and status == 'pending': reason = '发现缺失文件，请在电脑核对后处理。'
+            elif any(word in error for word in ('唯一匹配', '候选', '多个编号', 'ambiguous')): reason = '影片匹配需要确认，请在电脑选择正确的资料。'
+            elif any(word in error for word in ('timeout', 'timed out', 'network', '连接', '网络', 'tls', 'http')): reason = '来源或网络请求未完成，请检查电脑端网络与来源设置。'
+            elif any(word in error for word in ('permission', '权限', '拒绝访问')): reason = '电脑无法访问所需文件或目录，请检查访问权限。'
+            elif any(word in error for word in ('file exists', '同名', '已存在', '冲突')): reason = '文件或资料存在冲突，请在电脑核对。'
+            elif status == 'pending': reason = '需要在电脑确认后继续。'
+            elif status == 'retry': reason = '等待电脑自动重试；详细原因可在电脑任务中心查看。'
+            else: reason = '有未完成项，请在电脑任务中心查看详情与重试。'
+        elif status == 'external': reason = '已交给外部程序，后续进度请在电脑查看。'
+        stage = data.get('stage')
+        stage_label = {'identify': '识别与补充资料', 'organize': '整理文件'}.get(stage, '') if isinstance(stage, str) else ''
+        label = TASK_LABELS.get(row['kind'], '后台任务')
+        if row['kind'] == 'background' and isinstance(data.get('title'), str):
+            for prefix, name in [('检查缺失影片资料', '资料检查'), ('补全缺失影片资料', '资料补全'),
+                                 ('重试缺失图片', '图片修复'), ('读取视频版本', '版本检查'),
+                                 ('检查重复候选', '重复检查'), ('导出 NFO', 'NFO 导出'),
+                                 ('自动识别', '自动入库'), ('快速导入', '扫描入库'),
+                                 ('刮削', '刮削匹配'), ('整理', '整理文件')]:
+                if data['title'].startswith(prefix): label = name; break
+        progress = data.get('progress')
+        if (not isinstance(progress, dict) or
+            any(type(progress.get(key)) not in (int, float) or not math.isfinite(progress[key]) or not 0 <= progress[key] <= 9e15
+                for key in ('completed', 'total'))):
+            progress = None
+        else:
+            progress = {key: progress[key] for key in ('completed', 'total')}
+            progress['unit'] = 'bytes' if data['progress'].get('unit') == 'bytes' else 'items'
+        identifier = row['id']
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', identifier): identifier = hashlib.sha256(identifier.encode()).hexdigest()
+        items.append({'id': identifier, 'kind': row['kind'] if row['kind'] in TASK_LABELS else 'background',
+                      'label': label, 'status': status,
+                      'status_label': TASK_STATUS_LABELS.get(status, '状态未知'), 'updated': row['updated'],
+                      'work_id': row['work_id'], 'work_title': row['work_title'], 'stage': stage_label,
+                      'reason': reason, 'progress': progress, 'device': 'computer', 'actions': []})
+    return {'items': items, 'total': total, 'offset': offset, 'limit': limit, 'read_only': True}
+
+
 class LanServer:
     def __init__(self, directory, host='0.0.0.0', port=8097, clock=time.monotonic, discovery_port=8098, remote=None, budget=None):
         self.directory, self.host, self.port, self.clock = Path(directory), host, port, clock
@@ -117,7 +203,7 @@ class LanServer:
             library=Library(self.directory,initialize=False)
             acquired=False
             try:
-                self.budget.acquire(closing.is_set);acquired=True
+                self.budget.acquire(closing.is_set,resource='cpu');acquired=True
                 from .media_tools import capture_bookmark
                 capture_bookmark(library,identifier,closing.is_set)
             except Exception:pass  # A saved time bookmark remains usable without its optional screenshot.
@@ -219,6 +305,8 @@ class LanServer:
                             return self.send_file(target,'image/jpeg')
                         if path == '/api/info':
                             return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now()})
+                        if path == '/api/tasks':
+                            return self.send_json(200, public_tasks(library, query))
                         if path == '/api/filters':
                             discovered=query.get('discover',['false'])[0]=='true'
                             filters = self.filters(query,discovery=discovered)
@@ -226,6 +314,11 @@ class LanServer:
                                 from .discovery_catalog import discovery_facets
                                 return self.send_json(200,discovery_facets(library,filters.get('kinds')))
                             return self.send_json(200, library.filter_options(filters.get('kinds')))
+                        if path == '/api/continue':
+                            from .continuation import continue_works
+                            limit=max(1,min(100,int(query.get('limit',['24'])[0])))
+                            items=continue_works(library,limit)
+                            return self.send_json(200,{'items':[{**public_work(work),'resume':work['_resume']} for work in items],'limit':limit})
                         if path == '/api/actresses':
                             minimum = max(0, int(query.get('minimum', ['0'])[0]))
                             sort = query.get('sort', ['average'])[0]
@@ -247,19 +340,7 @@ class LanServer:
                                                'work_ids': actress.get('work_ids', []), 'photo': photo})
                             return self.send_json(200, {'total': len(result), 'items': result})
                         if path in {'/api/works','/api/recommendations','/api/discover'}:
-                            filters = self.filters(query,discovery=path=='/api/discover')
-                            if query.get('list',[''])[0]:
-                                row=library.db.execute('SELECT filters FROM lists WHERE name=?',(query['list'][0],)).fetchone()
-                                if not row:raise ApiError(404,'片单不存在')
-                                filters={**json.loads(row[0]),'local':True}
-                            if path=='/api/discover':
-                                from .discovery_catalog import query_discovery
-                                items=query_discovery(library,filters,source=query.get('source',[''])[0],
-                                                      category=query.get('category',[''])[0],tag_query=query.get('tag_q',[''])[0])
-                            else:items = library.query(filters)
-                            if path == '/api/recommendations':
-                                selected = {item['id'] for item in items}
-                                items = [item for item in library.recommendations() if item['id'] in selected]
+                            items = self.browse_items(library, path, query)
                             offset = max(0,int(query.get('offset',['0'])[0])); limit=max(1,min(100,int(query.get('limit',['40'])[0])))
                             return self.send_json(200,{'total':len(items),'items':[public_work(w) for w in items[offset:offset+limit]],'offset':offset,'limit':limit})
                         match = re.fullmatch(r'/api/downloads/([a-f0-9]{32})',path)
@@ -314,7 +395,11 @@ class LanServer:
                             result=public_work(work,True)
                             rows=library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=? ORDER BY b.file_id,b.position LIMIT 300',(work['id'],))
                             result['bookmarks']=[{**{key:row[key] for key in row.keys() if key!='image'},'image':f"/api/bookmarks/{row['id']}/image" if row['image'] else None} for row in rows]
-                            result['resume_file_id']=library.resume_file(work['id'])['id'] if work['files'] else None
+                            target=library.resume_file(work['id']) if work['files'] else None
+                            result['resume_file_id']=target['id'] if target else None
+                            if target:
+                                from .continuation import describe
+                                result['resume']=describe(target,work['kind'])
                             if work['kind'] in {'movie','series','vr'}:
                                 from .downloads import download_folder
                                 result['download_directory']=str(download_folder(library,work['id']))
@@ -395,8 +480,38 @@ class LanServer:
                             library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
                             return self.send_json(200,{'ok':True})
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','tag','actor','year_min','year_max','rating_min','tags_all','sort','direction','watch_state'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','tag','actor','year_min','year_max','rating_min','tags_all','sort','direction','watch_state'}})
                             ids=[w['id'] for w in library.query(filters)]
+                            random.SystemRandom().shuffle(ids)
+                            return self.send_json(200,{'ids':ids})
+                        if path == '/api/queue/from-browse':
+                            browse_path = body.get('browse_path')
+                            if (set(body) != {'browse_path'} or not isinstance(browse_path,str) or
+                                not browse_path.startswith('/api/') or len(browse_path)>16000 or
+                                any(ord(char)<32 for char in browse_path)):
+                                raise ApiError(400,'无效媒体列表路径')
+                            browse = urlsplit(browse_path)
+                            if browse.scheme or browse.netloc or browse.fragment or browse.path not in {'/api/works','/api/discover','/api/recommendations'}:
+                                raise ApiError(400,'不支持的媒体列表路径')
+                            parameters = parse_qs(browse.query,keep_blank_values=True,max_num_fields=40)
+                            allowed = {'offset','limit','kind','q','favorite','watchlist','tag','actor','year',
+                                       'year_min','year_max','rating_min','tags_all','sort','direction','watch_state',
+                                       'list','ids','source','category','tag_q'}
+                            if not parameters.keys() <= allowed or any(len(values)!=1 for values in parameters.values()):
+                                raise ApiError(400,'无效媒体列表参数')
+                            # The full matching collection is used, regardless of the visible page.
+                            # This only returns an Android queue; the PC queue remains untouched.
+                            items = self.browse_items(library,browse.path,parameters)
+                            ids = []
+                            for work in items:
+                                for file in work['files']:
+                                    try:
+                                        target = Path(file['path']).resolve()
+                                        playable = target.is_relative_to(Path(file['root']).resolve()) and target.is_file()
+                                    except (OSError,ValueError):
+                                        playable = False
+                                    if playable:
+                                        ids.append(work['id']);break
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
                         match=re.fullmatch(r'/api/works/(\d+)/personal',path)
@@ -440,6 +555,33 @@ class LanServer:
                 finally:
                     if library: library.close()
 
+            def browse_items(self,library,path,query):
+                """One unpaginated collection for browsing and Android's scoped shuffle."""
+                filters = self.filters(query,discovery=path=='/api/discover')
+                saved_ids = None
+                if query.get('list',[''])[0]:
+                    row = library.db.execute('SELECT filters FROM lists WHERE name=?',(query['list'][0],)).fetchone()
+                    if not row:raise ApiError(404,'片单不存在')
+                    saved = json.loads(row[0])
+                    from .catalog import validate_filters
+                    validate_filters(saved)
+                    saved_ids = {work['id'] for work in library.query({**saved,'local':True})}
+                    # Empty/default client controls never erase the saved constraints.
+                    # Current filters are intersected rather than merged by field name.
+                    if 'sort' not in query:filters['sort'] = saved.get('sort','added')
+                    if 'direction' not in query:filters['descending'] = saved.get('descending',True)
+                if path == '/api/discover':
+                    from .discovery_catalog import query_discovery
+                    items = query_discovery(library,filters,source=query.get('source',[''])[0],
+                                            category=query.get('category',[''])[0],tag_query=query.get('tag_q',[''])[0])
+                else:
+                    items = library.query(filters)
+                if saved_ids is not None:items = [work for work in items if work['id'] in saved_ids]
+                if path == '/api/recommendations':
+                    selected = {work['id'] for work in items}
+                    items = [work for work in library.recommendations() if work['id'] in selected]
+                return items
+
             def filters(self,query,discovery=False):
                 filters={'query':query.get('q',[''])[0]}
                 kind=query.get('kind',[''])[0]
@@ -447,6 +589,7 @@ class LanServer:
                     if kind not in {'movie','series','other','vr','fans'}:raise ApiError(400,'无效媒体类型')
                     filters['kinds']=[kind]
                 if query.get('favorite',[''])[0].lower() in {'true','1'}:filters['favorite']=True
+                if query.get('watchlist',[''])[0].lower() in {'true','1'}:filters['watchlist']=True
                 if query.get('tag', [''])[0]:
                     filters['tags_all'] = [query['tag'][0]]
                 if query.get('tags_all', [''])[0]:

@@ -139,6 +139,15 @@ class Plugins:
         """Only the TVmaze/IA copies shipped with the application can be updated."""
         return Plugins._builtin_plugin_folder(plugin_id, {'tvmaze', 'internet-archive'})
 
+    @staticmethod
+    def builtin_numbered_plugin(plugin_id):
+        """Metadata-only numbered-film providers bundled with this application."""
+        return Plugins._builtin_plugin_folder(plugin_id, {'javbus-films', 'javdb-films'})
+
+    def update_builtin_numbered_plugin(self, plugin_id):
+        """Explicit install/update; callers show domains and enable separately."""
+        return self._update_builtin_plugin(plugin_id, self.builtin_numbered_plugin(plugin_id), 'search')
+
     def update_builtin_actor_plugin(self, plugin_id):
         """Explicitly install/update shipped code, preserving enabled/proxy config.
 

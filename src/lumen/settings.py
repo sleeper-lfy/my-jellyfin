@@ -3,10 +3,17 @@ from pathlib import Path
 import sqlite3
 import time
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QTabWidget, QWidget, QLineEdit,
- QComboBox, QCheckBox, QSpinBox, QListWidget, QMessageBox, QPlainTextEdit)
+ QComboBox, QCheckBox, QSpinBox, QListWidget, QMessageBox, QPlainTextEdit, QScrollArea)
 from .core import tool
 from .plugins import Plugins
 from .ui import button, label, KINDS
+
+
+class SettingsTabs(QTabWidget):
+    def addTab(self, widget, title):
+        scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(widget)
+        return super().addTab(scroll,title)
 
 
 class Settings(QDialog):
@@ -15,9 +22,9 @@ class Settings(QDialog):
         self.window, self.library = window, window.library
         self.manager = Plugins(self.library)
         self.setWindowTitle('设置 · Lumen')
-        self.resize(820, 720)
+        self.resize(860, 680)
         outer = QVBoxLayout(self)
-        tabs = QTabWidget()
+        tabs = SettingsTabs()
         outer.addWidget(tabs)
         general = QWidget()
         form = QFormLayout(general)
@@ -25,6 +32,7 @@ class Settings(QDialog):
         self.proxy.setPlaceholderText('留空直连；http://127.0.0.1:7890 或 socks5://127.0.0.1:1080')
         form.addRow('默认刮削代理', self.proxy)
         form.addRow('数据目录', label(str(self.library.directory)))
+        form.addRow(button('显示大小 · 全局…',self.display_size))
         from . import fftools
         missing = fftools.missing_tools()
         self.ffmpeg_status = label(('未检测到：' + '、'.join(missing) + '；读取时长和缩略图需要它们') if missing else '已就绪 · ' + str(tool('ffmpeg')))
@@ -39,7 +47,7 @@ class Settings(QDialog):
             self.library.set_setting('background_concurrency',value);window.task_budget.set_limit(value);window.start_queued_jobs()
         parallel.valueChanged.connect(concurrency)
         form.addRow('后台任务并发上限',parallel)
-        form.addRow(button('目录监控与媒体库体检…',window.library_tools))
+        form.addRow(button('打开媒体管理…',lambda:self.open_management('directories')))
         form.addRow(button('备份本地数据库…', self.backup))
         form.addRow(button('恢复数据库备份…', self.restore))
         from .support_bundle import show_export
@@ -78,30 +86,12 @@ class Settings(QDialog):
         layout.addLayout(config)
         layout.addWidget(button('保存插件配置', self.save_plugin, True))
         tabs.addTab(plugins, '第三方插件')
-        partitions = QWidget()
-        partition_layout = QFormLayout(partitions)
-        self.partition_controls = {}
-        for kind in ['movie', 'series']:
-            box = QComboBox()
-            box.addItem('手动刮削（默认）', '')
-            for p in self.manager.installed():
-                if 'search' in p['capabilities']:
-                    box.addItem(p['name'], p['id'])
-            previous = self.library.setting('partition:' + kind, {})
-            box.setCurrentIndex(max(0, box.findData(previous.get('plugin', ''))))
-            destination = QLineEdit(previous.get('destination', ''))
-            destination.setPlaceholderText('留空仅导入；设置后，唯一匹配成功将自动整理至此目录')
-            row = QHBoxLayout()
-            row.addWidget(destination)
-            row.addWidget(button('浏览', lambda checked=False, field=destination: self.choose_folder(field)))
-            partition_layout.addRow(KINDS[kind] + ' · 自动刮削', box)
-            partition_layout.addRow('自动整理目标', row)
-            self.partition_controls[kind] = (box, destination)
-        notice = label('自动整理仅在标题、年份和类型唯一匹配后执行。\n目标存在同名文件时停止，复制校验成功后才删除原文件；失败可从任务页恢复。\nFans 按第一层作者文件夹归组，不使用影视刮削；同作者多个文件夹可在作者详情中合并。\n“其他”保持目录结构且不联网，可在详情页手动整理。')
-        notice.setWordWrap(True)
-        partition_layout.addRow(notice)
-        partition_layout.addRow(button('保存分区规则', self.save_partitions, True))
-        tabs.addTab(partitions, '导入 / 分区规则')
+        media = QWidget();media_layout = QVBoxLayout(media)
+        notice=label('媒体目录、分类默认来源、备用顺序、整理目标和命名模板统一在媒体管理中配置。目录详情会显示实际生效规则及继承关系。')
+        notice.setWordWrap(True);media_layout.addWidget(notice)
+        media_layout.addWidget(button('目录与自动入库…',lambda:self.open_management('directories')))
+        media_layout.addWidget(button('分类默认规则与来源…',lambda:self.open_management('sources')))
+        media_layout.addStretch();tabs.addTab(media,'媒体管理')
         downloads = QWidget()
         download_form = QFormLayout(downloads)
         from .downloads import default_download_root
@@ -262,13 +252,14 @@ class Settings(QDialog):
             self.manager.uninstall(self.plugins[index]['id'])
             self.reload()
 
-    def save_partitions(self):
-        if any(destination.text().strip() for _, destination in self.partition_controls.values()):
-            if QMessageBox.question(self, '启用自动文件整理', '导入并唯一匹配后，将自动移动视频及关联字幕到配置目录。是否保存这些规则？') != QMessageBox.StandardButton.Yes:
-                return
-        for kind, (box, destination) in self.partition_controls.items():
-            self.library.set_setting('partition:' + kind, {'plugin':box.currentData(), 'destination':destination.text().strip()})
-        QMessageBox.information(self, '已保存', '分区规则已保存。')
+    def display_size(self):
+        self.accept();self.window.choose_artwork_sizes()
+
+    def open_management(self,section):
+        # Close this modal settings dialog before opening a modeless management page.
+        self.accept()
+        from .media_management_ui import show_media_management
+        show_media_management(self.window,section)
 
     def backup(self):
         from .dialogs import save_file_name

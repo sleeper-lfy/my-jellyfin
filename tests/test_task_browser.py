@@ -38,9 +38,9 @@ def test_opening_task_browser_never_waits_for_loader_or_resizes_to_large_reports
     for timer in (window.scheduler,window.media_scheduler,window.watch_scheduler,window.remote.timer):timer.stop()
     entered=threading.Event();release=threading.Event();read=tasks.snapshot
     window.library.task('large','import','running',{'root':'D:/a','progress':{'completed':1,'total':10,'stage':'Import'}},{'errors':['long error '*10000]})
-    def slow(directory,offset=0):
+    def slow(directory,offset=0,pending_only=False):
         assert threading.current_thread() is not threading.main_thread()
-        entered.set();release.wait(4);return read(directory,offset)
+        entered.set();release.wait(4);return read(directory,offset,pending_only)
     monkeypatch.setattr(tasks,'snapshot',slow)
     try:
         ticks=[];timer=QTimer(window);timer.setInterval(10);timer.timeout.connect(lambda:ticks.append(1));timer.start()

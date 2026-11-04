@@ -722,7 +722,7 @@ class Player(QDialog):
             except (ValueError,RuntimeError) as error:message.setText(str(error));return
             capture=screenshot.isChecked();dialog.accept();self.bookmarksChanged.emit()
             owner=self.parentWidget()
-            if capture and hasattr(owner,'run_job'):owner.run_job('书签截图',lambda lib,p:capture_bookmark(lib,item['id'],p.cancelled),lambda _:self.bookmarksChanged.emit())
+            if capture and hasattr(owner,'run_job'):owner.run_job('书签截图',lambda lib,p:capture_bookmark(lib,item['id'],p.cancelled),lambda _:self.bookmarksChanged.emit(),resource='cpu')
         buttons.accepted.connect(save);dialog.finished.connect(lambda _:setattr(self,'_bookmark_dialog',None));dialog.show();name.setFocus();return dialog
 
     def show_bookmarks(self):
@@ -756,7 +756,7 @@ class Player(QDialog):
             if not items.currentItem():return
             from .media_tools import capture_bookmark
             identifier=items.currentItem().data(Qt.ItemDataRole.UserRole)['id'];parent=self.parentWidget()
-            if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,identifier,p.cancelled),lambda _:self.bookmarksChanged.emit())
+            if hasattr(parent,'run_job'):parent.run_job('书签截图',lambda lib,p:capture_bookmark(lib,identifier,p.cancelled),lambda _:self.bookmarksChanged.emit(),resource='cpu')
         layout.addWidget(QPushButton('添加当前时间点…',clicked=lambda:self.add_bookmark(file=dict(self.library.db.execute('SELECT * FROM files WHERE id=?',(file_id,)).fetchone()),parent=dialog)))
         items.itemDoubleClicked.connect(lambda _:jump());layout.addWidget(QPushButton('跳转到选中书签',clicked=jump));layout.addWidget(QPushButton('生成 / 更新选中截图',clicked=capture));layout.addWidget(QPushButton('删除选中书签',clicked=remove))
         self.bookmarksChanged.connect(reload)

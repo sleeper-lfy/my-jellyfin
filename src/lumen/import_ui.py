@@ -50,7 +50,7 @@ class ImportDialog(QDialog):
     def hint(self):
         kind=self.kind.currentData()
         if kind=='fans':text='Fans 按总目录的第一层作者文件夹归组，包含作者下级目录的视频；不要求季集编号、不自动影视刮削。'
-        elif kind in SCRAPABLE:text='导入后按所选插件刮削，默认采用搜索到的第一个匹配；整理目标留空则不移动文件。'
+        elif kind in SCRAPABLE:text='导入后按所选插件刮削，编号或标题、年份、类型唯一匹配后自动补全资料；歧义在任务页待确认；整理目标留空则不移动文件。'
         else:text='此类型按原文件名入库，不自动刮削。'
         text+='已有后台任务时会排队处理，仍可继续添加其他目录。'
         if self.pending:text+=f'本次拖入共 {len(self.pending)+1} 个文件夹，确认后其余将按相同设置依次加入队列。'

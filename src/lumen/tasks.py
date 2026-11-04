@@ -16,12 +16,31 @@ def database(directory):
     finally:connection.close()
 
 
-def snapshot(directory,offset=0):
+def snapshot(directory,offset=0,pending_only=False):
+    # Filter before pagination: a failed task must remain discoverable even when
+    # more than one page of newer successful tasks exists.
+    scopes={
+        'all':(),
+        'active':('queued','running','importing','paused'),
+        'pending':('pending','retry'),
+        'failed':('failed','partial'),
+        'history':('done','cancelled','external'),
+    }
+    conditions=[];parameters=[]
+    if isinstance(pending_only,str):
+        if pending_only not in scopes:raise ValueError('未知任务筛选范围')
+        states=scopes[pending_only]
+        if states:
+            conditions.append('status IN ('+','.join('?' for _ in states)+')');parameters.extend(states)
+    elif pending_only:
+        conditions.append("kind='ingest' AND status IN ('pending','retry')")
+    where=' WHERE '+' AND '.join(conditions) if conditions else ''
+    parameters.append(max(0,int(offset)))
     with database(directory) as db:
         rows=db.execute('''SELECT id,kind,status,updated,substr(error,1,2000) AS error,
              CASE WHEN length(payload)<=32768 THEN payload ELSE '{}' END AS payload,
              substr(result,1,240) AS result,length(payload)+length(result) AS report_size
-             FROM tasks ORDER BY updated DESC,id DESC LIMIT 100 OFFSET ?''',(max(0,int(offset)),)).fetchall()
+             FROM tasks'''+where+' ORDER BY updated DESC,id DESC LIMIT 100 OFFSET ?',parameters).fetchall()
     output=[]
     for row in rows:
         item=dict(row)

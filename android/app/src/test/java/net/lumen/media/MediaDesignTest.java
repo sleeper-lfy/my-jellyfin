@@ -45,6 +45,7 @@ public class MediaDesignTest {
             JSONObject work=new JSONObject().put("id",42).put("title","Selected movie").put("kind","movie").put("favorite",0).put("watchlist",0).put("files",new org.json.JSONArray()).put("file_count",0).put("overview","A long synopsis. ".repeat(200));
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
             LinearLayout root=(LinearLayout)read(activity,"root");
+            root.findViewWithTag("detailOverview").performClick();
             root.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));root.layout(0,0,360,800);shadowOf(Looper.getMainLooper()).idle();
             ScrollView scroll=(ScrollView)read(activity,"detailScroll");scroll.scrollTo(0,100);int position=scroll.getScrollY();assertTrue("page="+scroll.getChildAt(0).getHeight()+", viewport="+scroll.getHeight(),position>0);
             Button favorite=root.findViewWithTag("mark:42:favorite");favorite.performClick();assertTrue(favorite.isSelected());assertFalse(favorite.isEnabled());

@@ -380,7 +380,7 @@ class DownloadQueue:
             payload={'work_id':work_id,'index':index,'action':action,'directory':directory}
             acquired=False
             try:
-                self.budget.acquire(lambda:self.cancelled(task_id));acquired=True
+                self.budget.acquire(lambda:self.cancelled(task_id),resource='disk');acquired=True
                 check_cancelled(lambda:self.cancelled(task_id))
                 if action=='import':
                     result=import_download_folder(library,work_id,cancelled=lambda:self.cancelled(task_id),directory=directory)

@@ -1,0 +1,22 @@
+{
+  "api_version": 1,
+  "id": "javbus-films",
+  "name": "JavBus · 编号影片资料",
+  "version": "1.0.0",
+  "description": "按编号搜索影片并读取公开标题、日期、标签、演员、封面和剧照。只返回资料，不返回视频或下载链接。网站验证或页面变化会报告失败。",
+  "capabilities": [
+    "search",
+    "detail"
+  ],
+  "search_filters": [
+    "name"
+  ],
+  "domains": [
+    "www.javbus.com",
+    "javbus.com",
+    "pics.javbus.com",
+    "pics.dmm.co.jp",
+    "pics.dmm.com"
+  ],
+  "base_url": "https://www.javbus.com"
+}

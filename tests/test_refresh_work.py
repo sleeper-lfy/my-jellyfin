@@ -81,7 +81,7 @@ def test_details_offer_scan_and_episode_removal(qapp, tmp_path, monkeypatch):
     try:
         window.navigate('series');window.open_details(work['id'], fetch=False)
         detail = window.detail_page
-        actions = [action.text() for action in detail.management_menu.actions()]
+        actions = [action.text() for group in detail.management_menu.actions() for action in (group.menu().actions() if group.menu() else [group])]
         assert '扫描本地文件变化…' in actions
         detail.episode_menu(detail.files.visualItemRect(detail.files.item(0)).center())
         assert any('移除此集的媒体库记录' in text for text in captured)

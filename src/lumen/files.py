@@ -75,20 +75,26 @@ def safe_name(value):
     return value
 
 
-def plan_move(library, work_id, destination):
+def plan_move(library, work_id, destination, rule=None):
+    """Build a read-only, fully checked move plan; execution revalidates its hashes."""
+    from .organize_templates import load_rule, validate_rule, destinations, companion_copies
     work = library.work(work_id)
     root = Path(destination).resolve()
+    selected = load_rule(library, work['kind'], root) if rule is None else validate_rule(rule)
     pairs = []
-    for f in work['files']:
+    items = destinations(work, root, selected)
+    for item in items:
+        f, folder, stem = item['file'], item['folder'], item['stem']
         source = Path(f['path'])
-        folder = root / safe_name(work['title'] + (f" ({work['year']})" if work['year'] else ''))
-        if work['kind'] == 'series':
-            folder /= f"Season {f['season']:02}" if f['season'] is not None else '未分季'
-        if work['kind'] == 'other':
-            folder = root / Path(f['root']).name / source.relative_to(f['root']).parent
+        if source.is_symlink():
+            raise ValueError('不整理符号链接视频：' + str(source))
         related = related_files(source)
         for p in [source, *related]:
-            target = folder / p.name
+            if p.is_symlink():
+                raise ValueError('不整理符号链接附属文件：' + str(p))
+            # Keep language/forced subtitles and other same-stem sidecar suffixes intact.
+            suffix = p.name[len(source.stem):]
+            target = folder / (stem + suffix)
             if not target.resolve().is_relative_to(root):
                 raise ValueError('目标目录包含指向分区外部的符号链接')
             if p.resolve() == target.resolve():
@@ -97,8 +103,32 @@ def plan_move(library, work_id, destination):
                 raise FileExistsError(f'目标已存在：{target}')
             pairs.append({'source': str(p), 'target': str(target), 'digest': fingerprint(p), 'file_id': f['id'] if p == source else None,
                           'root': str(root), 'state': 'pending'})
-    # A shared subtitle may be associated with only one operation.
-    pairs = list({p['source']: p for p in pairs}.values())
+    copies = companion_copies(work, items, pairs, root)
+    shared = {str(source) for source, target in copies}
+    for pair in pairs:
+        if pair['source'] in shared:
+            pair['keep_source'] = True
+    for source, target in copies:
+        if not target.resolve().is_relative_to(root):
+            raise ValueError('NFO 配套图片目标越过整理根目录')
+        if source.resolve() == target.resolve():
+            continue
+        digest = fingerprint(source)
+        if target.exists():
+            if not target.is_symlink() and target.is_file() and fingerprint(target) == digest:
+                continue
+            raise FileExistsError('配套资料目标已存在：' + str(target))
+        pairs.append({'source':str(source),'target':str(target),'digest':digest,'file_id':None,
+                      'root':str(root),'state':'pending','keep_source':True})
+    # Shared assets may be copied to multiple seasons; moving a source twice is forbidden.
+    sources = {}; unique = {}
+    for pair in pairs:
+        previous = sources.get(pair['source'])
+        if previous and previous['target'] != pair['target'] and not (previous.get('keep_source') and pair.get('keep_source')):
+            raise FileExistsError('附属文件对应多个目标，请先确认：' + pair['source'])
+        sources[pair['source']] = pair
+        unique[(pair['source'],pair['target'])] = pair
+    pairs = list(unique.values())
     targets = [p['target'].casefold() for p in pairs]
     if len(set(targets)) != len(targets):
         raise FileExistsError('整理后出现同名冲突')
@@ -170,7 +200,7 @@ def execute_move(library, pairs=None, task_id=None):
                 temporary = Path(p.get('temporary', ''))
                 if temporary.is_file() and os.path.samefile(temporary, target):
                     temporary.unlink()
-                if source.exists():
+                if source.exists() and not p.get('keep_source',False):
                     if fingerprint(source) != p['digest']:
                         raise IOError('源文件在整理期间发生改变，保留两份文件')
                     source.unlink()

@@ -16,7 +16,7 @@ import java.util.concurrent.Executors;
 public final class RemoteActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService network=Executors.newSingleThreadExecutor();
-    private Api api;private TextView title,status,time,powerStatus;private Button shutdown,cancelShutdown;private SeekBar seek,volume;
+    private Api api;private TextView title,status,time,powerStatus;private Button shutdown,cancelShutdown;private PlaybackIconButton togglePlayback;private SeekBar seek,volume;
     private JSONObject state=new JSONObject();private String commandId="";private boolean active=false,dragging=false;private volatile boolean polling=false;private int generation=0;
     private final Runnable refresh=new Runnable(){public void run(){poll();if(active)handler.postDelayed(this,1500);}};
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
@@ -30,11 +30,14 @@ public final class RemoteActivity extends Activity {
         LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(20),dp(20),dp(20),dp(20));page.setBackgroundColor(Color.rgb(16,16,16));
         page.addView(button("返回媒体库",this::finish));page.addView(label("电脑遥控",26));title=label("正在连接电脑…",20);page.addView(title);
         status=label("请先在电脑设置 → 局域网 / Android 中启用手机遥控",14);page.addView(status);time=label("",14);page.addView(time);
-        seek=new SeekBar(this);seek.setMax(10000);seek.setContentDescription("电脑播放进度");page.addView(seek);
+        seek=new SeekBar(this);seek.setMax(10000);seek.setContentDescription("电脑播放进度");page.addView(seek,new LinearLayout.LayoutParams(-1,dp(48)));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar bar){dragging=true;}public void onProgressChanged(SeekBar bar,int value,boolean user){}public void onStopTrackingTouch(SeekBar bar){dragging=false;send("seek",state.optDouble("duration")*bar.getProgress()/10000);}});
-        LinearLayout actions=new LinearLayout(this);page.addView(actions);
-        for(String text:new String[]{"−10 秒","播放 / 暂停","+10 秒"})actions.addView(button(text,()->{if(text.equals("播放 / 暂停"))send("toggle",null);else send("jump",text.startsWith("−")?-10:10);}),new LinearLayout.LayoutParams(0,-2,1));
-        page.addView(label("电脑音量",16));volume=new SeekBar(this);volume.setMax(100);volume.setContentDescription("电脑音量");page.addView(volume);
+        LinearLayout actions=new LinearLayout(this);actions.setBaselineAligned(false);page.addView(actions);
+        PlaybackIconButton back=new PlaybackIconButton(this,"backward","电脑后退 10 秒");back.setOnClickListener(v->send("jump",-10));
+        togglePlayback=new PlaybackIconButton(this,"play","电脑播放 / 暂停");togglePlayback.setOnClickListener(v->send("toggle",null));
+        PlaybackIconButton forward=new PlaybackIconButton(this,"forward","电脑快进 10 秒");forward.setOnClickListener(v->send("jump",10));
+        for(PlaybackIconButton control:new PlaybackIconButton[]{back,togglePlayback,forward})actions.addView(control,new LinearLayout.LayoutParams(0,dp(56),1));
+        page.addView(label("电脑音量",16));volume=new SeekBar(this);volume.setMax(100);volume.setContentDescription("电脑音量");page.addView(volume,new LinearLayout.LayoutParams(-1,dp(48)));
         volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar bar){}public void onProgressChanged(SeekBar bar,int value,boolean user){}public void onStopTrackingTouch(SeekBar bar){send("volume",bar.getProgress());}});
         page.addView(button("静音 / 恢复",()->send("mute",!state.optBoolean("muted"))));page.addView(button("选择音轨",()->tracks(false)));page.addView(button("选择字幕",()->tracks(true)));
         page.addView(label("电脑电源",20));powerStatus=label("正在读取电脑关机权限…",14);page.addView(powerStatus);
@@ -66,7 +69,7 @@ public final class RemoteActivity extends Activity {
     private void poll(){
         if(polling||!active)return;polling=true;int ticket=generation;
         network.execute(()->{try{JSONObject result=api.get("/api/remote");runOnUiThread(()->{
-            if(!active||ticket!=generation)return;state=result;powerState();title.setText(result.optBoolean("active")?result.optString("title"):"电脑当前未播放影片");
+            if(!active||ticket!=generation)return;state=result;powerState();togglePlayback.setSymbol(result.optBoolean("playing")?"pause":"play",result.optBoolean("playing")?"暂停电脑播放":"开始电脑播放");title.setText(result.optBoolean("active")?result.optString("title"):"电脑当前未播放影片");
             time.setText(clock(result.optDouble("position"))+" / "+clock(result.optDouble("duration")));if(!dragging)seek.setProgress((int)(result.optDouble("position")/Math.max(1,result.optDouble("duration"))*10000));
             if(!volume.isPressed())volume.setProgress(result.optInt("volume"));JSONObject last=result.optJSONObject("last_command");
             if(last!=null&&last.optString("id").equals(commandId)){status.setText(last.optBoolean("ok")?(last.optString("action").startsWith("shutdown")?"电源命令已执行，请查看关机状态":result.optBoolean("playing")?"电脑正在播放":"电脑已暂停"):last.optString("error"));commandId="";}

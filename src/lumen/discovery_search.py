@@ -181,7 +181,7 @@ class DiscoverySearchJobs:
             from .core import Library, ImportCancelled
             library = None; acquired = False
             try:
-                self.budget.acquire(self.closing.is_set); acquired = True
+                self.budget.acquire(self.closing.is_set,resource='network'); acquired = True
                 library = Library(self.directory, initialize=False)
                 library.parent_task_id = identifier
                 self._record(identifier, 'running', payload)

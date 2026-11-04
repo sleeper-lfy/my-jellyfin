@@ -14,13 +14,16 @@ def inline(window):
     window.run_job = Mock(side_effect=lambda title, function, callback=None: function(window.library, lambda *args: None))
 
 
-def test_auto_scrape_takes_first_exact_match_then_first_candidate(qapp, tmp_path, monkeypatch):
+def test_auto_scrape_requires_unique_match_and_fetches_detail(qapp, tmp_path, monkeypatch):
     window = MainWindow(tmp_path/'first-match')
     manager_for(window.library)
     window.library.set_setting('partition:movie', {'plugin': 'catalog-json'})
     ids = {}
     responses = {}
-    monkeypatch.setattr(Plugins, 'run', lambda self, plugin_id, operation, query=None, **kw: responses[query])
+    def run(self, plugin_id, operation, query=None, **kw):
+        if operation == 'search': return responses[query]
+        return [dict(responses['Alpha'][1], overview='Full detail')]
+    monkeypatch.setattr(Plugins, 'run', run)
     try:
         for name in ['Alpha', 'Beta', 'Gamma', 'Delta']:
             folder = tmp_path/name.lower(); folder.mkdir()
@@ -41,12 +44,12 @@ def test_auto_scrape_takes_first_exact_match_then_first_candidate(qapp, tmp_path
             assert window.run_job.called
         # Exact title+year match wins even behind an earlier wrong-year candidate.
         assert window.library.work(ids['Alpha'])['sources'][0]['source_id'] == 'exact'
-        # Ambiguous titles default to the first search result instead of failing.
-        assert window.library.work(ids['Beta'])['sources'][0]['source_id'] == 'b1'
-        # Without an exact match the first candidate is used.
-        assert window.library.work(ids['Gamma'])['sources'][0]['source_id'] == 'fuzzy'
-        pending = window.library.db.execute("SELECT error FROM tasks WHERE kind='match' AND status='pending'").fetchall()
-        assert len(pending) == 1 and '未找到候选' in pending[0][0]
+        assert window.library.work(ids['Alpha'])['metadata']['overview'] == 'Full detail'
+        assert not window.library.work(ids['Beta'])['sources']
+        assert not window.library.work(ids['Gamma'])['sources']
+        pending = window.library.db.execute("SELECT error FROM tasks WHERE kind='ingest' AND status='pending'").fetchall()
+        assert len(pending) == 3
+
     finally:
         window.close()
 
