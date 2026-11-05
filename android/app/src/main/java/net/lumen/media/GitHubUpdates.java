@@ -11,11 +11,11 @@ import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.function.BooleanSupplier;
 
-/** Public Gitee requests use no media-server credentials; APKs stream to bounded disk files. */
+/** Public GitHub requests use no media-server credentials; APKs stream to bounded disk files. */
 final class GitHubUpdates {
-    static final String REPO="sleeper_lfy/my-jellyfin";
-    static final String RELEASE="https://gitee.com/api/v5/repos/"+REPO+"/releases/latest";
-    static final String TARGET="https://gitee.com/"+REPO+"/raw/main/target/";
+    static final String REPO="sleeper-lfy/my-jellyfin";
+    static final String RELEASE="https://api.github.com/repos/"+REPO+"/releases/latest";
+    static final String TARGET="https://raw.githubusercontent.com/"+REPO+"/main/target/";
     static final long MAX_APK=256L*1024*1024;
     interface Fetcher {byte[] get(String url,int limit)throws Exception;}
     interface Sizer {long size(String url)throws Exception;}
@@ -42,36 +42,36 @@ final class GitHubUpdates {
             if(!release.optBoolean("draft")&&!release.optBoolean("prerelease")&&compare(version,installed)>0){
                 JSONArray assets=release.optJSONArray("assets");JSONObject apk=null,checksum=null;
                 if(assets!=null)for(int i=0;i<assets.length();i++){JSONObject asset=assets.getJSONObject(i);if(asset.optString("name").equals("Lumen-android-debug.apk"))apk=asset;if(asset.optString("name").equals("Lumen-android-debug.apk.sha256"))checksum=asset;}
-                if(apk!=null){String hash=apk.optString("digest").replaceFirst("^sha256:","");if(!hash.matches("[0-9a-fA-F]{64}")&&checksum!=null)hash=new String(fetch.get(checksum.getString("browser_download_url"),4096),StandardCharsets.UTF_8).trim().split("\\s+")[0];String url=apk.getString("browser_download_url");long size=apk.optLong("size",0);if(size<=0)size=sizer.size(url);best=new Candidate(version,-1,url,size,hash,release.optString("body"),"Gitee Releases");}
+                if(apk!=null){String hash=apk.optString("digest").replaceFirst("^sha256:","");if(!hash.matches("[0-9a-fA-F]{64}")&&checksum!=null)hash=new String(fetch.get(checksum.getString("browser_download_url"),4096),StandardCharsets.UTF_8).trim().split("\\s+")[0];String url=apk.getString("browser_download_url");long size=apk.optLong("size",0);if(size<=0)size=sizer.size(url);best=new Candidate(version,-1,url,size,hash,release.optString("body"),"GitHub Releases");}
             }
         }catch(Exception failure){error=failure.getMessage();}
         try{
             JSONObject target=new JSONObject(new String(fetch.get(TARGET+"android-build.json",64*1024),StandardCharsets.UTF_8));
             String version=target.getString("version");long code=target.getLong("version_code");
-            Candidate candidate=new Candidate(version,code,TARGET+"Lumen-android-debug.apk",target.getLong("bytes"),target.getString("sha256"),"仓库 target 中经过打包验证的 Android 安装包。","Gitee target");successful++;
+            Candidate candidate=new Candidate(version,code,TARGET+"Lumen-android-debug.apk",target.getLong("bytes"),target.getString("sha256"),"仓库 target 中经过打包验证的 Android 安装包。","GitHub target");successful++;
             if(code>installedCode&&compare(version,installed)>=0&&(best==null||compare(version,best.version)>=0))best=candidate;
         }catch(Exception failure){error=failure.getMessage();}
-        if(successful==0)throw new IOException("无法读取 Gitee 更新信息："+error);
+        if(successful==0)throw new IOException("无法读取 GitHub 更新信息："+error);
         return best;
     }
     static void validateUrl(String value)throws Exception{
         URI uri=new URI(value);String host=uri.getHost();
-        // Release attachments redirect to Gitee's own CDN (foruda.gitee.com).
-        boolean allowed=host!=null&&(host.equals("gitee.com")||host.endsWith(".gitee.com"));
-        if(!"https".equalsIgnoreCase(uri.getScheme())||uri.getRawUserInfo()!=null||uri.getFragment()!=null||uri.getPort()!=-1&&uri.getPort()!=443||!allowed)throw new IOException("更新地址必须来自 Gitee HTTPS");
+        // Validate each hop to the GitHub Release attachment CDN.
+        boolean allowed=host!=null&&(host.equals("github.com")||host.equals("api.github.com")||host.equals("raw.githubusercontent.com")||host.equals("release-assets.githubusercontent.com")||host.equals("objects.githubusercontent.com")||host.equals("github-releases.githubusercontent.com"));
+        if(!"https".equalsIgnoreCase(uri.getScheme())||uri.getRawUserInfo()!=null||uri.getFragment()!=null||uri.getPort()!=-1&&uri.getPort()!=443||!allowed)throw new IOException("更新地址必须来自 GitHub HTTPS");
     }
     static HttpURLConnection open(String value)throws Exception{
         for(int redirects=0;redirects<6;redirects++){
             validateUrl(value);HttpURLConnection connection=(HttpURLConnection)new URL(value).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(20000);connection.setRequestProperty("User-Agent","Lumen-Android-Updater");connection.setRequestProperty("Accept-Encoding","identity");
             int status;
             try{status=connection.getResponseCode();}catch(Exception error){connection.disconnect();throw error;}
-            if(status>=300&&status<400){String next=connection.getHeaderField("Location");connection.disconnect();if(next==null)throw new IOException("Gitee 重定向无效");value=new URI(value).resolve(next).toString();continue;}
-            if(status!=200){connection.disconnect();throw new IOException("Gitee HTTP "+status);}
+            if(status>=300&&status<400){String next=connection.getHeaderField("Location");connection.disconnect();if(next==null)throw new IOException("GitHub 重定向无效");value=new URI(value).resolve(next).toString();continue;}
+            if(status!=200){connection.disconnect();throw new IOException("GitHub HTTP "+status);}
             return connection;
-        }throw new IOException("Gitee 重定向次数过多");
+        }throw new IOException("GitHub 重定向次数过多");
     }
     static long size(String url)throws Exception{
-        // Gitee's API omits attachment sizes; the download itself reports them.
+        // Resolve size from the response when release metadata omits it.
         HttpURLConnection connection=open(url);
         try{long length=connection.getContentLengthLong();if(length<=0)throw new IOException("无法确认安装包大小");return length;}finally{connection.disconnect();}
     }

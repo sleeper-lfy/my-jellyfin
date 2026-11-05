@@ -4,7 +4,7 @@ from pathlib import Path
 MAX_STILLS = 40
 
 
-def scraped_poster_path(library, work, poster=None):
+def scraped_poster_path(library, work, poster=None, *, fallback_paths=()):
     """Select a portrait still or crop a copy when the scraped cover is unsuitable."""
     from PySide6.QtCore import QSize, QSaveFile, QIODevice
     from .images import decode
@@ -20,7 +20,7 @@ def scraped_poster_path(library, work, poster=None):
     picture=read(poster)
     if suitable(picture):return str(poster)
     first=None
-    for path in still_paths(work):
+    for path in [*still_paths(work), *fallback_paths]:
         image=read(path)
         if image is None or image.isNull():continue
         if suitable(image):return str(path)
@@ -35,15 +35,24 @@ def scraped_poster_path(library, work, poster=None):
     return str(target)
 
 
+def scraped_image_path(work, role):
+    """Use only host-cached artwork belonging to the current source URL."""
+    metadata=work.get('metadata',{})
+    entry=metadata.get(role+'_cache',{})
+    if not isinstance(entry,dict) or entry.get('url')!=metadata.get(role):return None
+    path=entry.get('path')
+    return str(path) if path and Path(path).is_file() else None
+
+
 def thumbnail_path(library, work):
     """Prefer explicit artwork and real stills over generated video frames."""
     selected=library.setting(f'artwork_{work["id"]}',{}).get('thumbnail')
     local=work.get('metadata',{}).get('nfo_thumbnails',{})
     files=work.get('files',[])
-    paths=[selected,*still_paths(work),
+    paths=[selected,scraped_image_path(work,'cover'),*still_paths(work),
            *[local.get(str(file['id'])) for file in files],
            *[library.directory/'cache'/(file['digest']+'.jpg') for file in files],
-           work.get('thumbnail')]
+           scraped_image_path(work,'poster'),work.get('thumbnail')]
     return next((str(path) for path in paths if path and Path(path).is_file()),None)
 
 

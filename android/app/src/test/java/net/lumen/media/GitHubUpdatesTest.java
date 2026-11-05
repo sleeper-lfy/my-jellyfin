@@ -29,21 +29,26 @@ import static org.robolectric.Shadows.shadowOf;
 @RunWith(RobolectricTestRunner.class) @Config(sdk=33)
 public class GitHubUpdatesTest {
     private final String hash="a".repeat(64);
+    @Test public void endpointsAndRedirectHostsUseGithub()throws Exception{
+        assertEquals("https://api.github.com/repos/sleeper-lfy/my-jellyfin/releases/latest",GitHubUpdates.RELEASE);
+        assertEquals("https://raw.githubusercontent.com/sleeper-lfy/my-jellyfin/main/target/",GitHubUpdates.TARGET);
+        for(String host:new String[]{"github.com","api.github.com","raw.githubusercontent.com","release-assets.githubusercontent.com","objects.githubusercontent.com","github-releases.githubusercontent.com"})GitHubUpdates.validateUrl("https://"+host+"/asset?signature=test");
+    }
     private byte[] bytes(String value){return value.getBytes(StandardCharsets.UTF_8);}
     private byte[] manifest(String version,long code)throws Exception{return bytes(new JSONObject().put("version",version).put("version_code",code).put("bytes",5).put("sha256",hash).toString());}
-    private String release(String version){return "{\"tag_name\":\"v"+version+"\",\"assets\":[{\"name\":\"Lumen-android-debug.apk\",\"browser_download_url\":\"https://gitee.com/sleeper_lfy/my-jellyfin/releases/download/v"+version+"/Lumen-android-debug.apk\",\"size\":5,\"digest\":\"sha256:"+hash+"\"}]}";}
+    private String release(String version){return "{\"tag_name\":\"v"+version+"\",\"assets\":[{\"name\":\"Lumen-android-debug.apk\",\"browser_download_url\":\"https://github.com/sleeper-lfy/my-jellyfin/releases/download/v"+version+"/Lumen-android-debug.apk\",\"size\":5,\"digest\":\"sha256:"+hash+"\"}]}";}
     @Test public void targetFallbackWorksWhenReleaseApiIsUnavailable()throws Exception{
         ArrayList<String> urls=new ArrayList<>();GitHubUpdates.Candidate update=GitHubUpdates.check("0.4.3",6,(url,limit)->{urls.add(url);if(url.equals(GitHubUpdates.RELEASE))throw new IOException("HTTP 403");return manifest("0.4.4",7);});
         assertEquals("0.4.4",update.version);assertEquals(7,update.code);assertEquals(GitHubUpdates.TARGET+"Lumen-android-debug.apk",update.url);assertEquals(2,urls.size());
     }
     @Test public void newestStableReleaseWinsAndInstalledVersionDoesNotDowngrade()throws Exception{
         GitHubUpdates.Candidate update=GitHubUpdates.check("0.4.3",6,(url,limit)->url.equals(GitHubUpdates.RELEASE)?bytes(release("0.4.5")):manifest("0.4.4",7));
-        assertEquals("0.4.5",update.version);assertEquals("Gitee Releases",update.source);
+        assertEquals("0.4.5",update.version);assertEquals("GitHub Releases",update.source);
         assertNull(GitHubUpdates.check("0.4.3",6,(url,limit)->url.equals(GitHubUpdates.RELEASE)?bytes(release("0.4.2")):manifest("0.4.3",6)));
         assertEquals(1,GitHubUpdates.compare("0.4.10","0.4.9"));
     }
     @Test public void missingChecksumsAndUntrustedUrlsCannotBecomeUpdatePackages()throws Exception{
-        for(String url:new String[]{"http://gitee.com/file.apk","https://gitee.com.evil.test/file.apk","https://gitee.com@evil.test/file.apk","https://gitee.com:444/file.apk","file:///tmp/a.apk","https://github.com/file.apk"})assertThrows(Exception.class,()->GitHubUpdates.validateUrl(url));
+        for(String url:new String[]{"http://github.com/file.apk","https://github.com.evil.test/file.apk","https://github.com@evil.test/file.apk","https://github.com:444/file.apk","file:///tmp/a.apk","https://gitee.com/file.apk","https://foruda.gitee.com/file.apk","https://sub.github.com/file.apk"})assertThrows(Exception.class,()->GitHubUpdates.validateUrl(url));
         assertThrows(Exception.class,()->new GitHubUpdates.Candidate("0.4.4",7,GitHubUpdates.TARGET+"a.apk",4,"","","test"));
         assertThrows(Exception.class,()->GitHubUpdates.check("0.4.3",6,(url,limit)->{throw new IOException("Network unavailable");}));
     }

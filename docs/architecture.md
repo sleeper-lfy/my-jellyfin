@@ -21,6 +21,7 @@
 | `fans.py` / `fans_ui.py` | 按作者文件夹归档、目录身份绑定、保留文件历史的逻辑合并 |
 | `playback_journal.py` / `diagnostics.py` | 播放累计快照后台保存、幂等恢复、界面卡顿堆栈及轮转日志 |
 | `backup.py` | SQLite 在线备份、格式/完整性检查、恢复前自动留存 |
+| `metadata_health.py` / `metadata_health_ui.py` | 缺失资料补全、图片独立重试及明确选择的强制覆盖；下载完成后短事务替换展示资料，保留个人状态与文件 / 观看记录，提交前校验来源身份及并发编辑 |
 | `migrations.py` / `schema.py` | 数据库版本、升级前备份、按序事务迁移和未来版本写入保护 |
 | `support_bundle.py` | 后台收集白名单诊断信息、脱敏内容预览与原子导出 |
 | `release_acceptance.py` | 绑定源码及安装包的自动验收证据、人工验收与发布门槛 |

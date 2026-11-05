@@ -1,4 +1,4 @@
-"""Public Gitee Windows updates with bounded downloads and a normal Inno upgrade."""
+"""Public GitHub Windows updates with bounded downloads and a normal Inno upgrade."""
 from dataclasses import dataclass,field
 import hashlib
 import json
@@ -14,9 +14,9 @@ from urllib.parse import urlsplit,urljoin
 import httpx
 from .core import check_cancelled
 
-REPO='sleeper_lfy/my-jellyfin'
-API=f'https://gitee.com/api/v5/repos/{REPO}/releases/latest'
-RAW=f'https://gitee.com/{REPO}/raw/main/target/'
+REPO='sleeper-lfy/my-jellyfin'
+API=f'https://api.github.com/repos/{REPO}/releases/latest'
+RAW=f'https://raw.githubusercontent.com/{REPO}/main/target/'
 MAX_INSTALLER=1024*1024*1024
 INSTALLER='Lumen-Setup-x64.exe'
 
@@ -27,16 +27,18 @@ def version(value):
 
 
 def release_url(name,tag):
-    return f'https://gitee.com/{REPO}/releases/download/{tag}/{name}'
+    return f'https://github.com/{REPO}/releases/download/{tag}/{name}'
 
 
 def validate_url(url):
     parsed=urlsplit(url)
     host=parsed.hostname or ''
-    # Release attachments redirect to Gitee's own CDN (foruda.gitee.com).
-    allowed=host=='gitee.com' or host.endswith('.gitee.com')
+    # Validate every hop, including the signed Release attachment CDN redirect.
+    allowed=host in {'github.com','api.github.com','raw.githubusercontent.com',
+                     'release-assets.githubusercontent.com','objects.githubusercontent.com',
+                     'github-releases.githubusercontent.com'}
     if parsed.scheme!='https' or parsed.username is not None or parsed.password is not None or parsed.port not in (None,443) or parsed.fragment or not allowed:
-        raise ValueError('更新地址必须来自 Gitee HTTPS')
+        raise ValueError('更新地址必须来自 GitHub HTTPS')
 
 
 @dataclass(frozen=True)
@@ -67,12 +69,12 @@ def response(client,url):
         result=client.send(request,stream=True)
         if result.is_redirect:
             location=result.headers.get('Location');result.close()
-            if not location:raise ValueError('Gitee 重定向无效')
+            if not location:raise ValueError('GitHub 重定向无效')
             url=urljoin(url,location);continue
         try:result.raise_for_status()
         except Exception:result.close();raise
         return result
-    raise ValueError('Gitee 重定向次数过多')
+    raise ValueError('GitHub 重定向次数过多')
 
 
 def client_for(proxy=None):
@@ -93,7 +95,7 @@ def fetch(url,limit,proxy=None,cancelled=None):
 
 
 def install_size(url,client=None,proxy=None):
-    """Gitee's API omits attachment sizes, so ask the download itself."""
+    """Resolve size from the download if release metadata does not provide it."""
     owned=client is None;client=client or client_for(proxy)
     try:
         for _ in range(6):
@@ -103,20 +105,20 @@ def install_size(url,client=None,proxy=None):
             try:
                 if result.is_redirect:
                     location=result.headers.get('Location')
-                    if not location:raise ValueError('Gitee 重定向无效')
+                    if not location:raise ValueError('GitHub 重定向无效')
                     url=urljoin(url,location);continue
                 result.raise_for_status()
                 length=result.headers.get('Content-Length')
                 if length is None:raise ValueError('无法确认安装包大小')
                 return int(length)
             finally:result.close()
-        raise ValueError('Gitee 重定向次数过多')
+        raise ValueError('GitHub 重定向次数过多')
     finally:
         if owned:client.close()
 
 
 def installer_candidate(new,assets,fetcher,notes,size_resolver=None):
-    """Prefer a single installer attachment; Gitee's 100MB attachment limit otherwise requires split parts."""
+    """Prefer the complete installer, while retaining support for split attachments."""
     size_resolver=size_resolver or install_size
     def size_of(asset):
         value=asset.get('size')
@@ -170,7 +172,7 @@ def check(current,fetcher=fetch,cancelled=None,size_resolver=None):
     except (ValueError,TypeError,AttributeError,KeyError,IndexError,httpx.HTTPError,OSError):pass
     check_cancelled(cancelled)
     if not successful:
-        raise ValueError('无法读取 Gitee 更新信息：仓库还没有发布 Release，或网络暂时不可用')
+        raise ValueError('无法读取 GitHub 更新信息：仓库还没有发布 Release，或网络暂时不可用')
     return best
 
 

@@ -15,7 +15,13 @@ def executable():
 
 
 def candidate():
-    data=executable();return updates.Candidate('0.4.6',f'https://gitee.com/{updates.REPO}/releases/download/v0.4.6/Lumen-Setup-x64.exe',len(data),hashlib.sha256(data).hexdigest())
+    data=executable();return updates.Candidate('0.4.6',f'https://github.com/{updates.REPO}/releases/download/v0.4.6/Lumen-Setup-x64.exe',len(data),hashlib.sha256(data).hexdigest())
+
+
+def test_update_endpoints_use_the_github_repository():
+    assert updates.API=='https://api.github.com/repos/sleeper-lfy/my-jellyfin/releases/latest'
+    assert updates.RAW=='https://raw.githubusercontent.com/sleeper-lfy/my-jellyfin/main/target/'
+    assert updates.release_url(updates.INSTALLER,'v0.4.6')==candidate().url
 
 
 def metadata(url,limit):
@@ -48,7 +54,7 @@ def test_release_checksums_and_newest_stable_asset():
         if url.endswith('.sha256'):return (value.sha256+'\n').encode()
         return metadata(url,limit)
     assert updates.check('0.4.5',read).version=='0.4.7'
-    for url in ('http://gitee.com/a.exe','https://gitee.com.evil.test/a.exe','https://gitee.com@evil.test/a.exe','file:///tmp/a','https://gitee.com:444/a.exe','https://github.com/a.exe'):
+    for url in ('http://github.com/a.exe','https://github.com.evil.test/a.exe','https://github.com@evil.test/a.exe','file:///tmp/a','https://github.com:444/a.exe','https://gitee.com/a.exe'):
         with pytest.raises(ValueError):updates.validate_url(url)
     with pytest.raises(ValueError):updates.Candidate('0.4.6',value.url,True,value.sha256)
     with pytest.raises(ValueError):updates.Candidate('0.4.6',value.url.replace(updates.REPO,'someone/else'),value.size,value.sha256)
@@ -79,7 +85,7 @@ def test_split_installer_parts_merge_verify_and_reject_tampering(tmp_path):
     with pytest.raises(ValueError):
         updates.Candidate('0.4.8','',len(data),checksum,parts=((updates.release_url('Lumen-Setup-x64.exe.part001','v0.4.8'),half),))
     with pytest.raises(ValueError):
-        updates.Candidate('0.4.8','',len(data),checksum,parts=(('https://gitee.com/evil/repo/releases/download/v0.4.8/Lumen-Setup-x64.exe.part001',half),))
+        updates.Candidate('0.4.8','',len(data),checksum,parts=(('https://github.com/evil/repo/releases/download/v0.4.8/Lumen-Setup-x64.exe.part001',half),))
     def empty(url,limit):
         if url==updates.API:return json.dumps({'tag_name':'v0.4.8','assets':[]}).encode()
         return metadata(url,limit)
@@ -142,8 +148,7 @@ def test_missing_release_is_not_a_network_failure():
         updates.check('0.4.5',broken)
 
 
-def test_missing_api_size_is_resolved_from_the_download_and_gitee_cdn_is_allowed():
-    # Gitee omits attachment sizes/digests; the URL redirects to foruda.gitee.com.
+def test_missing_api_size_is_resolved_and_github_asset_cdn_is_allowed():
     value=candidate()
     assets={'Lumen-Setup-x64.exe':{'browser_download_url':value.url,'size':None,'digest':None},
             'Lumen-Setup-x64.exe.sha256':{'browser_download_url':value.url+'.sha256','size':None}}
@@ -158,7 +163,7 @@ def test_missing_api_size_is_resolved_from_the_download_and_gitee_cdn_is_allowed
         resolved.append(url);return value.size
     assert updates.check('0.4.5',read,size_resolver=sizer).size==value.size
     assert resolved==[value.url]
-    for url in ('https://foruda.gitee.com/attach_file/123/a.exe?token=x','https://gitee.com/x/y','https://sub.gitee.com/a'):
+    for url in ('https://release-assets.githubusercontent.com/asset/a.exe?signature=x','https://github.com/x/y','https://raw.githubusercontent.com/sleeper-lfy/my-jellyfin/main/target/a'):
         updates.validate_url(url)
-    for url in ('https://gitee.com.evil.test/a','https://evil-gitee.com/a','https://gitee.com:444/a','http://foruda.gitee.com/a'):
+    for url in ('https://github.com.evil.test/a','https://evil-github.com/a','https://github.com:444/a','http://release-assets.githubusercontent.com/a','https://gitee.com/a','https://foruda.gitee.com/a','https://sub.github.com/a'):
         with pytest.raises(ValueError):updates.validate_url(url)

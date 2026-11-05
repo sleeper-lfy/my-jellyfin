@@ -70,6 +70,16 @@ def test_probe_imports_dependencies_but_never_crawls_or_installs(library,engine)
     assert not Plugins(library).installed() and library.setting('javsp') is None
 
 
+def test_explicit_refresh_bypasses_search_and_detail_cache(library,engine):
+    manager=enable(library,engine)
+    candidate=manager.run(ID,'search',query='ABC-123')[0]
+    manager.run(ID,'search',query='ABC-123',refresh=True)
+    manager.run(ID,'detail',url=candidate['url'],refresh=True)
+    assert (Path(engine['root'])/'calls.txt').read_text()=='xxx'
+    assert manager.run(ID,'search',query='ABC-123')[0]==candidate
+    assert (Path(engine['root'])/'calls.txt').read_text()=='xxx'
+
+
 def test_packaged_bridge_runs_from_application_assets(library,engine,tmp_path,monkeypatch):
     packaged=tmp_path/'bundle';destination=packaged/'plugins'/ID
     shutil.copytree(Plugins.builtin_numbered_plugin(ID),destination)

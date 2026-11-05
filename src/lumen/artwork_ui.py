@@ -10,9 +10,10 @@ IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tif', '.ti
 
 
 def artwork_paths(library, work):
-    from .artwork import still_paths
+    from .artwork import still_paths, scraped_image_path
     selected = library.setting(f'artwork_{work["id"]}', {})
-    paths = [selected.get('poster'), selected.get('thumbnail'), work.get('thumbnail')]
+    paths = [selected.get('poster'), selected.get('thumbnail'), work.get('thumbnail'),
+             scraped_image_path(work, 'cover'), scraped_image_path(work, 'poster')]
     for file in work['files']:
         paths.append(work['metadata'].get('nfo_thumbnails', {}).get(str(file['id'])))
         paths.append(str(library.directory / 'cache' / (file['digest'] + '.jpg')))

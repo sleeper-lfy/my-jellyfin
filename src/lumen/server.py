@@ -148,7 +148,7 @@ def public_tasks(library, query):
         stage_label = {'identify': '识别与补充资料', 'organize': '整理文件'}.get(stage, '') if isinstance(stage, str) else ''
         label = TASK_LABELS.get(row['kind'], '后台任务')
         if row['kind'] == 'background' and isinstance(data.get('title'), str):
-            for prefix, name in [('检查缺失影片资料', '资料检查'), ('补全缺失影片资料', '资料补全'),
+            for prefix, name in [('检查缺失影片资料', '资料检查'), ('补全缺失影片资料', '资料补全'), ('强制更新影片资料', '资料更新'),
                                  ('重试缺失图片', '图片修复'), ('读取视频版本', '版本检查'),
                                  ('检查重复候选', '重复检查'), ('导出 NFO', 'NFO 导出'),
                                  ('自动识别', '自动入库'), ('快速导入', '扫描入库'),

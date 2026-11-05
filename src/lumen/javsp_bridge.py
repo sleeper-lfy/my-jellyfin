@@ -136,9 +136,12 @@ def run(library,operation,parameters,cancelled=None):
         item=read('url:'+parameters.get('url',''))
         if item is None:raise ValueError('JavSP 候选已过期，请重新按编号搜索')
         from .plugins import validate_metadata
-        validate_metadata(item);return [item]
+        validate_metadata(item)
+        if parameters.get('refresh'):
+            return run(library,'search',{'query':item['id'],'refresh':True},cancelled)
+        return [item]
     if operation!='search':raise ValueError('JavSP 辅助引擎仅支持编号搜索与详情')
-    identifier=code(parameters.get('query',''));cached=read('code:'+identifier)
+    identifier=code(parameters.get('query',''));cached=None if parameters.get('refresh') else read('code:'+identifier)
     if cached:return [cached]
     task_id=uuid.uuid4().hex;payload={'plugin':ID,'operation':operation,'parameters':{'query':identifier}}
     library.task(task_id,'scrape','running',payload)

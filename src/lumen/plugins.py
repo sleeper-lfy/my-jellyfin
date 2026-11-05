@@ -454,7 +454,8 @@ class Plugins:
                 if parameters.get('tag'):
                     raise ValueError('番号引擎不支持站点标签搜索')
                 from .javinizer import lookup
-                result = lookup(self.library, parameters.get('query', ''), cancelled, progress)
+                result = lookup(self.library, parameters.get('query', ''), cancelled, progress,
+                                refresh=bool(parameters.get('refresh')))
                 for item in result:
                     validate_metadata(item)
                 self.library.task(task_id, 'scrape', 'done', payload, {'count': len(result)})
@@ -612,7 +613,7 @@ class Plugins:
     def _merge(self, plugin_id, metadata, work_id=None, *, replace_nfo=False, cache_images=True):
         if work_id and self.library.work(work_id)['kind'] in {'other', 'fans'}:
             raise ValueError('其他视频和 Fans 分区不执行影视刮削')
-        metadata = {key:value for key,value in metadata.items() if key not in {'stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','nfo_thumbnails','download_plugin'}}
+        metadata = {key:value for key,value in metadata.items() if key not in {'poster_cache','cover_cache','stills_cache','nfo_stills','episode_stills','episode_details','nfo_fields','nfo_poster','nfo_backdrop','nfo_thumbnails','download_plugin'}}
         validate_metadata(metadata)
         plugin = next(p for p in self.installed() if p['id'] == plugin_id)
         existing = self.library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?', (plugin_id, str(metadata['id']))).fetchone()

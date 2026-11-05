@@ -32,7 +32,7 @@ BINARY_SIZE = 59_761_664
 MAX_OUTPUT = 4 * 1024 * 1024
 MAX_STDERR = 256 * 1024
 CACHE_PREFIX = 'javinizer-cache:'
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 MAX_CACHE_BYTES = 8 * 1024 * 1024
 MAX_CACHE_ENTRIES = 256
 
@@ -316,6 +316,7 @@ def metadata(raw, source, code):
             'tags': list(dict.fromkeys(v[:200] for v in genres[:200] if isinstance(v, str))) if isinstance(genres, list) else [],
             'directors': [raw['director'][:200]] if isinstance(raw.get('director'), str) and raw['director'] else [],
             'actors': actors, 'poster': _safe_url(raw.get('poster_url'), IMAGE_HOSTS) or _safe_url(raw.get('cover_url'), IMAGE_HOSTS),
+            'cover': _safe_url(raw.get('cover_url'), IMAGE_HOSTS),
             'stills': [v for v in (_safe_url(v, IMAGE_HOSTS) for v in screenshots[:40]) if v] if isinstance(screenshots, list) else [],
             'rating': score, 'external_ids': {'jav': code, **({'dmm': content_id} if isinstance(content_id, str) and content_id else {})},
             'javinizer_source': source}
@@ -495,7 +496,7 @@ def _cache_result(library, source, code, record):
                 library.db.execute('DELETE FROM settings WHERE key=?', (row[0],))
 
 
-def lookup(library, query, cancelled=None, progress=None):
+def lookup(library, query, cancelled=None, progress=None, *, refresh=False):
     code = movie_code(query)
     config = settings(library)
     if not config['enabled']:
@@ -511,7 +512,7 @@ def lookup(library, query, cancelled=None, progress=None):
             if progress:
                 progress(index, len(sources), '查询 ' + code + ' · ' + SOURCES[source][0])
             cached = library.setting(CACHE_PREFIX + source + ':' + code, {})
-            if config['cache_hours'] and cached.get('version') == CACHE_VERSION and cached.get('at', 0) > time.time() - config['cache_hours'] * 3600:
+            if not refresh and config['cache_hours'] and cached.get('version') == CACHE_VERSION and cached.get('at', 0) > time.time() - config['cache_hours'] * 3600:
                 return [cached['record']]
             cooldown = library.setting('javinizer-cooldown:' + source, {})
             if cooldown.get('until', 0) > time.time():
@@ -549,9 +550,10 @@ def cache_images(library, record, work_id, replace_nfo=False, cancelled=None):
     from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QSize, Qt, QSaveFile
     from PySide6.QtGui import QImageReader
     manager = Plugins(library)
+    manager.cancelled = cancelled
     plugin = provider(library)
     work = library.work(work_id)
-    jobs = [('poster', record.get('poster'), None)]
+    jobs = [('poster', record.get('poster'), None), ('cover', record.get('cover'), None)]
     jobs += [('actor', actor.get('photo'), actor.get('name')) for actor in work['metadata'].get('actors', [])]
     jobs += [('still', url, None) for url in record.get('stills', [])]
     deadline = time.monotonic() + 180
@@ -559,7 +561,7 @@ def cache_images(library, record, work_id, replace_nfo=False, cancelled=None):
         check_cancelled(cancelled)
         if not url:
             continue
-        field = 'actors' if role == 'actor' else 'stills' if role == 'still' else 'poster'
+        field = 'actors' if role == 'actor' else 'stills' if role == 'still' else 'thumbnail' if role == 'cover' else 'poster'
         current = library.work(work_id)
         if field in current['locked'] or not replace_nfo and field in current['metadata'].get('nfo_fields', []):
             continue
@@ -573,7 +575,7 @@ def cache_images(library, record, work_id, replace_nfo=False, cancelled=None):
             break
         try:
             path = library.directory / 'cache' / ('javinizer-' + hashlib.sha256(url.encode()).hexdigest() + '.jpg')
-            if not path.is_file():
+            if not path.is_file() or not QImageReader(str(path)).canRead():
                 data, content_type = manager.fetch(plugin, url, image=True)
                 check_cancelled(cancelled)
                 if not content_type.startswith('image/'):
@@ -586,7 +588,8 @@ def cache_images(library, record, work_id, replace_nfo=False, cancelled=None):
                 size = reader.size()
                 if size.width() <= 0 or size.height() <= 0 or size.width() * size.height() > 40_000_000:
                     raise ValueError('图片无效或像素过大')
-                reader.setScaledSize(size.scaled(QSize(1920, 1920), Qt.AspectRatioMode.KeepAspectRatio))
+                if size.width() > 1920 or size.height() > 1920:
+                    reader.setScaledSize(size.scaled(QSize(1920, 1920), Qt.AspectRatioMode.KeepAspectRatio))
                 picture = reader.read()
                 output = QSaveFile(str(path))
                 if picture.isNull() or not output.open(QIODevice.OpenModeFlag.WriteOnly) or not picture.save(output, 'JPG') or not output.commit():
@@ -604,9 +607,14 @@ def cache_images(library, record, work_id, replace_nfo=False, cancelled=None):
                     custom = library.setting(f'artwork_{work_id}', {}).get('poster')
                     if custom and Path(custom).is_file():
                         continue
+                    if not replace_nfo and merged.get('nfo_poster'):
+                        continue
                     if replace_nfo:
                         merged.pop('nfo_poster', None)
                     library.db.execute('UPDATE works SET thumbnail=? WHERE id=?', (str(path), work_id))
+                    merged['poster_cache'] = {'url': url, 'path': str(path)}
+                elif role == 'cover' and merged.get('cover') == url:
+                    merged['cover_cache'] = {'url': url, 'path': str(path)}
                 elif role == 'actor':
                     for actor in merged.get('actors', []):
                         if actor.get('name') == name and actor.get('photo') == url:
@@ -622,3 +630,42 @@ def cache_images(library, record, work_id, replace_nfo=False, cancelled=None):
         except Exception as error:
             library.task(uuid.uuid4().hex, 'image', 'failed',
                          {'url': url, 'plugin': ENGINE_ID, 'role': role, 'work_id': work_id}, error=_redact(error))
+    check_cancelled(cancelled)
+    _select_poster(library, work_id, replace_nfo, cancelled)
+
+
+def _select_poster(library, work_id, replace_nfo, cancelled):
+    """Apply the normal portrait fallback without replacing concurrent artwork edits."""
+    from .artwork import scraped_image_path, scraped_poster_path
+
+    def protected(work):
+        custom = library.setting(f'artwork_{work_id}', {}).get('poster')
+        return ('poster' in work['locked'] or bool(custom and Path(custom).is_file()) or
+                not replace_nfo and (work['metadata'].get('nfo_poster') or
+                                     'poster' in work['metadata'].get('nfo_fields', [])))
+
+    work = library.work(work_id)
+    if protected(work):
+        return
+    try:
+        original = scraped_image_path(work, 'poster')
+        cover = scraped_image_path(work, 'cover')
+        poster = scraped_poster_path(library, work, original or work['thumbnail'],
+                                     fallback_paths=[path for path in (cover, original) if path])
+        check_cancelled(cancelled)
+        if not poster or poster == work['thumbnail']:
+            return
+        with library.db:
+            library.db.execute('BEGIN IMMEDIATE')
+            current = library.work(work_id)
+            fields = ('poster', 'cover', 'poster_cache', 'cover_cache', 'stills', 'stills_cache',
+                      'nfo_stills', 'episode_stills')
+            if (protected(current) or current['thumbnail'] != work['thumbnail'] or
+                    any(current['metadata'].get(key) != work['metadata'].get(key) for key in fields)):
+                return
+            library.db.execute('UPDATE works SET thumbnail=? WHERE id=?', (poster, work_id))
+    except ImportCancelled:
+        raise
+    except Exception as error:
+        library.task(uuid.uuid4().hex, 'image', 'failed',
+                     {'plugin': ENGINE_ID, 'role': 'poster-from-still', 'work_id': work_id}, error=_redact(error))

@@ -105,6 +105,20 @@ def test_cache_ttl_and_bound(library, enabled, monkeypatch):
     assert len(keys) == 2 and key not in keys
 
 
+def test_explicit_refresh_bypasses_cache_without_clearing_other_codes(library, enabled, monkeypatch):
+    first = engine.metadata(raw(), 'r18dev', 'IPX-535')
+    engine._cache_result(library, 'r18dev', 'IPX-535', first)
+    engine._cache_result(library, 'r18dev', 'IPX-536', {**first, 'id': 'IPX-536'})
+    calls = []
+    updated = engine.metadata(raw(title='Updated title'), 'r18dev', 'IPX-535')
+    monkeypatch.setattr(engine, 'query_source', lambda *args: calls.append(args[2]) or updated)
+    assert enabled.run(engine.ENGINE_ID, 'search', query='IPX-535') == [first]
+    assert not calls
+    assert enabled.run(engine.ENGINE_ID, 'search', query='IPX-535', refresh=True) == [updated]
+    assert calls == ['r18dev']
+    assert library.setting(engine.CACHE_PREFIX + 'r18dev:IPX-536')['record']['id'] == 'IPX-536'
+
+
 def test_all_errors_are_not_reported_as_no_results(library, enabled, monkeypatch):
     def fail(_lib, _exe, source, *_args):
         raise engine.SourceError(source, {'kind': 'auth', 'status_code': 401})
