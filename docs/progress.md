@@ -538,3 +538,14 @@ PC 与 Android 更新检测、校验文件及安装包获取由 Gitee 切回 Git
 本地完整 Python 回归 **747 项通过、3 项跳过、5 项既有失败**（132.63 秒）；失败为 Linux FFmpeg .exe 文件名预期、两份历史 SQL 样本换行哈希、两项进程回收测试（容器 PID 1 留存已终止的孤儿僵尸进程；修改前代码也已复现）。新增图片、缓存、强制覆盖、失败原样保留、并发编辑、个人状态与实际 Qt 面板测试均通过。Android **98 项测试及 lint 通过**；源码编译、diff 检查通过。
 
 按用户要求准备推送及发布 `v0.4.14-preview.5`，Android versionCode 22。安装包必须从同一标签重新构建，通过 Windows 自动测试与安装 / 启动 / mpv / worker / 卸载，以及 Android 测试、lint、签名和对齐后公开。真机验收仍未完成；本段不将构建计划写成已发布结果。
+
+
+## 0.4.14 Preview 5 发布与下载核验（2026-11-05）
+
+全部修改已提交并推送至 `origin/work`，构建源码 `5ca526f56d0ee30cc4dd80afde5622639d6f8ac6`，标签 `v0.4.14-preview.5`。本轮包含 Javinizer-Go 海报 / 缩略图修复、资料强制覆盖和双端 GitHub 更新渠道恢复，Android versionCode 22。
+
+[云端构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42029170498)三个任务全部成功：Windows **755 项测试通过，零失败 / 错误 / 跳过**，同一 EXE 完成安装、启动、mpv、插件 worker 和卸载验收；Android **98 项测试及 lint 通过**，版本、持久签名和 ZIP 对齐验证通过。本地 Linux 的五项环境相关失败在 Windows 验收中均通过，未修改或跳过这些用例。
+
+[Preview 5](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.5)六个公开附件均已完整下载，核对安装包大小、SHA-256、源码绑定及自动验收证据。下载后的 APK 再次通过本地 apksigner、版本与 ZIP 对齐检查，证书与此前测试版一致；EXE PE 头检查通过。README 下载入口已更新，完整证据见 [发布验证记录](validation/preview-0.4.14-5.json)。
+
+发布保持测试预发布，真机人工验收未完成。当前更新器只接收正式 Release；Preview 5 通过发布页手动安装，仍使用旧 Gitee 渠道的客户端也需先手动安装一次。未将未验证人工项目标为通过。
