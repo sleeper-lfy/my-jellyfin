@@ -567,3 +567,14 @@ Windows 的统一目录 / 文件选择器改用系统原生窗口，支持粘贴
 
 
 发布前复核发现新增目录选择测试直接比较 Qt 的正斜杠路径与 Windows Path 字符串，可能造成 Windows 误报。已改为 Path 语义比较，保留已推送的 Preview 6 标签，从新标签 `v0.4.14-preview.7` 重新构建，Android versionCode 24；目录测试本地复测两项通过。只有新标签完整通过自动验收后才公开安装包。
+
+
+## 0.4.14 Preview 7 发布与公开下载验证（2026-11-08）
+
+修复源码已推送至 `origin/work`，最终构建提交 `2e30815eefa217bf3abbb42de047047cedd44d01`，标签 `v0.4.14-preview.7`，Android versionCode 24。[构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42459920499)全部成功：Windows **771 项测试通过，零失败 / 错误 / 跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 和卸载验收；Android **99 项测试、lint、持久签名、版本及 ZIP 对齐验证通过**。
+
+首次 [Preview 6 构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42459820778)未通过测试门禁，没有公开安装包；保留其 Git 标签，不改写已推送历史。路径断言修正后在 Preview 7 完整重建，未跳过测试。
+
+[Preview 7 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.7)包含本轮全部功能修复。六个公开附件已完整下载，核对 EXE / APK 大小、SHA-256、源码绑定和自动验收证据；下载后的 APK 再次通过本地 apksigner、版本及 ZIP 对齐检查，保持此前证书，EXE PE 头检查通过。详细证据见 [发布验证记录](validation/preview-0.4.14-7.json)。README 已更新下载入口。
+
+发布保持测试预发布；人工真机验收仍未完成，Windows 原生目录地址栏操作尚需实机确认。更新器仍只自动接收正式 Release，Preview 7 通过发布页手动安装。

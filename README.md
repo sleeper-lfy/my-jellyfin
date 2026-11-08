@@ -2,7 +2,7 @@
 
 Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
-最新测试预发布：[Lumen 0.4.14 Preview 5](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.5) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.5/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.5/Lumen-android-debug.apk)。修复 Javinizer-Go 海报 / 缩略图回退，新增资料强制覆盖，PC / Android 更新检测切回 GitHub。Windows 755 项测试及安装 / 卸载验收、Android 98 项测试及 lint 通过。真机验收仍未完成。[版本说明](docs/releases/0.4.14.md) · [发布验证记录](docs/validation/preview-0.4.14-5.json)。
+最新测试预发布：[Lumen 0.4.14 Preview 7](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.7) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.7/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.7/Lumen-android-debug.apk)。单片刮削支持强制覆盖和编号冲突选择，电影 / VR 默认 Javinizer-Go；Android 移除重复分类，两端增加不喜欢筛选，Windows 使用系统目录选择器。Windows 771 项测试及安装 / 卸载验收、Android 99 项测试及 lint 通过。真机验收仍未完成。[版本说明](docs/releases/0.4.14.md) · [发布验证记录](docs/validation/preview-0.4.14-7.json)。
 
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
@@ -60,10 +60,10 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 ## 下载
 
-[**Lumen 0.4.14 Preview 5 · Windows + Android**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.5) 是当前保留的测试预发布：
+[**Lumen 0.4.14 Preview 7 · Windows + Android**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.7) 是当前保留的测试预发布：
 
-- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.5/Lumen-Setup-x64.exe)，Windows 10/11 x64。
-- [Android APK：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.5/Lumen-android-debug.apk)，Android 8.0+，versionCode 22，与此前测试版使用同一签名。
+- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.7/Lumen-Setup-x64.exe)，Windows 10/11 x64。
+- [Android APK：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.14-preview.7/Lumen-android-debug.apk)，Android 8.0+，versionCode 24，与此前测试版使用同一签名。
 - Release 附带 SHA-256、Windows 自动验收记录和 Android 签名 / 测试记录。target 目录为历史构建，请从本次 Release 下载当前安装包。
 
 [更新说明](docs/releases/0.4.14.md)。Windows 654 项测试及安装验收、Android 97 项测试及 lint 通过；公开安装包已完整下载校验。真机验收尚未完成。
@@ -170,4 +170,4 @@ PC 支持按插件批量获取演员头像，以及将本地图片拖到演员�
 
 PC / Android 实时视频美颜支持本地 GPU 磨皮和肤色提亮，默认关闭，详见 [使用说明](docs/video-beauty.md)。0.4.12 首次以测试预发布提供，设备验收范围和手机签名变化见 [版本说明](docs/releases/0.4.12.md)。
 
-[历史 0.4.12 版本说明](docs/releases/0.4.12.md)。GitHub 当前提供 [0.4.14 测试预发布](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.5)。
+[历史 0.4.12 版本说明](docs/releases/0.4.12.md)。GitHub 当前提供 [0.4.14 测试预发布](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.7)。
