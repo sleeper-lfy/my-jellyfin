@@ -51,11 +51,34 @@ public class NavigationLayoutTest {
     @Test public void fourPrimaryDestinationsExposeWatchlistAndKeepScopeOnRestore()throws Exception{
         try(MockWebServer server=server();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             MainActivity activity=lifecycle.get();connect(activity,server);call(activity,"showLibrary");View root=(View)read(activity,"root");layout(root,360,800);
+            assertNull(root.findViewWithTag("homeCategories"));assertNull(find(root,"我的媒体"));snapshot(root,"ui-android-home-single-navigation.png");
             LinearLayout nav=root.findViewWithTag("primaryNavigation");assertEquals(4,nav.getChildCount());assertNotNull(root.findViewWithTag("nav:library"));
             root.findViewWithTag("nav:mine").performClick();root=(View)read(activity,"root");layout(root,360,800);snapshot(root,"ui-android-mine.png");assertNotNull(find(root,"想看"));assertNotNull(find(root,"电脑任务中心"));assertNotNull(find(root,"手机播放队列"));
             find(root,"想看").performClick();assertTrue(((String)call(activity,"listPath")).contains("watchlist=true"));assertEquals("mine",read(activity,"mainPage"));
             Bundle saved=(Bundle)call(activity,"browseState");Method restore=MainActivity.class.getDeclaredMethod("restoreBrowseState",Bundle.class);restore.setAccessible(true);restore.invoke(activity,saved);assertEquals(true,read(activity,"watchlistOnly"));
             root=(View)read(activity,"root");root.findViewWithTag("nav:library").performClick();assertTrue(((String)call(activity,"listPath")).contains("watchlist=false"));assertNotNull(((View)read(activity,"root")).findViewWithTag("libraryCategory"));
+        }
+    }
+    @Test public void dislikedFilterSupportsDraftCancelApplyRestoreAndRemoval()throws Exception{
+        try(MockWebServer server=server();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
+            MainActivity activity=lifecycle.get();connect(activity,server);set(activity,"mainPage","library");set(activity,"kind","movie");call(activity,"showLibrary");
+            call(activity,"showFilters");AlertDialog sheet=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            sheet.getWindow().getDecorView().findViewWithTag("filterDisliked").performClick();
+            layout(sheet.getWindow().getDecorView(),360,752);snapshot(sheet.getWindow().getDecorView(),"ui-android-disliked-filter.png");
+            assertEquals(false,read(activity,"dislikedOnly"));sheet.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            assertFalse(((String)call(activity,"listPath")).contains("disliked=true"));
+            call(activity,"showFilters");sheet=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            sheet.getWindow().getDecorView().findViewWithTag("filterDisliked").performClick();sheet.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            assertTrue(((String)call(activity,"listPath")).contains("disliked=true"));
+            assertNotNull(((View)read(activity,"root")).findViewWithTag("libraryCategory"));
+            Bundle saved=(Bundle)call(activity,"browseState");
+            set(activity,"dislikedOnly",false);Method restore=MainActivity.class.getDeclaredMethod("restoreBrowseState",Bundle.class);restore.setAccessible(true);restore.invoke(activity,saved);
+            assertEquals(true,read(activity,"dislikedOnly"));
+            View root=(View)read(activity,"root");View chip=root.findViewWithTag("activeFilters");find(chip,"不喜欢").performClick();
+            assertFalse(((String)call(activity,"listPath")).contains("disliked=true"));
+            call(activity,"showFilters");sheet=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            sheet.getWindow().getDecorView().findViewWithTag("filterDisliked").performClick();sheet.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
+            sheet.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertEquals(false,read(activity,"dislikedOnly"));
         }
     }
     @Test public void narrowScreensKeepBothYearsAndLongDetailTextReadable()throws Exception{

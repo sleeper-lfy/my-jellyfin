@@ -382,6 +382,7 @@ def filter_tokens(filters):
     low,high=filters.get('year_min'),filters.get('year_max')
     if low or high:tokens.append(('years',None,str(low) if low==high else f"{low or '最早'} — {high or '至今'}"))
     if filters.get('favorite'):tokens.append(('favorite',None,'已收藏'))
+    if filters.get('disliked'):tokens.append(('disliked',None,'不喜欢'))
     if filters.get('watch_state'):tokens.append(('watch_state',None,{'unwatched':'未开始','progress':'观看中','completed':'已完成'}.get(filters['watch_state'],'')))
     if filters.get('watched'):tokens.append(('watched',None,'已观看' if filters['watched']=='yes' else '未观看'))
     if filters.get('watchlist'):tokens.append(('watchlist',None,'想看'))
@@ -430,6 +431,9 @@ class FilterDialog(QDialog):
         self.watched.setCurrentIndex(max(0,self.watched.findData(filters.get('watch_state',''))))
         status_row=QHBoxLayout();field('观看状态',self.watched,status_row)
         self.favorite=ActionButton('仅看已收藏','heart',checked=bool(filters.get('favorite')),accent='#f4779b');self.favorite.setObjectName('favoriteAction');field('收藏',self.favorite,status_row);layout.addLayout(status_row)
+        self.disliked=ActionButton('仅看不喜欢','ban',checked=bool(filters.get('disliked')));self.disliked.setObjectName('dislikedFilter');field('不喜欢',self.disliked)
+        self.disliked.toggled.connect(lambda checked:self.favorite.setChecked(False) if checked else None)
+        self.favorite.toggled.connect(lambda checked:self.disliked.setChecked(False) if checked else None)
         self.advanced_toggle=ActionButton('高级条件','chevron',lambda:self.show_advanced(not self.advanced.isVisible()))
         layout.addWidget(self.advanced_toggle)
         self.advanced=QFrame();self.advanced.setObjectName('advancedFilters');advanced=QVBoxLayout(self.advanced);advanced.setContentsMargins(12,12,12,12);advanced.setSpacing(12)
@@ -481,7 +485,7 @@ class FilterDialog(QDialog):
 
     def reset(self):
         self.original.pop('watchlist',None)
-        self.query.clear();self.actor.setEditText('');self.folder.clear();self.favorite.setChecked(False);self.watched.setCurrentIndex(0)
+        self.query.clear();self.actor.setEditText('');self.folder.clear();self.favorite.setChecked(False);self.disliked.setChecked(False);self.watched.setCurrentIndex(0)
         for field in self.fields.values():field.setEditText('')
         for field in self.numbers.values():
             if isinstance(field,FilterCombo):field.setEditText('')
@@ -513,6 +517,7 @@ class FilterDialog(QDialog):
                 **{key:field.value() for key,field in self.numbers.items() if field.value()},
                 'watch_state':self.watched.currentData(),'folder':self.folder.text().strip(),'actor':self.actor.text(),
                 **({'watchlist':True} if self.original.get('watchlist') else {}),
+                **({'disliked':True} if self.disliked.isChecked() else {}),
                 **({'favorite':True} if self.favorite.isChecked() else {})}
 
 
@@ -1101,7 +1106,8 @@ class Details(QWidget):
         if not available:
             QMessageBox.information(self, '刮削插件', '请先在设置 → 按需刮削引擎中安装并启用 Javinizer-Go，或启用支持搜索的站点插件。')
             return
-        name, ok = QInputDialog.getItem(self, '刮削来源', '按优先级选择插件', [p['name'] for p in available], 0, False)
+        default = next((index for index, provider in enumerate(available) if self.work['kind'] in {'movie','vr'} and provider['id']=='javinizer-go'), 0)
+        name, ok = QInputDialog.getItem(self, '刮削来源', '选择刮削来源', [p['name'] for p in available], default, False)
         if not ok:
             return
         plugin = next(p for p in available if p['name'] == name)
@@ -1126,16 +1132,36 @@ class Details(QWidget):
                 QMessageBox.information(self.window, '待处理', message + '\n已记录到任务列表。')
                 return
             from .matching import CandidatePicker, apply_match
-            picker = CandidatePicker(self.library.directory, plugin['id'], results, self.window)
+            picker = CandidatePicker(self.library.directory, plugin['id'], results, self.window, allow_force=True)
             accepted = picker.exec()
             candidate = picker.selection()
+            force = picker.force_overwrite()
             picker.deleteLater()
             if accepted and candidate is not None:
                 work_id = self.work_id
+                def saved(result):
+                    if self.window.detail_page is not self:return
+                    if isinstance(result,dict) and result.get('conflict'):
+                        from .matching import MatchConflictDialog
+                        conflict=result['conflict'];dialog=MatchConflictDialog(conflict,self.window)
+                        accepted=dialog.exec();choice=dialog.choice;dialog.deleteLater()
+                        if not accepted:return
+                        if choice=='view':
+                            self.window.open_details(conflict['related'][0]['id'],fetch=False);return
+                        if choice=='merge':
+                            from .merge_ui import preview_and_merge
+                            preview_and_merge(self,[work['id'] for work in conflict['related']]);return
+                        self.window.run_job('按选择更新刮削资料',
+                            lambda lib,progress:apply_match(lib,plugin,'detail',result['candidate'],work_id,
+                                cancelled=progress.cancelled,force=force,interactive=True,resolution=choice,snapshot=result['snapshot']),saved)
+                        return
+                    self.window.reload_details(work_id)
+                    if isinstance(result,dict) and result.get('errors'):
+                        QMessageBox.information(self.window,'部分图片未完成','影片资料已更新；以下图片可在资料修复中重试：\n'+'\n'.join(result['errors']))
                 self.window.run_job('保存刮削资料与图片',
-                    lambda lib, progress: apply_match(lib, plugin, operation, candidate, work_id, cancelled=progress.cancelled),
-                    lambda result: self.window.reload_details(work_id))
-        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, cancelled=p.cancelled, progress=p, **({'url': text.strip()} if operation == 'detail' else {'query': text.strip()})), complete)
+                    lambda lib, progress: apply_match(lib, plugin, operation, candidate, work_id, cancelled=progress.cancelled, force=force, interactive=True),
+                    saved)
+        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, cancelled=p.cancelled, progress=p, refresh=True, **({'url': text.strip()} if operation == 'detail' else {'query': text.strip()})), complete)
 
 
     def organize(self):

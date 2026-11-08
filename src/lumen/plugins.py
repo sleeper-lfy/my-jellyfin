@@ -13,6 +13,26 @@ from .core import identity, now, check_cancelled, ImportCancelled, media_process
 
 CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
 
+
+def external_ids_conflict(stored, incoming):
+    """Historical aliases may identify the same work; compare each namespace as a set."""
+    def canonical(namespace, value):
+        text = str(value).strip()
+        if namespace in {'jav', 'dmm', 'product_code', 'catalog_number'}:
+            from .javinizer import movie_code
+            import re
+            if re.fullmatch(r'FC2[-_ ]*(?:PPV[-_ ]*)?\d{5,9}|(?:\d{1,3})?[A-Z]{2,12}[-_ ]?\d{2,8}|[A-Z]\d{1,2}[-_ ]\d{2,8}|\d{6}[-_]\d{2,4}',text,re.I):
+                try:return movie_code(text)
+                except ValueError:pass
+        if namespace == 'imdb':return text.casefold()
+        if namespace in {'tmdb', 'tvdb'} and text.isdecimal():return str(int(text))
+        return text
+    known = {}
+    for namespace, value in stored:
+        known.setdefault(namespace, set()).add(canonical(namespace, value))
+    return any(namespace in known and canonical(namespace, value) not in known[namespace]
+               for namespace, value in incoming.items())
+
 # Some sites redirect non-browser clients to a verification page. These are plain
 # request headers; interactive challenges still fail instead of being bypassed.
 BROWSER_HEADERS = {
@@ -623,6 +643,10 @@ class Plugins:
         target_id = work_id or (existing[0] if existing else None)
         if target_id and self.library.work(target_id)['kind']=='vr' and kind=='movie':
             kind='vr';metadata={**metadata,'kind':'vr'}
+        external = {str(k).lower():str(v) for k,v in metadata.get('external_ids',{}).items() if v is not None and str(v)}
+        if target_id and external_ids_conflict(
+                self.library.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(target_id,)), external):
+            raise ValueError('影片的外部标识存在冲突，未自动合并；请在单片刮削中选择保留原编号或采用所选编号')
         if existing and work_id and existing[0] != work_id:
             source = self.library.work(existing[0])
             if source['files']:
@@ -632,7 +656,6 @@ class Plugins:
         matching = self.library.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
         if not matching:
             matching = self.library.db.execute('SELECT id FROM works WHERE identity=?', (key,)).fetchone()
-        external = {str(k).lower():str(v) for k,v in metadata.get('external_ids',{}).items() if v is not None and str(v)}
         linked = set()
         for namespace,value in external.items():
             row = self.library.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?',(kind,namespace,value)).fetchone()
@@ -648,8 +671,8 @@ class Plugins:
             self.library.merge_works(linked_id,work_id,commit=False)
         if work_id:
             stored_external = list(self.library.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)))
-            if any(namespace in external and external[namespace] != value for namespace,value in stored_external):
-                raise ValueError('同名影片的外部标识冲突，未自动合并')
+            if external_ids_conflict(stored_external, external):
+                raise ValueError('影片的外部标识存在冲突，未自动合并；请在单片刮削中选择保留原编号或采用所选编号')
         if matching and work_id and matching[0] != work_id:
             other = self.library.work(matching[0])
             if not other['files']:

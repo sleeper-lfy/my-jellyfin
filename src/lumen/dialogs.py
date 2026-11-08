@@ -1,7 +1,7 @@
-"""In-process file pickers; native shell extensions stall on unavailable drives."""
+"""Windows shell pickers with a themed Qt fallback on other platforms."""
+import sys
 from PySide6.QtWidgets import QFileDialog
 
-OPTIONS = QFileDialog.Option.DontUseNativeDialog | QFileDialog.Option.DontResolveSymlinks
 # The app stylesheet recolors text globally but the dialog's item views keep the light
 # system base; give the picker its own dark surfaces or it renders white-on-white.
 DARK = ('QFileDialog { background: #181818; color: #eeeeee; } '
@@ -17,9 +17,10 @@ DARK = ('QFileDialog { background: #181818; color: #eeeeee; } '
 
 def _picker(parent, caption, directory=''):
     dialog = QFileDialog(parent, caption, directory)
-    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+    native = sys.platform == 'win32'
+    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, not native)
     dialog.setOption(QFileDialog.Option.DontResolveSymlinks, True)
-    dialog.setStyleSheet(DARK)
+    if not native:dialog.setStyleSheet(DARK)
     return dialog
 
 

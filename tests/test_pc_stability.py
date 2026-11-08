@@ -1,6 +1,7 @@
 """Regressions for live import layout, repeated import, bookmarks and image memory."""
 import threading
 import time
+import sys
 from pathlib import Path
 import pytest
 from PySide6.QtCore import QEventLoop,QTimer,Qt,QSize,QObject,QEvent
@@ -92,7 +93,7 @@ def test_import_form_reopens_and_queues_repeated_imports(qapp,window,video_facto
         form.submit();assert len(window.job_queue)==1
         window.import_path(source.parent);assert window.import_form is form;form.submit();assert len(window.job_queue)==2
         # Opening the reusable form and its Qt directory chooser is asynchronous.
-        window.import_dialog();form.choose();assert form.browser.testOption(QFileDialog.Option.DontUseNativeDialog)
+        window.import_dialog();form.choose();assert form.browser.testOption(QFileDialog.Option.DontUseNativeDialog)==(sys.platform!='win32')
         fired=[];QTimer.singleShot(20,lambda:fired.append(True));spin(qapp,.06);assert fired
         form.browser.reject();form.reject()
     finally:release.set()

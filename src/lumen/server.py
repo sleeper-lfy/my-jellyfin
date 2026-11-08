@@ -480,7 +480,7 @@ class LanServer:
                             library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
                             return self.send_json(200,{'ok':True})
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','tag','actor','year_min','year_max','rating_min','tags_all','sort','direction','watch_state'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','disliked','tag','actor','year_min','year_max','rating_min','tags_all','sort','direction','watch_state'}})
                             ids=[w['id'] for w in library.query(filters)]
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
@@ -494,7 +494,7 @@ class LanServer:
                             if browse.scheme or browse.netloc or browse.fragment or browse.path not in {'/api/works','/api/discover','/api/recommendations'}:
                                 raise ApiError(400,'不支持的媒体列表路径')
                             parameters = parse_qs(browse.query,keep_blank_values=True,max_num_fields=40)
-                            allowed = {'offset','limit','kind','q','favorite','watchlist','tag','actor','year',
+                            allowed = {'offset','limit','kind','q','favorite','watchlist','disliked','tag','actor','year',
                                        'year_min','year_max','rating_min','tags_all','sort','direction','watch_state',
                                        'list','ids','source','category','tag_q'}
                             if not parameters.keys() <= allowed or any(len(values)!=1 for values in parameters.values()):
@@ -590,6 +590,7 @@ class LanServer:
                     filters['kinds']=[kind]
                 if query.get('favorite',[''])[0].lower() in {'true','1'}:filters['favorite']=True
                 if query.get('watchlist',[''])[0].lower() in {'true','1'}:filters['watchlist']=True
+                if query.get('disliked',[''])[0].lower() in {'true','1'}:filters['disliked']=True
                 if query.get('tag', [''])[0]:
                     filters['tags_all'] = [query['tag'][0]]
                 if query.get('tags_all', [''])[0]:

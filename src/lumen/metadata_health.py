@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 from .core import check_cancelled, ImportCancelled, now, identity
-from .plugins import Plugins, validate_metadata
+from .plugins import Plugins, validate_metadata, external_ids_conflict
 
 FIELDS = ('overview', 'tags', 'actors', 'poster')
 LABELS = {'title':'标题', 'year':'年份', 'overview':'简介', 'tags':'标签', 'actors':'演员',
@@ -134,7 +134,7 @@ def _fill(library, work_id, plugin, record):
         linked=library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?',(plugin['id'],str(record['id']))).fetchone()
         if linked and linked['work_id']!=work_id: raise ValueError('此来源已关联其他作品，请先核对')
         known=dict(library.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)).fetchall())
-        if any(str(value)!=str(known[key.lower()]) for key,value in record.get('external_ids',{}).items() if key.lower() in known and value is not None):
+        if external_ids_conflict(known.items(),{key.lower():value for key,value in record.get('external_ids',{}).items() if value is not None}):
             raise ValueError('来源的外部编号与当前影片冲突')
         for field in ('overview','tags','actors','poster','cover','stills'):
             if field in protected or metadata.get(field) or not record.get(field): continue
@@ -256,9 +256,6 @@ def _overwrite(library, work, plugin, record, manager, cancelled, selected):
             raise ValueError('修复期间影片资料已修改，请重新检查后再覆盖')
         linked=library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?',(plugin['id'],str(record['id']))).fetchone()
         if linked and linked['work_id']!=work_id:raise ValueError('此来源已关联其他作品，请先核对')
-        for row in library.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)):
-            if row['namespace'] in external and external[row['namespace']]!=row['value']:
-                raise ValueError('来源的外部编号与当前影片冲突')
         for namespace,value in external.items():
             linked=library.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?',
                                       (work['kind'],namespace,value)).fetchone()
@@ -308,10 +305,32 @@ def _overwrite(library, work, plugin, record, manager, cancelled, selected):
         for alias in metadata.get('aliases',[]):
             library.db.execute('INSERT OR IGNORE INTO name_keys VALUES (?,?)',(identity(alias,record.get('year'),work['kind']),work_id))
         for namespace,value in external.items():
+            # A deliberate replacement may correct this work's old identifiers.
+            # Ownership of every incoming ID was checked again under the write lock.
+            library.db.execute('DELETE FROM external_ids WHERE work_id=? AND namespace=?',(work_id,namespace))
             library.db.execute('INSERT OR IGNORE INTO external_ids VALUES (?,?,?,?)',(work['kind'],namespace,value,work_id))
         library.db.execute('INSERT INTO sources VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(plugin,source_id) DO UPDATE SET url=excluded.url,updated=excluded.updated,site_added=excluded.site_added,rating=excluded.rating',
                            (work_id,plugin['id'],plugin['name'],str(record['id']),record['url'],now(),record.get('site_added'),record.get('rating')))
     return {'fields':[field for field in LABELS if field not in {'images'}], 'images':len(downloaded),'errors':errors}
+
+
+def overwrite_snapshot(library, work_id):
+    """Capture presentation before fetching; personal state is deliberately excluded."""
+    return _read(library,work_id),copy.deepcopy(library.setting(f'artwork_{work_id}',{}))
+
+
+def overwrite_metadata(library, plugin, record, work_id, *, cancelled=None, snapshot=None):
+    """Shared forced replacement for manual matching and the batch repair panel."""
+    check_cancelled(cancelled)
+    validate_metadata(record)
+    work,selected=snapshot if snapshot is not None else overwrite_snapshot(library,work_id)
+    if work['kind'] not in {'movie','series','vr'}:
+        raise ValueError('该分类不使用影视资料修复')
+    kind=record.get('kind','movie')
+    if kind!=work['kind'] and not (kind=='movie' and work['kind']=='vr'):
+        raise ValueError('候选媒体类型不匹配')
+    manager=Plugins(library);manager.cancelled=cancelled
+    return _overwrite(library,work,plugin,record,manager,cancelled,selected)
 
 
 def repair_many(library, work_ids, *, images_only=False, force=False, plugin_ids=None, progress=None, cancelled=None):
@@ -334,7 +353,7 @@ def repair_many(library, work_ids, *, images_only=False, force=False, plugin_ids
                     check_cancelled(cancelled)
                     try:
                         record=_detail(library,work,manager,plugin,source,refresh=True,cancelled=cancelled)
-                        replaced=_overwrite(library,work,plugin,record,manager,cancelled,selected)
+                        replaced=overwrite_metadata(library,plugin,record,work_id,cancelled=cancelled,snapshot=(work,selected))
                         item.update(replaced)
                         item['id']=work_id;item['title']=record['title']
                         break
