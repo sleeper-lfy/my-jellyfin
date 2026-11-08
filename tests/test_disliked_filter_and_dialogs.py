@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from PySide6.QtWidgets import QFileDialog
 
 from lumen import dialogs
@@ -47,7 +48,7 @@ def test_folder_picker_uses_windows_shell_and_keeps_pasted_initial_path(qapp,tmp
     picker=dialogs._picker(None,'Choose directory',str(folder))
     try:
         assert picker.testOption(QFileDialog.Option.DontUseNativeDialog) is not native
-        assert picker.directory().absolutePath()==str(folder)
+        assert Path(picker.directory().absolutePath())==folder
         assert bool(picker.styleSheet()) is not native
     finally:picker.deleteLater()
     monkeypatch.setattr(QFileDialog,'exec',lambda self:0)
