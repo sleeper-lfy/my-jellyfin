@@ -587,3 +587,6 @@ Windows 的统一目录 / 文件选择器改用系统原生窗口，支持粘贴
 导入任务保存原候选集合，任务中心重试优先恢复该集合，避免单文件任务变成整目录导入。默认引用原文件，整理仍需既有明确设置。
 
 完整 Python 回归 770 项通过、3 项跳过、5 项既有 Linux 环境差异失败（160.85 秒），无新增失败。新增回归覆盖五种类型的单文件范围、重复导入、混合拖入及非视频拒绝。准备发布 v0.4.14-preview.8，Android versionCode 25，须通过云端 Windows 全量与安装验收、Android 测试 / 签名验证后公开。
+
+
+Preview 8 的 Android 工具准备失败；本地同一脚本复现 Google 清单中的 platform-tools_r37.0.2-linux.zip 返回 404，应用测试未执行。构建与 Robolectric 不使用 adb，已移除这项非必要归档依赖，保留 JDK / Gradle / SDK platform / build-tools 的官方校验。使用新标签 v0.4.14-preview.9（Android versionCode 26）完整重建，不改写已推送标签、不跳过测试。为读取日志而拟向 main 提交诊断请求的操作被自动审批拒绝，未推送该请求；通过本地复现定位问题，未更改远程 main。

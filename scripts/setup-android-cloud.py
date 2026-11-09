@@ -26,7 +26,9 @@ response=client.get('https://dl.google.com/android/repository/repository2-1.xml'
 xml=ET.fromstring(response.content)
 for element in xml.iter():element.tag=element.tag.split('}')[-1]
 sdk=root/'sdk';sdk.mkdir(exist_ok=True)
-for packageid,folder in [('platforms;android-36','platforms/android-36'),('build-tools;35.0.0','build-tools/35.0.0'),('platform-tools','platform-tools')]:
+# APK builds and Robolectric use the platform and build-tools, not adb. Avoid
+# depending on the separately published platform-tools archive for packaging.
+for packageid,folder in [('platforms;android-36','platforms/android-36'),('build-tools;35.0.0','build-tools/35.0.0')]:
  package=next(p for p in xml.findall('remotePackage') if p.get('path')==packageid and '-ext' not in p.findtext('display-name',''))
  chosen=next(a for a in package.findall('./archives/archive') if a.findtext('host-os') in (None,'linux'))
  complete=chosen.find('complete');checksum=complete.find('checksum')
