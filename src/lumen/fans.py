@@ -78,6 +78,8 @@ def import_folder(library, root, progress=None, fast=False, cancelled=None, cand
     root=Path(root).resolve(strict=True)
     if not root.is_dir():raise ValueError('请选择文件夹')
     task=uuid.uuid4().hex;payload={'root':str(root),'kind':'fans','fast':fast}
+    if candidates is not None:
+        candidates=list(candidates);payload['candidates']=[str(path) for path in candidates]
     result={'imported':0,'duplicates':0,'errors':[],'warnings':[]}
     saved=[0]
     def report(done,total,stage,path='',force=False):

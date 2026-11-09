@@ -106,7 +106,7 @@ def test_import_dialog_defaults_batch_note_and_fans_lock(qapp, tmp_path):
         dialog.kind.setCurrentIndex(dialog.kind.findData('movie')); dialog.sync_kind()
         assert dialog.scraper.currentData() == 'catalog-json' and dialog.destination.text() == 'D:\\Movies'
         dialog.pending = ['a', 'b']; dialog.sync_kind()
-        assert '3 个文件夹' in dialog.message.text()
+        assert '3 个文件或文件夹' in dialog.message.text()
         dialog.kind.setCurrentIndex(dialog.kind.findData('fans')); dialog.sync_kind()
         assert not dialog.scraper.isEnabled() and not dialog.destination.isEnabled()
         assert dialog.scraper.currentData() in (None, '') and dialog.destination.text() == ''

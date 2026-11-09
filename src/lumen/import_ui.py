@@ -10,7 +10,7 @@ class ImportDialog(QDialog):
         super().__init__(window);self.window=window;self.browser=None;self.pending=[]
         self.setAcceptDrops(True)
         self.setWindowTitle('添加媒体');self.resize(640,300)
-        layout=QVBoxLayout(self);note=QLabel('选择或粘贴资源目录。原文件保留；重复导入会跳过未变化文件并更新 NFO。');note.setWordWrap(True);layout.addWidget(note)
+        layout=QVBoxLayout(self);note=QLabel('拖入或粘贴视频文件 / 文件夹路径。单个文件只导入该文件，原文件保留；重复导入会跳过未变化文件并更新 NFO。');note.setWordWrap(True);layout.addWidget(note)
         form=QFormLayout();layout.addLayout(form);row=QHBoxLayout()
         self.path=QLineEdit();self.path.setPlaceholderText('例如 D:\\Video；也可直接粘贴目录路径');self.path.setMinimumWidth(0);row.addWidget(self.path,1)
         browse=QPushButton('选择目录…');browse.clicked.connect(self.choose);row.addWidget(browse);form.addRow('媒体目录',row)
@@ -57,7 +57,7 @@ class ImportDialog(QDialog):
         else:text='此类型按原文件名入库，不自动刮削。'
         if kind in SCRAPABLE and not self.scraper.currentData():text+='当前未选择刮削来源，导入后只入库；要自动刮削，请先选择来源。'
         text+='已有后台任务时会排队处理，仍可继续添加其他目录。'
-        if self.pending:text+=f'本次拖入共 {len(self.pending)+1} 个文件夹，确认后其余将按相同设置依次加入队列。'
+        if self.pending:text+=f'本次拖入共 {len(self.pending)+1} 个文件或文件夹，确认后其余将按相同设置依次加入队列。'
         return text
     def add_folders(self,paths):
         current=self.path.text().strip()

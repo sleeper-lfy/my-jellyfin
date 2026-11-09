@@ -336,6 +336,13 @@ class Library(CatalogActions):
         return merge_folders(self,work_ids,target_id,creator)
 
     def import_folder(self, root, kind, progress=None, fast=False, cancelled=None, candidates=None, include_work_ids=False):
+        source = Path(root)
+        if source.is_file():
+            if source.is_symlink() or source.suffix.lower() not in VIDEO_EXTENSIONS:
+                raise ValueError('请选择视频文件或文件夹')
+            source = source.resolve(strict=True)
+            candidates = [source]
+            root = source.parent
         if kind=='fans':
             from .fans import import_folder
             return import_folder(self,root,progress,fast,cancelled,candidates)
@@ -346,6 +353,9 @@ class Library(CatalogActions):
             raise ValueError('请选择文件夹')
         task_id = uuid.uuid4().hex
         payload = {'root': str(root), 'kind': kind, 'fast': fast}
+        if candidates is not None:
+            candidates = list(candidates)
+            payload['candidates'] = [str(path) for path in candidates]
         self.task(task_id, 'import', 'running', payload)
         results = {'imported': 0, 'duplicates': 0, 'errors': [], 'warnings': []}
         affected_ids=set()

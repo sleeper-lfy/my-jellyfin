@@ -2435,15 +2435,18 @@ class MainWindow(QMainWindow):
             local = url.toLocalFile()
             if not local:continue
             try:
-                if Path(local).is_dir():folders.append(local)
+                path=Path(local)
+                from .core import VIDEO_EXTENSIONS
+                if path.is_dir() or path.is_file() and not path.is_symlink() and path.suffix.lower() in VIDEO_EXTENSIONS:
+                    if local not in folders:folders.append(local)
             except OSError:continue
         if not folders:
-            self.import_hint('拖入的内容里没有识别到文件夹；单个文件请先放入文件夹后拖入。')
+            self.import_hint('拖入的内容里没有识别到文件夹或支持的视频文件。')
             return
         event.acceptProposedAction()
         self.import_path(folders[0], pending=folders[1:])
         if len(folders) > 1:
-            self.status.setText(f'本次拖入 {len(folders)} 个文件夹；确认设置后其余文件夹按相同选项加入队列。')
+            self.status.setText(f'本次拖入 {len(folders)} 个文件或文件夹；确认设置后按相同选项加入队列。')
 
     def build_tree(self,items=None):
         self.tree.clear()
@@ -2774,7 +2777,7 @@ class MainWindow(QMainWindow):
                 self.run_job('恢复文件整理', lambda lib, p: execute_move(lib, task_id=task['id'],cancelled=p.cancelled))
             elif task['kind'] == 'import':
                 dialog.accept()
-                candidates=task.get('candidates') or None
+                candidates=task.get('candidates') or payload.get('candidates') or None
                 self.run_job('重试导入失败项' if candidates else '继续导入', lambda lib, p: lib.import_folder(payload['root'], payload['kind'], p, fast=payload.get('fast',True), cancelled=p.cancelled,candidates=candidates))
             elif task['kind']=='download':
                 from .downloads import download_direct
