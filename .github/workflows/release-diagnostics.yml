@@ -1,0 +1,28 @@
+name: Inspect requested release build failures
+on:
+  push:
+    branches: [work]
+    paths: ['scripts/release-diagnostics-request.json']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect bounded redacted failure evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp scripts/release-diagnostics-request.json scripts/ci-inspect.json
+          python scripts/inspect-ci.py
+      - name: Save evidence on the requested work branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add target/ci-inspection.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record release failure diagnostics [skip ci]'
+          git pull --rebase origin work
+          git push origin HEAD:work
