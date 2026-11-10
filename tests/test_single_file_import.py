@@ -29,11 +29,11 @@ def test_drop_mixed_files_and_folders_keeps_each_selected_path(qapp,tmp_path):
     video=tmp_path/'single.mp4';video.write_bytes(b'video')
     try:
         window.dropEvent(drag_event([str(video),str(folder),str(video)],QDropEvent))
-        assert window.import_form.path.text()==str(video)
-        assert window.import_form.pending==[str(folder)]
+        assert Path(window.import_form.path.text())==video
+        assert list(map(Path,window.import_form.pending))==[folder]
         other=tmp_path/'other.mkv';other.write_bytes(b'video')
         window.dropEvent(drag_event([str(other)],QDropEvent))
-        assert window.import_form.pending==[str(folder),str(other)]
+        assert list(map(Path,window.import_form.pending))==[folder,other]
     finally:window.close()
 
 

@@ -590,3 +590,6 @@ Windows 的统一目录 / 文件选择器改用系统原生窗口，支持粘贴
 
 
 Preview 8 的 Android 工具准备失败；本地同一脚本复现 Google 清单中的 platform-tools_r37.0.2-linux.zip 返回 404，应用测试未执行。构建与 Robolectric 不使用 adb，已移除这项非必要归档依赖，保留 JDK / Gradle / SDK platform / build-tools 的官方校验。使用新标签 v0.4.14-preview.9（Android versionCode 26）完整重建，不改写已推送标签、不跳过测试。为读取日志而拟向 main 提交诊断请求的操作被自动审批拒绝，未推送该请求；通过本地复现定位问题，未更改远程 main。
+
+
+用户允许只读诊断后，工作流进一步限定输出为经仓库 AST 白名单验证的测试 ID 和固定异常类型，不输出任何日志正文或错误消息，不回写仓库。诊断确认 Windows 唯一失败用例为混合拖入测试的路径字符串比较；已统一使用 Path 语义比较 Qt / Windows 路径，保持实际导入代码及验证范围不变。采用新标签 v0.4.14-preview.10（Android versionCode 27）完整重建。
