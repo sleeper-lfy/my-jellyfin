@@ -149,11 +149,11 @@ public class PlayerUiTest {
             assertNotNull(findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"音轨"));
             assertNull("上下集已归到播放控制行",findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"下个视频"));
             Button picture=findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"画面设置");assertNotNull(picture);
-            picture.performClick();AlertDialog settingsMenu=ShadowAlertDialog.getLatestAlertDialog();assertEquals("画面设置",shadowOf(settingsMenu).getTitle());
+            picture.performClick();AlertDialog settingsMenu=ShadowAlertDialog.getLatestAlertDialog();assertEquals("播放选项",shadowOf(settingsMenu).getTitle());
             Button beauty=(Button)field(activity,"beautyControl");assertNotNull(beauty);assertEquals("实时美颜",beauty.getText().toString());
             Field settings=PlayerActivity.class.getDeclaredField("beauty");settings.setAccessible(true);settings.set(activity,new BeautySettings(new org.json.JSONObject().put("enabled",true)));
             Method refresh=PlayerActivity.class.getDeclaredMethod("refreshBeauty");refresh.setAccessible(true);refresh.invoke(activity);
-            assertEquals(0xFF00A4DC,beauty.getTextColors().getDefaultColor());assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
+            assertEquals(MediaStyle.ACCENT,beauty.getTextColors().getDefaultColor());assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
             Field file=PlayerActivity.class.getDeclaredField("file");file.setAccessible(true);file.set(activity,new org.json.JSONObject().put("id",1L));
             beauty.performClick();AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();assertEquals("实时美颜",shadowOf(dialog).getTitle());dialog.dismiss();
         }
@@ -181,11 +181,11 @@ public class PlayerUiTest {
 
     private void assertRowFitsShare(LinearLayout row){
         assertNotNull(row);
-        int share=(row.getWidth()-row.getPaddingLeft()-row.getPaddingRight())/row.getChildCount();
         for(int i=0;i<row.getChildCount();i++){
-            View child=row.getChildAt(i);
-            assertEquals("主题按钮默认 88dp 最小宽度会把密集行撑变形",0,child.getMinimumWidth());
-            assertTrue("按钮超出均分宽度会挤压整行",child.getMeasuredWidth()<=share+1);
+            View child=row.getChildAt(i);if(child.getVisibility()!=View.VISIBLE)continue;
+            assertEquals("主题最小宽度不得挤压控件",0,child.getMinimumWidth());
+            assertTrue("控件越过容器右侧",child.getRight()<=row.getWidth());assertTrue("控件越过容器左侧",child.getLeft()>=0);
+            assertTrue("保留48dp触控宽度",child.getMeasuredWidth()>=Math.round(48*row.getResources().getDisplayMetrics().density));
         }
     }
 }

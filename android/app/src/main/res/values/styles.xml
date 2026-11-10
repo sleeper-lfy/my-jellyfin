@@ -1,11 +1,24 @@
 <resources>
     <style name="AppThemeBase" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:editTextStyle">@style/LumenInput</item>
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#00A4DC</item>
-        <item name="android:windowBackground">#101010</item>
-        <item name="android:statusBarColor">#101010</item>
-        <item name="android:navigationBarColor">#101010</item>
+        <item name="android:colorAccent">#79D8EC</item>
+        <item name="android:colorControlNormal">#91A9B8</item>
+        <item name="android:colorButtonNormal">#15212C</item>
+        <item name="android:colorBackgroundFloating">#131E28</item>
+        <item name="android:textColorPrimary">#EEF3F5</item>
+        <item name="android:textColorSecondary">#91A9B8</item>
+        <item name="android:windowBackground">#0B1117</item>
+        <item name="android:statusBarColor">#0B1117</item>
+        <item name="android:navigationBarColor">#0B1117</item>
         <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <style name="LumenInput" parent="android:style/Widget.Material.EditText">
+        <item name="android:background">@drawable/input_surface</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingLeft">12dp</item><item name="android:paddingRight">12dp</item>
+        <item name="android:paddingTop">8dp</item><item name="android:paddingBottom">8dp</item>
+        <item name="android:textSize">14sp</item><item name="android:textColorHint">#91A9B8</item>
     </style>
     <style name="AppTheme" parent="AppThemeBase" />
 </resources>

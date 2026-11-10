@@ -480,7 +480,7 @@ class LanServer:
                             library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
                             return self.send_json(200,{'ok':True})
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','disliked','tag','actor','year_min','year_max','rating_min','tags_all','sort','direction','watch_state'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','disliked','tag','actor','year_min','year_max','rating_min','tags_all','tags_any','tags_not','sort','direction','watch_state'}})
                             ids=[w['id'] for w in library.query(filters)]
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
@@ -495,7 +495,7 @@ class LanServer:
                                 raise ApiError(400,'不支持的媒体列表路径')
                             parameters = parse_qs(browse.query,keep_blank_values=True,max_num_fields=40)
                             allowed = {'offset','limit','kind','q','favorite','watchlist','disliked','tag','actor','year',
-                                       'year_min','year_max','rating_min','tags_all','sort','direction','watch_state',
+                                       'year_min','year_max','rating_min','tags_all','tags_any','tags_not','sort','direction','watch_state',
                                        'list','ids','source','category','tag_q'}
                             if not parameters.keys() <= allowed or any(len(values)!=1 for values in parameters.values()):
                                 raise ApiError(400,'无效媒体列表参数')
@@ -594,8 +594,12 @@ class LanServer:
                 if query.get('tag', [''])[0]:
                     filters['tags_all'] = [query['tag'][0]]
                 if query.get('tags_all', [''])[0]:
-                    tags = [tag.strip() for tag in query['tags_all'][0].split(',') if tag.strip()]
+                    tags = [tag.strip() for tag in query['tags_all'][0].replace('，',',').split(',') if tag.strip()]
                     if tags:filters['tags_all'] = filters.get('tags_all', []) + tags
+                for field in ('tags_any','tags_not'):
+                    if query.get(field,[''])[0]:
+                        tags=[tag.strip() for tag in query[field][0].replace('，',',').split(',') if tag.strip()]
+                        if tags:filters[field]=tags
                 if query.get('actor', [''])[0]:
                     filters['actor'] = query['actor'][0]
                 if query.get('year', [''])[0]:

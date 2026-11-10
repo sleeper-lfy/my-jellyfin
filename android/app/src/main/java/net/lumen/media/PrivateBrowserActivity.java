@@ -30,10 +30,10 @@ public final class PrivateBrowserActivity extends Activity {
     @Override protected void onCreate(Bundle state){
         super.onCreate(state);
         Uri uri=getIntent().getData();if(!website(uri)){finish();return;}
-        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setBackgroundColor(Color.BLACK);layout.setFitsSystemWindows(true);
+        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setBackgroundColor(MediaStyle.BG);layout.setFitsSystemWindows(true);
         LinearLayout bar=new LinearLayout(this);
-        Button close=new Button(this);close.setText("关闭");close.setOnClickListener(v->finish());bar.addView(close);
-        TextView location=new TextView(this);location.setTextColor(Color.WHITE);location.setText("无痕浏览 · "+uri.getHost());location.setMaxLines(2);
+        Button close=new Button(this);MediaStyle.quiet(close,"back","关闭网页");close.setOnClickListener(v->finish());bar.addView(close);
+        TextView location=new TextView(this);location.setTextColor(MediaStyle.TEXT);location.setTextSize(14);bar.setPadding(MediaStyle.dp(this,8),MediaStyle.dp(this,8),MediaStyle.dp(this,12),MediaStyle.dp(this,8));bar.setGravity(android.view.Gravity.CENTER_VERTICAL);location.setText("无痕浏览 · "+uri.getHost());location.setMaxLines(2);
         bar.addView(location,new LinearLayout.LayoutParams(0,-2,1));layout.addView(bar);
         web=new WebView(this);layout.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(false);

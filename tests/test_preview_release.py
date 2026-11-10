@@ -50,9 +50,11 @@ def test_preview_rejects_mismatched_or_unverified_artifacts(tmp_path,fault):
 
 
 def test_only_matching_preview_tag_is_accepted(monkeypatch):
+    import tomllib
+    current=tomllib.loads((preview.ROOT/'pyproject.toml').read_text())['project']['version']
     for number in (1,2,3):
-        monkeypatch.setenv('GITHUB_REF_NAME',f'v0.4.14-preview.{number}');assert preview.version()=='0.4.14'
-    for tag in ('v0.4.14','v0.4.13-preview.1','v0.4.14-preview.0','other'):
+        monkeypatch.setenv('GITHUB_REF_NAME',f'v{current}-preview.{number}');assert preview.version()==current
+    for tag in (f'v{current}','v0.0.1-preview.1',f'v{current}-preview.0','other'):
         monkeypatch.setenv('GITHUB_REF_NAME',tag)
         with pytest.raises(AssertionError):preview.version()
 

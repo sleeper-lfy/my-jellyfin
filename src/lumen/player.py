@@ -359,7 +359,16 @@ class Player(QDialog):
             size = QSizeF(self.canvas.viewport().size())
             self.video.setSize(size)
             self.scene.setSceneRect(0, 0, size.width(), size.height())
-        if event.type() in {QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress}:
+        video_surface=watched in (self,self.canvas.viewport(),self.overlay,self.caption)
+        if video_surface and event.type()==QEvent.Type.MouseButtonPress and event.button()==Qt.MouseButton.LeftButton:
+            self._video_click_start=event.position().toPoint();return True
+        if video_surface and event.type()==QEvent.Type.MouseButtonRelease and event.button()==Qt.MouseButton.LeftButton:
+            start=getattr(self,'_video_click_start',None);self._video_click_start=None
+            if start is not None and (event.position().toPoint()-start).manhattanLength()<=QApplication.startDragDistance():
+                self.toggle_controls();return True
+        if event.type()==QEvent.Type.KeyPress:
+            self._controls_hidden_by_click=False;self.show_controls()
+        elif event.type()==QEvent.Type.MouseMove and not getattr(self,'_controls_hidden_by_click',False):
             self.show_controls()
         return super().eventFilter(watched, event)
 
@@ -419,14 +428,21 @@ class Player(QDialog):
         point = QCursor.pos()
         moved = point != self.last_cursor
         self.last_cursor = point
-        if moved and self.isVisible() and self.isActiveWindow() and self.rect().contains(self.mapFromGlobal(point)):
+        if moved and not getattr(self,'_controls_hidden_by_click',False) and self.isVisible() and self.isActiveWindow() and self.rect().contains(self.mapFromGlobal(point)):
             self.show_controls()
 
     def set_auto_hide(self, enabled):
         self.library.set_setting('player_auto_hide', enabled)
         self.show_controls()
 
+    def toggle_controls(self):
+        if self.header.isHidden():
+            self._controls_hidden_by_click=False;self.show_controls()
+        else:
+            self._controls_hidden_by_click=True;self.idle.stop();self.header.hide();self.footer.hide();self.update_overlay_mask()
+
     def show_controls(self):
+        if getattr(self,'_controls_hidden_by_click',False):return
         self.sync_overlay()
         self.header.show()
         self.footer.show()
@@ -439,6 +455,7 @@ class Player(QDialog):
 
     def hide_controls(self):
         if not getattr(self,'_personal_menu',None) and self.auto_hide.isChecked() and self.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState and not any(dialog.isVisible() for dialog in self.findChildren(QDialog)) and not self.timeline.isSliderDown() and not self.footer.underMouse():
+            self._controls_hidden_by_click=False
             self.header.hide()
             self.footer.hide()
             self.overlay.setCursor(Qt.CursorShape.BlankCursor)
@@ -786,6 +803,7 @@ class Player(QDialog):
         timer=QTimer(dialog);timer.setInterval(1000);timer.timeout.connect(update);timer.start();update();dialog.show()
 
     def toggle_fullscreen(self):
+        self._controls_hidden_by_click=False;
         entering = not self.isFullScreen()
         canvas_id=int(self.canvas.winId()) if self.mpv_backend else None
         if entering:

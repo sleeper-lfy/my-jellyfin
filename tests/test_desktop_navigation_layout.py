@@ -85,12 +85,15 @@ def test_personal_navigation_and_batch_export_have_explicit_targets(qapp,tmp_pat
     finally:window.close()
 
 
-def test_home_categories_keep_readable_width_and_continue_is_first(qapp,tmp_path):
+def test_home_categories_match_continue_width_wrap_and_come_first(qapp,tmp_path):
     window=MainWindow(tmp_path/'home');add_work(window.library,'Category sample')
     try:
         window.resize(1024,700);window.show();window.navigate('home');settle(qapp)
         assert all(tile.width()>=160 for tile in window.home_page.tiles.values())
-        assert window.home_page.layout.itemAt(0).widget() is window.home_page.sections['继续观看'][0]
+        assert window.home_page.layout.itemAt(1).widget() is window.home_page.shortcuts
+        assert window.home_page.layout.indexOf(window.home_page.shortcuts)<window.home_page.layout.indexOf(window.home_page.sections['继续观看'][0])
+        assert all(tile.width()==window.library.setting('thumbnail_width',280) for tile in window.home_page.tiles.values())
+        assert len({tile.y() for tile in window.home_page.tiles.values()})>1
         assert not window.view_mode.isVisible()
     finally:window.close()
 

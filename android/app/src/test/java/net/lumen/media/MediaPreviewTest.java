@@ -70,7 +70,7 @@ public class MediaPreviewTest {
                 if(request.getPath().endsWith("/cover"))return new MockResponse().setHeader("Content-Type","image/png").setBody(new okio.Buffer().write(cover));
                 if(request.getPath().startsWith("/api/filters"))return new MockResponse().setBody("{\"tags\":[\"纪录片\",\"旅行\"],\"actors\":[\"林遥\",\"周宁\"],\"years\":[2024,2023]}");
                 return new MockResponse().setBody("{\"items\":"+works+",\"total\":"+works.length()+"}");
-            }});server.start();MainActivity activity=lifecycle.get();field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));field(activity,"kind","movie");call(activity,"showLibrary");
+            }});server.start();MainActivity activity=lifecycle.get();field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));field(activity,"kind","movie");field(activity,"mainPage","library");call(activity,"showLibrary");
             View root=((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0);View libraryRoot=root;idleUntil(()->pictures(libraryRoot)>=6);layout(root,393,851);
             assertNotNull(root.findViewWithTag("card:1"));View first=root.findViewWithTag("card:1");View last=root.findViewWithTag("card:2");assertEquals(first.getTop(),last.getTop());assertTrue(last.getRight()<=393);
             snapshot(root,"ui-android-library.png");

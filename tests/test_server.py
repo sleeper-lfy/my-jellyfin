@@ -104,6 +104,19 @@ def test_invalid_ranges(value):
     with pytest.raises(ApiError): parse_range(value, 20)
 
 
+def test_android_tag_any_and_exclusion_keep_the_same_queue_scope(lan,library):
+    from test_core import add_work
+    client,_,source,_=lan
+    keep=add_work(library,'Nature travel',metadata={'tags':['Nature','Travel']})
+    add_work(library,'Excluded drama',metadata={'tags':['Nature','Drama']})
+    add_work(library,'Other category',metadata={'tags':['Comedy']})
+    target=library.directory/'tag-selected.mp4';target.write_bytes(source.read_bytes())
+    with library.db:library.db.execute('UPDATE files SET path=?,root=? WHERE work_id=?',(str(target),str(target.parent),keep))
+    path='/api/works?kind=movie&tags_any=Nature,Travel&tags_not=Drama'
+    assert [work['id'] for work in client.get(path).json()['items']]==[keep]
+    assert client.post('/api/queue/from-browse',json={'browse_path':path}).json()['ids']==[keep]
+
+
 def test_http_video_decodes_and_outside_root_is_denied(lan, library):
     import subprocess
     client, server, _, _ = lan

@@ -1206,6 +1206,7 @@ class Details(QWidget):
         if not item:return
         file=item.data(Qt.ItemDataRole.UserRole)
         menu=QMenu(self)
+        menu.addAction('在系统文件夹中显示',lambda:self.window.reveal_file_path(file['path']))
         menu.addAction('移除此集的媒体库记录（保留文件）',lambda:self.remove_episode_records([file['id']]))
         if file.get('season') is not None:
             season=file['season']
@@ -2100,8 +2101,26 @@ class MainWindow(QMainWindow):
         self.heading.setText(('标签：' if field == 'tags_all' else '演员：') + value)
         self.refresh()
 
-    def card_menu(self, position):
-        item = self.cards.itemAt(position)
+    def reveal_file_path(self,path):
+        from .file_location import reveal_video
+        try:return reveal_video(path)
+        except (OSError,ValueError) as error:QMessageBox.warning(self,'定位视频文件',str(error))
+
+    def reveal_work_file(self,work_id):
+        files=self.library.work(work_id).get('files',[])
+        if not files:
+            QMessageBox.information(self,'定位视频文件','此影片还没有本地视频文件。');return
+        index=0
+        if len(files)>1:
+            labels=[str(file['path']) for file in files]
+            selected,accepted=QInputDialog.getItem(self,'定位视频文件','选择要在文件管理器中显示的视频',labels,0,False)
+            if not accepted:return
+            index=labels.index(selected)
+        return self.reveal_file_path(files[index]['path'])
+
+    def card_menu(self, position, cards=None):
+        source=cards if cards is not None else self.cards
+        item = source.itemAt(position)
         if not item:
             return
         data = item.data(Qt.ItemDataRole.UserRole)
@@ -2118,6 +2137,7 @@ class MainWindow(QMainWindow):
             menu.addAction('取消收藏' if data.get('favorite') else '收藏', lambda: self.toggle_favorite(data['id']))
         if data.get('files'):
             menu.addAction('播放 / 继续观看', lambda: self.play_work(data['id']))
+            menu.addAction('在系统文件夹中显示…',lambda:self.reveal_work_file(data['id']))
         if data.get('kind') in {'movie', 'vr'}:
             target = 'movie' if data['kind'] == 'vr' else 'vr'
             menu.addAction('移至' + KINDS[target], lambda: self.change_movie_kind(data['id'], target))
@@ -2128,7 +2148,7 @@ class MainWindow(QMainWindow):
             menu.addAction('加入电脑播放队列',lambda:self.library.edit_queue([*self.library.setting('queue',{'ids':[]})['ids'],data['id']]))
             menu.addAction('仅移出媒体库…',lambda:self.remove_catalog_work(data['id']))
             if data.get('files'):menu.addAction('删除本地文件…',lambda:self.delete_work_files(data['id']))
-        menu.exec(self.cards.mapToGlobal(position))
+        menu.exec(source.mapToGlobal(position))
 
     def scrape_actor_photo(self):
         item=self.cards.currentItem();record=item.data(Qt.ItemDataRole.UserRole) if item else {}

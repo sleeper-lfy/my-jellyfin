@@ -53,16 +53,16 @@ final class TaskCenter {
     private TaskCenter(Activity owner,Api connection,long filterWork){
         activity=owner;api=connection;workId=filterWork;
         LinearLayout page=new LinearLayout(activity);page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16),dp(8),dp(16),dp(8));page.setBackgroundColor(0xff18181d);
+        page.setPadding(dp(16),dp(8),dp(16),dp(8));page.setBackgroundColor(0xff131e28);
         page.setTag("computerTaskCenter");
-        page.addView(label(workId>0?"显示关联此影片的电脑任务；确认、重试与停止请到电脑处理。":"任务在电脑执行；确认、重试与停止请到电脑任务中心。",13,0xffb0b0bb));
+        page.addView(label(workId>0?"显示关联此影片的电脑任务；确认、重试与停止请到电脑处理。":"任务在电脑执行；确认、重试与停止请到电脑任务中心。",13,0xff91a9b8));
         LinearLayout controls=new LinearLayout(activity);page.addView(controls);
         category=new Spinner(activity);category.setContentDescription("电脑任务分类");category.setTag("computerTaskCategory");
         category.setAdapter(new ArrayAdapter<>(activity,android.R.layout.simple_spinner_dropdown_item,
                 new String[]{"全部","进行中","待确认与重试","失败","历史"}));
         controls.addView(category,new LinearLayout.LayoutParams(0,dp(48),1));
         refresh=button("刷新",()->load());refresh.setTag("refreshComputerTasks");controls.addView(refresh);
-        status=label("正在读取电脑任务…",13,0xffb0b0bb);status.setTag("computerTasksStatus");page.addView(status);
+        status=label("正在读取电脑任务…",13,0xff91a9b8);status.setTag("computerTasksStatus");page.addView(status);
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(true);
         rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);rows.setTag("computerTaskRows");scroll.addView(rows);
         page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -83,7 +83,7 @@ final class TaskCenter {
                 if(position!=selection){selection=position;offset=0;load();}
             }
         });
-        dialog.show();
+        dialog.show();MediaStyle.sheet(dialog);
         if(dialog.getWindow()!=null){
             int height=activity.getResources().getDisplayMetrics().heightPixels;
             dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT,Math.max(dp(180),height-dp(64)));
@@ -116,12 +116,12 @@ final class TaskCenter {
     }
     private void render(JSONObject result){
         rows.removeAllViews();JSONArray items=result.optJSONArray("items");total=result.optInt("total");
-        if(items==null||items.length()==0){rows.addView(label("当前分类没有任务",16,0xffb0b0bb));status.setText("共 "+total+" 项任务");return;}
+        if(items==null||items.length()==0){rows.addView(label("当前分类没有任务",16,0xff91a9b8));status.setText("共 "+total+" 项任务");return;}
         status.setText("电脑执行 · 第 "+(offset+1)+"–"+(offset+items.length())+" 项，共 "+total+" 项");
         for(int i=0;i<items.length();i++){
             JSONObject task=items.optJSONObject(i);if(task==null)continue;
             LinearLayout card=new LinearLayout(activity);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(12),dp(6),dp(12),dp(8));
-            card.setBackground(MediaStyle.surface(activity,0xff222228,0xff35353e,8));
+            card.setBackground(MediaStyle.surface(activity,0xff182935,0xff2c414f,8));
             LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);space.setMargins(0,0,0,dp(10));rows.addView(card,space);
             String title=task.optString("work_title","");if(title.equals("null"))title="";
             card.addView(label(title.isEmpty()?task.optString("label","后台任务"):title,17,Color.WHITE));
@@ -132,9 +132,9 @@ final class TaskCenter {
                 ProgressBar bar=new ProgressBar(activity,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(100);
                 bar.setProgress((int)Math.max(0,Math.min(100,completed/total*100)));bar.setContentDescription("任务进度 "+bar.getProgress()+"%");card.addView(bar);
                 String amount=progress.optString("unit").equals("bytes")?String.format(java.util.Locale.ROOT,"%.1f / %.1f MiB",completed/1048576,total/1048576):String.format(java.util.Locale.ROOT,"%.0f / %.0f",completed,total);
-                card.addView(label("进度 "+amount,13,0xffb0b0bb));
+                card.addView(label("进度 "+amount,13,0xff91a9b8));
             }
-            if(!task.optString("stage").isEmpty())card.addView(label(task.optString("stage"),13,0xffb0b0bb));
+            if(!task.optString("stage").isEmpty())card.addView(label(task.optString("stage"),13,0xff91a9b8));
             if(!task.optString("reason").isEmpty())card.addView(label(task.optString("reason"),14,0xffd6d6df));
             String updated=task.optString("updated");
             try{updated=OffsetDateTime.parse(updated).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("MM-dd HH:mm"));}catch(Exception ignored){updated="";}

@@ -20,15 +20,15 @@ public final class RemoteActivity extends Activity {
     private JSONObject state=new JSONObject();private String commandId="";private boolean active=false,dragging=false;private volatile boolean polling=false;private int generation=0;
     private final Runnable refresh=new Runnable(){public void run(){poll();if(active)handler.postDelayed(this,1500);}};
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
-    private TextView label(String text,int size){TextView view=new TextView(this);view.setText(text);view.setTextColor(Color.WHITE);view.setTextSize(size);view.setPadding(0,dp(10),0,dp(10));return view;}
+    private TextView label(String text,int size){TextView view=new TextView(this);view.setText(text);view.setTextColor(size>=20?MediaStyle.TEXT:MediaStyle.MUTED);view.setTextSize(size);if(size>=20)view.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);view.setPadding(0,dp(10),0,dp(10));return view;}
     private Button button(String text,Runnable action){Button view=new Button(this);view.setText(text);MediaStyle.button(view,false,false,false);view.setOnClickListener(v->action.run());return view;}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);Connection connection=Connection.load(this);if(connection==null){finish();return;}api=new Api(connection);
         buildUi();
     }
     private void buildUi(){
-        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(20),dp(20),dp(20),dp(20));page.setBackgroundColor(Color.rgb(16,16,16));
-        page.addView(button("返回媒体库",this::finish));page.addView(label("电脑遥控",26));title=label("正在连接电脑…",20);page.addView(title);
+        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(20),dp(20),dp(20),dp(20));page.setBackgroundColor(MediaStyle.BG);page.setFitsSystemWindows(true);
+        Button returnButton=button("",this::finish);MediaStyle.quiet(returnButton,"back","返回媒体库");page.addView(returnButton,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(label("电脑遥控",26));title=label("正在连接电脑…",20);page.addView(title);
         status=label("请先在电脑设置 → 局域网 / Android 中启用手机遥控",14);page.addView(status);time=label("",14);page.addView(time);
         seek=new SeekBar(this);seek.setMax(10000);seek.setContentDescription("电脑播放进度");page.addView(seek,new LinearLayout.LayoutParams(-1,dp(48)));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar bar){dragging=true;}public void onProgressChanged(SeekBar bar,int value,boolean user){}public void onStopTrackingTouch(SeekBar bar){dragging=false;send("seek",state.optDouble("duration")*bar.getProgress()/10000);}});

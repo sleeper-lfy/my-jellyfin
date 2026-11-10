@@ -45,14 +45,14 @@ public final class UpdateActivity extends Activity {
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         try{installed=getPackageManager().getPackageInfo(getPackageName(),signatureFlags());}catch(Exception error){finish();return;}
-        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(24),dp(20),dp(24),dp(20));page.setBackgroundColor(Color.rgb(16,16,16));page.setFitsSystemWindows(true);
-        page.addView(button("返回",this::finish));page.addView(label("检查更新",26));page.addView(label("当前版本 "+installed.versionName+" · "+versionCode(installed),15));
+        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(24),dp(20),dp(24),dp(20));page.setBackgroundColor(MediaStyle.BG);page.setFitsSystemWindows(true);page.setFitsSystemWindows(true);
+        Button back=button("",this::finish);MediaStyle.quiet(back,"back","返回");page.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(label("检查更新",26));page.addView(label("当前版本 "+installed.versionName+" · "+versionCode(installed),15));
         status=label("从 GitHub Releases 和仓库 target 检查新版，不需要连接媒体服务器。",15);status.setMinHeight(dp(76));page.addView(status);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(1000);page.addView(progress,new LinearLayout.LayoutParams(-1,dp(8)));
         notes=label("",14);page.addView(notes);
         check=button("检查更新",this::check);download=button("下载新版 APK",this::download);install=button("安装已校验的更新",this::install);cancel=button("取消下载",()->{cancelled=true;cancel.setEnabled(false);status.setText("正在取消下载…");});
         for(Button button:new Button[]{check,download,install,cancel})page.addView(button);
-        download.setEnabled(false);install.setEnabled(false);cancel.setEnabled(false);
+        MediaStyle.button(check,true,false,false);download.setEnabled(false);install.setEnabled(false);cancel.setEnabled(false);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(page);setContentView(scroll);check();
     }
     private void state(boolean working){busy=working;check.setEnabled(!working);download.setEnabled(!working&&candidate!=null);install.setEnabled(!working&&downloaded!=null);cancel.setEnabled(working&&candidate!=null);}

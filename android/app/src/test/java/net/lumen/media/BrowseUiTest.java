@@ -65,20 +65,20 @@ public class BrowseUiTest {
             field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
             call(activity,"showLibrary");call(activity,"showFilters");
             AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
-            List<AutoCompleteTextView> fields=inputs(dialog.getWindow().getDecorView());assertEquals(6,fields.size());
+            List<AutoCompleteTextView> fields=inputs(dialog.getWindow().getDecorView());assertEquals(8,fields.size());
             long deadline=System.currentTimeMillis()+6000;
             while(fields.get(0).getAdapter()==null&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
             assertNotNull(fields.get(0).getAdapter());assertEquals(2,fields.get(0).getAdapter().getCount());
             assertEquals("Example actor",fields.get(1).getAdapter().getItem(0));
             assertEquals("2024",fields.get(3).getAdapter().getItem(0));
-            fields.get(0).setText("Drama",false);fields.get(1).setText("Example actor",false);fields.get(4).setText("2024",false);
+            fields.get(0).setText("Drama",false);fields.get(1).setText("Example actor",false);((AutoCompleteTextView)dialog.getWindow().getDecorView().findViewWithTag("filterYearTo")).setText("2024",false);
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertFalse(dialog.isShowing());
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);String query=(String)path.invoke(activity);
             assertTrue("tag",query.contains("tag=Drama"));assertTrue("actor",query.contains("actor=Example%20actor"));assertTrue("yearmax",query.contains("year_max=2024"));
             call(activity,"showFilters");AlertDialog second=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
             List<AutoCompleteTextView> secondFields=inputs(second.getWindow().getDecorView());
-            secondFields.get(4).setText("bad",false);second.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-            assertTrue(second.isShowing());assertNotNull(secondFields.get(4).getError());second.dismiss();
+            AutoCompleteTextView to=second.getWindow().getDecorView().findViewWithTag("filterYearTo");to.setText("bad",false);second.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            assertTrue(second.isShowing());assertNotNull(to.getError());second.dismiss();
             AlertDialog clear=second;clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
             String cleared=(String)path.invoke(activity);assertTrue("cleared="+cleared,cleared.contains("&tag=&actor=&"));
         }

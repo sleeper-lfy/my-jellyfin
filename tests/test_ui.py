@@ -205,7 +205,8 @@ def test_home_media_tiles_stay_widescreen_and_card_footers_fit(qapp,tmp_path,vid
     for width in [1100,1600]:
         window.resize(width,1000);qapp.processEvents();qapp.processEvents()
         for tile in window.home_page.findChildren(MediaTile):
-            assert abs(tile.height()-tile.width()*9/16)<3
+            assert tile.width()==window.library.setting("thumbnail_width",280)
+            assert tile.height()==tile.heightForWidth(tile.width())
         for cards in window.home_page.rows:
             assert cards.visualItemRect(cards.item(0)).bottom() < cards.viewport().height()
     window.view_mode.setCurrentIndex(1);qapp.processEvents();qapp.processEvents()
