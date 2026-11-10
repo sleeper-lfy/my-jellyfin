@@ -17,5 +17,5 @@ jobs:
         run: |
           echo '### Structured release test diagnostics' >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          python scripts/release-test-diagnostics.py >> "$GITHUB_STEP_SUMMARY"
+          python scripts/release-test-diagnostics.py | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

@@ -47,6 +47,7 @@ def main():
             output.append({'run':run,'status':'read',**summarize(logs)})
         except Exception:
             output.append({'run':run,'status':'invalid_log_archive'})
+    print("::notice title=Structured release test diagnostics::"+json.dumps(output))
     print(json.dumps(output,indent=2))
 
 
