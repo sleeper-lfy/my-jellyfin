@@ -613,3 +613,12 @@ Preview 8 因非必需 platform-tools 归档失效未发布，Preview 9 因新�
 新增慢响应回归复现：连续放弃四个已返回响应头、仍等待正文的连接，旧 PlaybackBridge 的四个工作线程继续等待上游数据，新位置请求超时。改用可立即取消的 OkHttp 调用，并在本地解码器连接关闭时取消对应请求；请求监视与工作线程均保持有界，离开播放也关闭全部连接。保留鉴权路径白名单、Range / HEAD、字幕与拒绝重定向。六项转发测试通过，原失败回归现已通过。
 
 准备 v0.4.14-preview.11，Android versionCode 28。本地 Android 全量 100 项测试、lint 与 APK 打包通过，零失败 / 错误 / 跳过；尚待云端双端构建及公开附件验证。真实手机持续播放和拖动表现仍需用户验证，不声称已消除所有 4K 卡顿。
+
+
+## 0.4.14 Preview 11 发布与公开下载验证（2026-11-10）
+
+用户补充：HEVC 3840×2160、29.97 fps，未启用美颜或 VR；瞬时读取 0 MiB/s、零丢帧的单次统计不足以确定网络或实际硬解状态。本次只确认并修复慢响应下旧请求阻塞新位置的可复现问题，手机持续播放表现仍待验证。
+
+构建提交 `1be7c77daa228046783a039c447537ae6266f225`，标签 `v0.4.14-preview.11`，Android versionCode 28。[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42812648032)全部成功：Windows **778 项测试通过，零失败 / 错误 / 跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 与卸载验收；Android **100 项测试、lint、签名、版本与 ZIP 对齐验证通过**。
+
+[Preview 11 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.11)六个公开附件均已完整下载；EXE / APK 大小、SHA-256、源码绑定及验收记录一致，APK 再次通过本地签名 / 版本 / 对齐验证并保持此前证书，EXE PE 头检查通过。详细证据见 [发布验证记录](validation/preview-0.4.14-11.json)。README 下载入口已更新；仍为测试预发布，需手动安装，真实小米 15 持续播放和拖动延迟未标为已解决。
