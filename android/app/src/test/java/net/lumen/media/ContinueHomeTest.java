@@ -44,10 +44,10 @@ public class ContinueHomeTest {
                 return new MockResponse().setBody("{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
             call(activity,"showLibrary");View root=activity.findViewById(android.R.id.content);long deadline=System.currentTimeMillis()+5000;
-            while(find(root,"继续播放")==null&&System.currentTimeMillis()<deadline)pump();
+            while(root.findViewWithTag("continuePlay:77")==null&&System.currentTimeMillis()<deadline)pump();
             assertNotNull(find(root,"继续观看"));assertNotNull(find(root,"继续 Part 2 · 2:05 · 剩余 7:55"));
             Object original=get(activity,"root");set(activity,"offset",90);
-            find(root,"继续播放").performClick();Intent launch=shadowOf(activity).getNextStartedActivity();
+            root.findViewWithTag("continuePlay:77").performClick();Intent launch=shadowOf(activity).getNextStartedActivity();
             assertEquals(42,launch.getLongExtra("work_id",0));assertEquals(77,launch.getLongExtra("file_id",0));
             lifecycle.pause().resume();assertSame(original,get(activity,"root"));assertEquals(90,get(activity,"offset"));
         }

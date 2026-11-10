@@ -64,7 +64,7 @@ class MediaShortcuts(QScrollArea):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content=QWidget();self.row=QGridLayout(self.content)
-        self.row.setContentsMargins(0,0,0,0);self.row.setSpacing(12)
+        self.row.setContentsMargins(0,0,0,0);self.row.setSpacing(12);self.row.setAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignTop)
         self.tiles=[];self.setWidget(self.content);self.setFixedHeight(300)
     def add_tile(self,tile):
         self.tiles.append(tile);self.reflow()

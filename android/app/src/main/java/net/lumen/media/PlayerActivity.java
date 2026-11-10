@@ -48,20 +48,22 @@ public final class PlayerActivity extends Activity {
     private boolean usesGlVideo(){return vrEnabled||beauty.enabled&&!beautyUnavailable;}
     private FrameLayout root,overlay;
     private LinearLayout topBar,bottomBar,vrBar,playbackRow,transportControls;
-    private boolean compactTransport=false,portraitControls=false,holdActivated=false;
+    private boolean compactTransport=false,portraitControls=false,holdActivated=false,holdControlsVisible=true;
     private int controlWidth=-1,controlHeight=-1;
     private float controlFont=-1;
     private LinearLayout personalRow,quickRow,portraitInfo;
     private TextView portraitTitle,portraitMeta,speedHint;
     private Button topBookmark,railBookmark,railMore,rotate;
     private final HoldSpeed holdSpeed=new HoldSpeed();
-    private final Runnable beginHoldSpeed=()->{
+    private final Runnable beginHoldSpeed=this::beginTemporarySpeed;
+    private void beginTemporarySpeed(){
         if(player==null||!player.isPlaying()||this.buffering||vrEnabled||this.swipeCancelled||this.swipeSeeking||this.dragging||this.playbackDialogs>0)return;
         final MediaPlayer decoder=player;
         if(holdSpeed.begin(new HoldSpeed.Decoder(){public float rate(){return decoder.getRate();}public boolean rate(float value){decoder.setRate(value);return Math.abs(decoder.getRate()-value)<.05f;}})){
-            holdActivated=true;showControls(false);speedHint.setText(String.format(java.util.Locale.ROOT,"%.2g× 倍速播放中\n松手恢复 %.2g×",holdSpeed.temporary(),holdSpeed.original()));speedHint.setVisibility(View.VISIBLE);
+            holdActivated=true;holdControlsVisible=controlsVisible;showControls(false);speedHint.setText(String.format(java.util.Locale.ROOT,"%.2g× 倍速播放中\n松手恢复 %.2g×",holdSpeed.temporary(),holdSpeed.original()));speedHint.setVisibility(View.VISIBLE);
         }
-    };
+    }
+
     private PlayerController controller;
     private Button projection;
     private TextView gestureHint;
@@ -223,7 +225,7 @@ public final class PlayerActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("选集 / 文件").setItems(names,(d,i)->load(work.optLong("id"),files.optJSONObject(i).optLong("id"))).setNegativeButton("取消",null).show();
     }
     private void videoTap(){showControls(!controlsVisible);}
-    private void cancelHoldSpeed(){handler.removeCallbacks(beginHoldSpeed);boolean wasActive=holdSpeed.active();boolean restored=holdSpeed.end();if(speedHint!=null)speedHint.setVisibility(View.GONE);if(wasActive){showControls(true);if(!restored&&status!=null)status.setText("恢复原速失败，请重新选择播放速度");}}
+    private void cancelHoldSpeed(){handler.removeCallbacks(beginHoldSpeed);boolean wasActive=holdSpeed.active();boolean restored=holdSpeed.end();if(speedHint!=null)speedHint.setVisibility(View.GONE);if(wasActive){showControls(holdControlsVisible);if(!restored&&status!=null)status.setText("恢复原速失败，请重新选择播放速度");}}
     private void arrangePlayerControls(int width,int height){
         if(overlay==null||bottomBar==null||personalRow==null)return;
         int w=width-overlay.getPaddingLeft()-overlay.getPaddingRight(),h=height-overlay.getPaddingTop()-overlay.getPaddingBottom();float font=getResources().getConfiguration().fontScale;boolean portrait=h>w&&!vrEnabled;
@@ -582,13 +584,17 @@ public final class PlayerActivity extends Activity {
         if(player==null)return;
         long position=positionMs();if(ready)lastPosition=position;
         long duration=durationMs();if(!dragging&&duration>0)seek.setProgress((int)(Math.max(0,position)*10000/duration));
-        seek.setEnabled(player.isSeekable());((PlaybackIconButton)pause).setSymbol(player.isPlaying()?"pause":"play",player.isPlaying()?"暂停":"播放");
+        seek.setEnabled(player.isSeekable());renderPlaybackState(player.isPlaying());
         time.setText(clock(position)+" / "+clock(duration));updatePortraitInfo();
         if(portraitControls&&!holdSpeed.active())transportControls.setVisibility(controlsVisible?View.VISIBLE:View.GONE);
         if(buffering){cancelHoldSpeed();gestureHint.setText("正在缓冲…");gestureHint.setVisibility(View.VISIBLE);}else if(!swipeSeeking)gestureHint.setVisibility(View.GONE);
         updateVideoGeometry();
         if(controller!=null)controller.state(player.isPlaying(),buffering,position,duration,title.getText().toString());
-        if(!player.isPlaying()&&!controlsVisible)showControls(true);
+
+    }
+    private void renderPlaybackState(boolean playing){
+        ((PlaybackIconButton)pause).setSymbol(playing?"pause":"play",playing?"暂停":"播放");
+        if(transportControls!=null&&!holdSpeed.active())transportControls.setVisibility(controlsVisible?View.VISIBLE:View.GONE);
     }
     private void restartDecoder(boolean useSoftware){
         generation++;setNavigationPending(false);stopPlayback(false);software=useSoftware;startPlayback();
