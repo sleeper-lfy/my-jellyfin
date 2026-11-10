@@ -250,39 +250,70 @@ def test_details_are_inline_and_metadata_links_filter_all_media(qapp,tmp_path,vi
     window.close()
 
 
-def test_fullscreen_controls_restore_and_can_be_kept_visible(qapp,library,video_factory,monkeypatch):
-    from PySide6.QtCore import Qt,QPoint
-    from PySide6.QtGui import QCursor
+def test_fullscreen_controls_restore_and_can_be_kept_visible(qapp,library,video_factory,monkeypatch,record_property):
+    import time
+    from PySide6.QtCore import Qt,QPoint,QPointF,QEvent,QObject
+    from PySide6.QtGui import QCursor,QMouseEvent
     library.import_folder(video_factory('Fullscreen.mp4','blue',30).parent,'movie')
     player=Player(library)
-    player.open_file(library.query()[0]['files'][0]);spin(qapp,400)
-    player.activateWindow();qapp.processEvents()
-    QCursor.setPos(player.mapToGlobal(QPoint(300,200)));spin(qapp,100)
-    player.hide_controls()
-    assert player.header.isHidden() and player.footer.isHidden()
-    player.toggle_fullscreen();qapp.processEvents()
-    assert player.isFullScreen() and player.header.isVisible() and player.footer.isVisible()
-    player.hide_controls()
-    QTest.mouseMove(player.overlay,QPoint(320,220));qapp.processEvents()
-    assert player.footer.isVisible()
-    player.hide_controls()
-    # Exercise the polling fallback without depending on mouse event delivery.
-    player.last_cursor=QCursor.pos()+QPoint(1,1)
-    # Offscreen Qt has no window manager to reactivate a recreated window.
-    with monkeypatch.context() as focus:
-        focus.setattr(player, 'isActiveWindow', lambda: True)
-        player.check_pointer()
-    assert player.footer.isVisible()
-    player.auto_hide.setChecked(False)
-    player.hide_controls()
-    assert player.header.isVisible() and player.footer.isVisible() and not player.idle.isActive()
-    assert library.setting('player_auto_hide') is False
-    player.auto_hide.setChecked(True)
-    player.media.pause();player.hide_controls()
-    assert player.footer.isVisible()
-    QTest.keyClick(player,Qt.Key.Key_Escape);qapp.processEvents()
-    assert not player.isFullScreen() and player.footer.isVisible()
-    player.close()
+    try:
+        player.open_file(library.query()[0]['files'][0]);spin(qapp,400)
+        player.activateWindow();qapp.processEvents()
+        QCursor.setPos(player.mapToGlobal(QPoint(300,200)));spin(qapp,100)
+        player.hide_controls()
+        assert player.header.isHidden() and player.footer.isHidden()
+        player.toggle_fullscreen();qapp.processEvents()
+        assert player.isFullScreen() and player.header.isVisible() and player.footer.isVisible()
+        assert player.overlay.hasMouseTracking()
+        class MouseMoves(QObject):
+            def __init__(self):super().__init__(player);self.positions=[]
+            def eventFilter(self,watched,event):
+                if watched is player.overlay and event.type()==QEvent.Type.MouseMove:
+                    self.positions.append(event.position().toPoint())
+                return False
+        moves=MouseMoves();player.overlay.installEventFilter(moves)
+        # Native fullscreen can recreate/mask the window. Record whether this
+        # OS cursor move actually reaches Qt; it is not an event-delivery barrier.
+        player.pointer_timer.stop()
+        player.hide_controls()
+        QTest.mouseMove(player.overlay,QPoint(320,220));qapp.processEvents()
+        record_property('native_fullscreen_mousemove_delivered',bool(moves.positions))
+        record_property('qt_platform',qapp.platformName())
+        record_property('mpv_backend',player.mpv_backend)
+        player.hide_controls()
+        assert player.header.isHidden() and player.footer.isHidden()
+        point=QPoint(321,221)
+        move=QMouseEvent(QEvent.Type.MouseMove,QPointF(point),QPointF(player.overlay.mapTo(player,point)),
+                         QPointF(player.overlay.mapToGlobal(point)),Qt.MouseButton.NoButton,
+                         Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier)
+        # Exercise the installed production event filter through Qt's queue,
+        # independently of OS activation and the pointer polling fallback.
+        qapp.postEvent(player.overlay,move)
+        deadline=time.monotonic()+3
+        while point not in moves.positions and time.monotonic()<deadline:spin(qapp,10)
+        assert point in moves.positions,'Queued mouse move never reached the tracked overlay'
+        assert player.footer.isVisible()
+        record_property('queued_fullscreen_mousemove_delivered',True)
+        player.overlay.removeEventFilter(moves)
+        player.pointer_timer.start()
+        player.hide_controls()
+        # Exercise the polling fallback without depending on mouse event delivery.
+        player.last_cursor=QCursor.pos()+QPoint(1,1)
+        # Offscreen Qt has no window manager to reactivate a recreated window.
+        with monkeypatch.context() as focus:
+            focus.setattr(player, 'isActiveWindow', lambda: True)
+            player.check_pointer()
+        assert player.footer.isVisible()
+        player.auto_hide.setChecked(False)
+        player.hide_controls()
+        assert player.header.isVisible() and player.footer.isVisible() and not player.idle.isActive()
+        assert library.setting('player_auto_hide') is False
+        player.auto_hide.setChecked(True)
+        player.media.pause();player.hide_controls()
+        assert player.footer.isVisible()
+        QTest.keyClick(player,Qt.Key.Key_Escape);qapp.processEvents()
+        assert not player.isFullScreen() and player.footer.isVisible()
+    finally:player.close()
     assert not player.pointer_timer.isActive()
 
 

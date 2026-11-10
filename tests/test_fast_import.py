@@ -152,23 +152,40 @@ def test_running_media_process_can_be_interrupted():
 
 def test_close_window_cancels_import_without_losing_library(qapp,tmp_path):
     import time
+    from threading import Event
     from PySide6.QtCore import QEventLoop,QTimer
     from lumen.ui import MainWindow
     window=MainWindow(tmp_path/'closing');window.show()
-    entered=[]
+    entered=Event();cancelled=Event();cleanup=Event()
+    def wait_until(condition,timeout):
+        deadline=time.monotonic()+timeout
+        while not condition() and time.monotonic()<deadline:
+            loop=QEventLoop();QTimer.singleShot(20,loop.quit);loop.exec()
+        return condition()
     def work(lib,progress):
-        lib.set_setting('saved-before-close',True);entered.append(True)
-        while not progress.cancelled():time.sleep(.01)
+        lib.set_setting('saved-before-close',True);entered.set()
+        while not progress.cancelled():
+            if cleanup.wait(.01):return {'cancelled':True}
+        cancelled.set()
         return {'cancelled':True}
-    window.run_job('快速导入',work)
-    loop=QEventLoop();QTimer.singleShot(100,loop.quit);loop.exec()
-    assert entered
-    window.close()
-    deadline=time.monotonic()+3
-    assert not window.isVisible()  # Closing hides the window immediately while workers stop safely.
-    while not getattr(window,'_shutdown_complete',False) and time.monotonic()<deadline:
-        loop=QEventLoop();QTimer.singleShot(20,loop.quit);loop.exec()
-    assert not window.isVisible() and not window.jobs and window._shutdown_complete
-    reopened=core.Library(tmp_path/'closing')
-    assert reopened.setting('saved-before-close') is True
-    reopened.close()
+    stopped=lambda:getattr(window,'_shutdown_complete',False)
+    try:
+        window.run_job('快速导入',work)
+        assert wait_until(entered.is_set,10), 'Import worker must enter before testing close cancellation'
+        window.close()
+        assert not window.isVisible()  # Closing hides immediately while the active worker stops.
+        assert wait_until(stopped,10), 'Closing must finish shutting down the active import'
+        assert cancelled.is_set(), 'The running import must observe the close cancellation'
+        assert not window.isVisible() and not window.jobs and window._shutdown_complete
+        reopened=core.Library(tmp_path/'closing')
+        try:assert reopened.setting('saved-before-close') is True
+        finally:reopened.close()
+    finally:
+        # An assertion failure must not strand the worker's intentional loop.
+        cleanup.set()
+        if not stopped():
+            window.close()
+            if not wait_until(stopped,10):
+                for job in tuple(window.jobs):
+                    job.requestInterruption();job.wait(35000)
+                wait_until(stopped,3)
