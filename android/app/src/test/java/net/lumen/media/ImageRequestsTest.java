@@ -41,7 +41,7 @@ public class ImageRequestsTest {
     @Test public void duplicateImagesShareDownloadAndPageCancellationDiscardsQueuedWork()throws Exception{
         AtomicInteger requests=new AtomicInteger();CountDownLatch active=new CountDownLatch(2),release=new CountDownLatch(1);
         try(MockWebServer server=new MockWebServer();ActivityController<android.app.Activity> lifecycle=Robolectric.buildActivity(android.app.Activity.class).create()){
-            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request)throws InterruptedException{requests.incrementAndGet();active.countDown();release.await(4,TimeUnit.SECONDS);return new MockResponse().setResponseCode(404);}});server.start();
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request)throws InterruptedException{requests.incrementAndGet();active.countDown();release.await(15,TimeUnit.SECONDS);return new MockResponse().setResponseCode(404);}});server.start();
             ImageRequests images=new ImageRequests(new LruCache<String,Bitmap>(10));Api api=new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456"));
             try{
                 ImageView first=new ImageView(lifecycle.get()),second=new ImageView(lifecycle.get());
@@ -49,7 +49,10 @@ public class ImageRequestsTest {
                 waitFor(()->requests.get()==1);
                 images.load(api,new ImageView(lifecycle.get()),"/api/two/cover");assertTrue(active.await(2,TimeUnit.SECONDS));
                 images.load(api,new ImageView(lifecycle.get()),"/api/queued/cover");
-                images.cancelPage();release.countDown();waitFor(images::idle);assertEquals(2,requests.get());assertNull(first.getDrawable());assertNull(second.getDrawable());
+                images.cancelPage();release.countDown();waitFor(images::idle);
+                assertEquals("leaving the page must discard the queued third request",2,requests.get());
+                assertNull("cancelled first target must remain empty",first.getDrawable());
+                assertNull("cancelled duplicate target must remain empty",second.getDrawable());
             }finally{release.countDown();images.close();}
         }
     }

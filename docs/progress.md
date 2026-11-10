@@ -661,3 +661,9 @@ Preview 2 修正后再次完成 Android 107 项全量测试、lint 与 APK 打�
 最终 Android 本地 **122 项测试通过，零失败／错误／跳过，lint 零错误，APK 打包成功**。电脑端相关缩略图、视频流与续播回归通过；完整 Python 收集 796 项，Windows 全量和安装／卸载交由新标签的发布门禁执行。首轮新增测试抓到系统单选行固定 48dp 盖过 minHeight，已改为实际两行布局；另修正宽窗不应强求省略号和图片采样尺寸断言，未跳过检查。
 
 准备推送 `v0.4.16-preview.1`，Android versionCode 31。小米 15 HEVC 4K 连续播放、JNI 兼容实际效果与音画同步仍未验收，不能把布局／诊断自动测试当作已解决卡顿的证据。
+
+
+Preview 1 云端 Android 门禁发现既有图片取消用例失败（ImageRequestsTest.duplicateImagesShareDownloadAndPageCancellationDiscardsQueuedWork）。审查确认取消活跃连接与最后清空队列之间存在竞争，释放出的线程可能先启动待取消图片；已将清空队列移到断开连接之前，并在下载入口检查取消。测试保留原取消语义，给断言补明确信息，并延长仅用于保护测试阻塞的兜底期限，避免慢运行器在执行取消前自动放行。新标签 `v0.4.16-preview.2`，Android versionCode 32，完整重建；不改写 Preview 1 标签，不跳过测试。
+
+
+Preview 2 取消顺序修正后本地再次完成 Android 122 项全量测试、lint 与 APK 打包，零失败／错误／跳过，准备从新标签重建双端公开包。

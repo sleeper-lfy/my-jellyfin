@@ -44,6 +44,7 @@ final class ImageRequests implements AutoCloseable {
         public int compareTo(Load other){int priority=Boolean.compare(other.visible,visible);return priority!=0?priority:Long.compare(order,other.order);}
         public void run(){
             try{
+                cancellation.check();
                 Bitmap bitmap=api.image(path,cancellation);
                 main.post(()->{
                     if(closed||cancellation.cancelled()||pending.get(key)!=this)return;
@@ -83,8 +84,11 @@ final class ImageRequests implements AutoCloseable {
     boolean idle(){return pending.isEmpty()&&workers.getActiveCount()==0&&workers.getQueue().isEmpty();}
     void cancelPage(){
         main.removeCallbacks(priorityUpdate);priorityPending=false;
+        // Disconnecting an active call can free a worker immediately. Remove
+        // queued loads first so leaving a page cannot start another download.
+        workers.getQueue().clear();
         for(Load load:pending.values()){main.removeCallbacks(load.retry);load.cancellation.cancel();}
-        pending.clear();workers.getQueue().clear();
+        pending.clear();
     }
     void restore(Api api,android.view.View root){
         if(root instanceof ImageView&&root.getTag() instanceof String){String key=(String)root.getTag();if(key.startsWith(api.connection.base+"/api/"))load(api,(ImageView)root,key.substring(api.connection.base.length()));}
