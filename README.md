@@ -2,7 +2,7 @@
 
 Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
-最新测试预发布：[Lumen 0.4.16 Preview 2](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.16-preview.2) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.16-preview.2/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.16-preview.2/Lumen-android-debug.apk)。请同时更新两端：继续观看使用具体视频的缩略图，不回退海报；Android 完整图片、8dp 间距、48dp 触控及两行队列标题。播放器减少重复刷新，新增 JNI 兼容解码与真实传输／缓冲诊断；小米 15 的 4K 实机效果仍待确认。Windows 796 项测试及安装／卸载验收、Android 122 项测试和 lint 通过。[版本说明](docs/releases/0.4.16.md) · [UI 规范与实际截图](docs/android-ui-0.4.16.md) · [发布验证](docs/validation/preview-0.4.16-2.json)。
+最新测试预发布：[Lumen 0.4.17 Preview 1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.17-preview.1) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.17-preview.1/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.17-preview.1/Lumen-android-debug.apk)。请同时更新两端：Android 发现页使用官方 Material 3，提供深浅主题、单一搜索、按需筛选、统一海报与底部安全区；最近入库恢复竖向裁切，继续观看独立使用缩略图。播放新增会话内有界读缓存及电脑请求／缓存诊断；小米 15 的 HEVC 4K 流畅度仍待真机确认。Windows 809 项测试及安装／卸载验收、Android 163 项测试和 lint 通过。[版本说明](docs/releases/0.4.17.md) · [Material 3 规范与实际截图](docs/android-material3.md) · [发布验证](docs/validation/preview-0.4.17-1.json)。
 
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
@@ -60,13 +60,13 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 ## 下载
 
-[**Lumen 0.4.15 Preview 2 · Windows + Android**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.15-preview.2) 是当前保留的测试预发布：
+[**Lumen 0.4.17 Preview 1 · Windows + Android**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.17-preview.1) 是当前测试预发布：
 
-- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.15-preview.2/Lumen-Setup-x64.exe)，Windows 10/11 x64。
-- [Android APK：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.15-preview.2/Lumen-android-debug.apk)，Android 8.0+，versionCode 30，与此前测试版使用同一签名。
-- Release 附带 SHA-256、Windows 自动验收记录和 Android 签名 / 测试记录。target 目录为历史构建，请从本次 Release 下载当前安装包。
+- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.17-preview.1/Lumen-Setup-x64.exe)，Windows 10/11 x64。
+- [Android APK：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.17-preview.1/Lumen-android-debug.apk)，Android 8.0+，versionCode 33，沿用既有签名，可覆盖安装。
+- Release 附带 SHA-256、Windows 自动验收记录和 Android 签名／测试记录。target 目录为历史构建，请从本次 Release 下载当前安装包。
 
-[更新说明](docs/releases/0.4.15.md)。Windows 785 项测试及安装验收、Android 107 项测试及 lint 通过；公开安装包已完整下载校验。真机验收尚未完成。
+[更新说明](docs/releases/0.4.17.md)。Windows 809 项测试及安装／卸载验收、Android 163 项测试及 lint 通过；公开安装包已完整下载校验。小米 15 的 HEVC 4K 真机流畅度尚未确认。
 
 此前已按要求删除 14 个历史 Release，保留 Git 标签和源码历史；后续测试预发布另行保留。[清理记录](docs/validation/release-cleanup-0.4.14.json)。本版已将 PC / Android 更新检测切回 GitHub；旧版仍使用 Gitee 渠道的客户端需手动升级。更新检测只接收正式 Release，测试预发布可从上述页面下载。
 

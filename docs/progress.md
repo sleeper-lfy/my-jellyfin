@@ -689,3 +689,14 @@ Preview 2 取消顺序修正后本地再次完成 Android 122 项全量测试、
 本地最终 **163 项 Android 测试通过，零失败／错误／跳过；lint 零错误，APK 构建成功**。包含实际 Compose 组件交互、官方抽屉、键盘 Insets、草稿恢复、共享图片与收藏／详情竞态。缩略图相关 Python **58 项通过**；完整 Python 收集 **809 项**，Windows 全量及安装／卸载由发布门禁执行。
 
 视频桥增加当前会话 16MiB 有界读缓存、严格缺口续传与缓存／电脑请求诊断。受控相邻 Range 重放减少重复电脑往返，但桌面 VLC 合成 MP4 未复现手机密集请求，预取阈值调整未见实质收益，因此不改默认解码策略，不宣称小米 15 HEVC 4K 卡顿已根治。[验证数据和边界](validation/range-cache-0.4.17.json)。准备发布 `v0.4.17-preview.1`、Android versionCode 33；待双端云端门禁与公开附件下载验证。
+
+
+## 0.4.17 Preview 1 发布与公开下载验证（2026-11-10）
+
+源码推送至 origin/work，构建提交 `3d38d4c7d475c2c7a87b580a709232faac0c18d7`，标签 `v0.4.17-preview.1`，Android versionCode 33。[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42845615438)全部成功：Windows **809 项测试通过，零失败／错误／跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 与卸载验收；Android **163 项测试、lint、持久签名、版本与 ZIP 对齐验证通过**。
+
+[Preview 1 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.17-preview.1)六个公开附件已完整下载并验证 EXE／APK 大小、SHA-256、源码绑定和验收记录。下载后的 APK 再次通过本地签名、versionCode 33／0.4.17 与 ZIP 对齐检查，保持此前证书；EXE PE 头检查通过。[公开验证记录](validation/preview-0.4.17-1.json)。README 顶部和下载章节均指向本版。
+
+发现页按用户最新要求迁移到官方 Compose Material 3，其他原生页面保留。实际原生绘制覆盖深浅主题、分组搜索、官方模态抽屉、加载／空／错误／正常、320dp／1.5 倍字号与列表末行，使用虚构影片和自然海报，无用户私人图片。测试覆盖草稿取消与恢复、IME、安全区、在线搜索身份、筛选参数、详情返回、收藏刷新竞态及图片共享缓存。实现与截图见 [Material 3 规范](android-material3.md)。最近入库恢复原先的竖向裁切；继续观看维持缩略图。电脑端缩略图选择相关 58 项回归本地通过。
+
+播放转发新增单次会话 16MiB 有界读缓存，保持鉴权、严格 Range、缺口续传与拖动取消。277 次邻近 Range 的受控重放将访问电脑的往返从 278 次降为 1 次；逐字节一致。桌面 VLC 合成 MP4 未复现手机的密集请求，prefetch 阈值对照无实质改善，未更换默认解码与缓冲选项。用户已确认 JNI 仍卡顿、封装 MP4；HEVC 与 H.265 是同一编码，不据 MX 的编码名称推断实际硬解状态。小米 15 真机 4K 流畅度与音画同步仍未确认，本版维持测试预发布并需手动安装两端。
