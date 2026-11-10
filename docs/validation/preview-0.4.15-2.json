@@ -1,0 +1,71 @@
+{
+  "tag": "v0.4.15-preview.2",
+  "source_commit": "b7ca7c4302ad9551739325f0a377671e96e05a3f",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42822865440",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.15-preview.2",
+  "prerelease": true,
+  "windows_tests": {
+    "tests": 785,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "a1f57f370e3a0b12b89b8f7af10b31151dca2fce37708b88586dd326eb728d77"
+  },
+  "android": {
+    "version": "0.4.15",
+    "version_code": 30,
+    "source_commit": "b7ca7c4302ad9551739325f0a377671e96e05a3f",
+    "sha256": "bb71d7ecc0c16e762a98a4b300ff6f1fadcbafd6cfa392eb3714bfb6e81f38a4",
+    "bytes": 49811741,
+    "certificate_sha256": "cccf85baf3acf872d28632ad8a9102b94c3958aa67b5c8385435aafebb60d6b9",
+    "tests": {
+      "tests": 107,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "signature_verified": true,
+    "lint": "passed",
+    "manual_device_checks": "unverified"
+  },
+  "assets": [
+    {
+      "name": "Lumen-Setup-x64.exe",
+      "bytes": 94356092,
+      "sha256": "0bed5915d4aa1817d829abd7bc1dfeb4f0e58efa5c976365c908196b4f43b563"
+    },
+    {
+      "name": "Lumen-Setup-x64.exe.sha256",
+      "bytes": 86,
+      "sha256": "23053e4e6b4453c9a205050278d2ce34e45424990750b1545edc90e7f5ee24c8"
+    },
+    {
+      "name": "Lumen-android-debug.apk",
+      "bytes": 49811741,
+      "sha256": "bb71d7ecc0c16e762a98a4b300ff6f1fadcbafd6cfa392eb3714bfb6e81f38a4"
+    },
+    {
+      "name": "Lumen-android-debug.apk.sha256",
+      "bytes": 90,
+      "sha256": "c1482a634fb2644c9110fca4d79385a17ecfabd37888313a797661a0d49e8db3"
+    },
+    {
+      "name": "windows-acceptance.json",
+      "bytes": 1870,
+      "sha256": "01caa404cd6230f5f148311d55a65fe2e9e7dda0bfe4f71641fb1e2ea1fbf22b"
+    },
+    {
+      "name": "android-verification.json",
+      "bytes": 483,
+      "sha256": "a72a5e68ec8bd96ba33a31249fa33bbec94b5475b02a590c640d43281afad2e0"
+    }
+  ],
+  "downloaded_apk_signature_verified": true,
+  "downloaded_apk_version_code": 30,
+  "anonymous_full_downloads_verified": true,
+  "manual_device_checks": "unverified",
+  "windows_build": "success",
+  "android_build": "success",
+  "publication": "success",
+  "verified_at": "2026-11-10T13:27:35.262018+00:00"
+}

@@ -639,3 +639,12 @@ Android 本地 107 项测试零失败 / 错误 / 跳过，lint 零错误，APK �
 
 
 Preview 2 修正后再次完成 Android 107 项全量测试、lint 与 APK 打包，零失败 / 错误 / 跳过；新增暂停 / 播放状态刷新保持手动隐藏的断言通过。续播采用浮动图标播放键，回归以稳定文件 ID 验证仍打开正确文件；全应用确认弹窗通过主题统一。PC 最终卡片对齐、文件定位与控制层定向 14 项测试通过，实际截图已同步。
+
+
+## 0.4.15 Preview 2 发布与公开下载验证（2026-11-10）
+
+最终构建提交 `b7ca7c4302ad9551739325f0a377671e96e05a3f`，标签 `v0.4.15-preview.2`，Android versionCode 30。[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42822865440)全部成功：Windows **785 项测试通过，零失败 / 错误 / 跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 与卸载验收；Android **107 项测试、lint、签名、版本与 ZIP 对齐验证通过**。
+
+[Preview 2 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.15-preview.2)六个公开附件均已完整下载；EXE / APK 大小、SHA-256、源码绑定及验收记录一致。APK 再次通过本地签名 / 版本 / 对齐验证，保持此前证书，Windows EXE PE 头检查通过。详细证据见 [发布验证记录](validation/preview-0.4.15-2.json)。README 下载入口已更新。
+
+暂停时手动隐藏修正使用新标签完整重建，保留 Preview 1 标签，不改写已推送历史。仍为测试预发布，需手动安装；小米 15 的 HEVC 4K 持续播放、临时倍速音画同步、系统文件管理器及实际设备交互不标为已验收。
