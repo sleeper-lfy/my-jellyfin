@@ -604,3 +604,12 @@ Preview 8 因非必需 platform-tools 归档失效未发布，Preview 9 因新�
 [Preview 10 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.10)六个附件已公开并完整下载，校验 EXE / APK 大小、SHA-256、源码绑定及自动验收证据；下载 APK 再次通过签名、versionCode 27 与 ZIP 对齐检查，保持此前证书，Windows EXE PE 头检查通过。详细证据见 [发布验证记录](validation/preview-0.4.14-10.json)，README 下载入口已更新。
 
 仍为测试预发布，需从发布页手动安装；人工真机音频、DPI、升级恢复、原生目录地址栏和真实刮削站点验收仍未完成。
+
+
+## Android 局域网拖动卡顿与 Preview 11 准备（2026-11-10）
+
+用户反馈小米 15 通过主 / 副路由 Wi-Fi 播放均反复缓冲，拖动进度很慢；同一影片用 Everything HTTP 服务配合 MX 播放流畅。该对照同时改变了播放器和服务端，优先检查 Lumen 传输链路，尚不能确定实际手机根因。
+
+新增慢响应回归复现：连续放弃四个已返回响应头、仍等待正文的连接，旧 PlaybackBridge 的四个工作线程继续等待上游数据，新位置请求超时。改用可立即取消的 OkHttp 调用，并在本地解码器连接关闭时取消对应请求；请求监视与工作线程均保持有界，离开播放也关闭全部连接。保留鉴权路径白名单、Range / HEAD、字幕与拒绝重定向。六项转发测试通过，原失败回归现已通过。
+
+准备 v0.4.14-preview.11，Android versionCode 28。本地 Android 全量 100 项测试、lint 与 APK 打包通过，零失败 / 错误 / 跳过；尚待云端双端构建及公开附件验证。真实手机持续播放和拖动表现仍需用户验证，不声称已消除所有 4K 卡顿。

@@ -62,6 +62,27 @@ public class PlaybackBridgeTest {
         assertEquals("subtitle",new String(open(bridge.url("/api/files/7/subtitles/0")).getInputStream().readAllBytes(),StandardCharsets.UTF_8));
         redirect=true;assertEquals(502,open(bridge.url("/api/files/7/stream")).getResponseCode());assertEquals(2,calls.get());
     }
+    @Test public void abandonedStreamsDoNotDelayTheNextSeek() throws Exception {
+        AtomicInteger requests=new AtomicInteger();
+        upstream.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+            MockResponse response=new MockResponse().setBody("seek-result");
+            if(requests.incrementAndGet()<=4)response.setBodyDelay(4,java.util.concurrent.TimeUnit.SECONDS);
+            return response;
+        }});
+        URL url=new URL(bridge.url("/api/files/7/stream"));
+        for(int i=0;i<4;i++) {
+            try(Socket abandoned=new Socket(url.getHost(),url.getPort())) {
+                abandoned.setSoTimeout(2000);
+                abandoned.getOutputStream().write(("GET "+url.getPath()+" HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                // Wait for the response headers, then leave while the upstream body is stalled.
+                int matched=0;byte[] boundary={13,10,13,10};
+                while(matched<4){int b=abandoned.getInputStream().read();assertTrue("response headers for request "+i,b>=0);matched=b==boundary[matched]?matched+1:b==13?1:0;}
+            }
+        }
+        HttpURLConnection next=open(url.toString());next.setReadTimeout(1500);
+        try {assertEquals("seek-result",new String(next.getInputStream().readAllBytes(),StandardCharsets.UTF_8));}
+        finally {next.disconnect();}
+    }
     @Test public void closeRevokesListener() throws Exception {
         String url=bridge.url("/api/files/7/stream");bridge.close();
         try{open(url).getResponseCode();fail("listener must be closed");}catch(java.io.IOException expected){}

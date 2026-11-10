@@ -6,13 +6,22 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Set;
 import java.util.concurrent.*;
+import okhttp3.Call;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 /** Loopback-only streaming bridge: native decoders never receive the server credential. */
 final class PlaybackBridge implements AutoCloseable {
     private final String base, token, prefix, filePath;
     private final ServerSocket listener;
     private final Set<Socket> sockets=ConcurrentHashMap.newKeySet();
-    private final Set<HttpURLConnection> upstreams=ConcurrentHashMap.newKeySet();
+    private final Set<Call> upstreams=ConcurrentHashMap.newKeySet();
+    private final OkHttpClient client=new OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
+        .connectTimeout(8,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS)
+        .followRedirects(false).followSslRedirects(false).build();
+    private final ExecutorService disconnects=new ThreadPoolExecutor(4,4,0,TimeUnit.SECONDS,
+        new ArrayBlockingQueue<>(8),r->{Thread t=new Thread(r,"media-disconnect");t.setDaemon(true);return t;});
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(4,4,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(8));
     private volatile boolean closed;
 
@@ -48,7 +57,7 @@ final class PlaybackBridge implements AutoCloseable {
         out.write(("HTTP/1.1 "+status+" Rejected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.flush();
     }
     private void serve(Socket socket) {
-        HttpURLConnection upstream=null;
+        Call upstream=null;
         try(Socket peer=socket) {
             InputStream input=new BufferedInputStream(peer.getInputStream());OutputStream output=peer.getOutputStream();
             String[] request=line(input).split(" ");
@@ -60,30 +69,40 @@ final class PlaybackBridge implements AutoCloseable {
                 size+=header.length();if(size>32768){reject(output,431);return;}
                 if(header.regionMatches(true,0,"Range:",0,6))range=header.substring(6).trim();
             }
-            upstream=(HttpURLConnection)new URL(base+path).openConnection(Proxy.NO_PROXY);
-            upstream.setInstanceFollowRedirects(false);upstream.setConnectTimeout(8000);upstream.setReadTimeout(15000);
-            upstream.setRequestMethod(request[0]);upstream.setRequestProperty("Authorization","Bearer "+token);
-            upstream.setRequestProperty("Accept-Encoding","identity");if(range!=null)upstream.setRequestProperty("Range",range);
+            Request.Builder requestBuilder=new Request.Builder().url(base+path).method(request[0],null)
+                .header("Authorization","Bearer "+token).header("Accept-Encoding","identity");
+            if(range!=null)requestBuilder.header("Range",range);
+            upstream=client.newCall(requestBuilder.build());
             upstreams.add(upstream);if(closed)return;
-            int status=upstream.getResponseCode();
-            // Do not forward redirects or server-generated error bodies to the native player.
-            if(status!=200 && status!=206 && status!=416){reject(output,status>=400?status:502);return;}
-            StringBuilder headers=new StringBuilder("HTTP/1.1 "+status+" Media\r\nConnection: close\r\n");
-            for(String name:new String[]{"Content-Type","Content-Length","Content-Range","Accept-Ranges"}) {
-                String value=upstream.getHeaderField(name);if(value!=null&&!value.contains("\r")&&!value.contains("\n"))headers.append(name).append(": ").append(value).append("\r\n");
+            // A seek can close the decoder socket while its old upstream is still
+            // blocked reading. Cancel that call immediately, releasing its worker.
+            final Call current=upstream;
+            peer.setSoTimeout(0);
+            disconnects.execute(()->{
+                try {input.read();}catch(IOException ignored){}
+                finally {current.cancel();try{peer.close();}catch(IOException ignored){}}
+            });
+            try(Response response=upstream.execute()) {
+                int status=response.code();
+                // Never forward redirects or server-generated error bodies.
+                if(status!=200 && status!=206 && status!=416){reject(output,status>=400?status:502);return;}
+                StringBuilder headers=new StringBuilder("HTTP/1.1 "+status+" Media\r\nConnection: close\r\n");
+                for(String name:new String[]{"Content-Type","Content-Length","Content-Range","Accept-Ranges"}) {
+                    String value=response.header(name);if(value!=null&&!value.contains("\r")&&!value.contains("\n"))headers.append(name).append(": ").append(value).append("\r\n");
+                }
+                output.write(headers.append("\r\n").toString().getBytes(StandardCharsets.US_ASCII));output.flush();
+                if(!request[0].equals("HEAD") && status!=416 && response.body()!=null)try(InputStream media=response.body().byteStream()) {
+                    byte[] buffer=new byte[64*1024];int count;
+                    while(!closed && (count=media.read(buffer))!=-1)output.write(buffer,0,count);
+                }
             }
-            output.write(headers.append("\r\n").toString().getBytes(StandardCharsets.US_ASCII));output.flush();
-            if(!request[0].equals("HEAD") && status!=416)try(InputStream media=upstream.getInputStream()) {
-                byte[] buffer=new byte[64*1024];int count;
-                while(!closed && (count=media.read(buffer))!=-1)output.write(buffer,0,count);
-            }
-        }catch(IOException ignored){/* Seeking and leaving playback cancel in-flight requests. */}
-        finally {sockets.remove(socket);if(upstream!=null){upstreams.remove(upstream);upstream.disconnect();}}
+        }catch(IOException|RejectedExecutionException ignored){/* Seeking and leaving playback cancel in-flight requests. */}
+        finally {sockets.remove(socket);if(upstream!=null){upstreams.remove(upstream);upstream.cancel();}}
     }
     @Override public void close() {
         closed=true;try{listener.close();}catch(IOException ignored){}
         for(Socket socket:sockets)try{socket.close();}catch(IOException ignored){}
-        for(HttpURLConnection connection:upstreams)connection.disconnect();
-        workers.shutdownNow();
+        for(Call connection:upstreams)connection.cancel();
+        workers.shutdownNow();disconnects.shutdownNow();client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();
     }
 }
