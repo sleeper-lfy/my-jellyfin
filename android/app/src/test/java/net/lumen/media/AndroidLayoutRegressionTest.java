@@ -62,12 +62,6 @@ public class AndroidLayoutRegressionTest {
             MainActivity activity=life.get();connect(activity,server);call(activity,"showLibrary");View root=(View)get(activity,"root");waitFor(()->root.findViewWithTag("continueThumbnailMissing:70")!=null);waitForCatalog(root);layout(root,393,852);ImageView image=(ImageView)((ViewGroup)root.findViewWithTag("continueArtwork:70")).getChildAt(0);assertFalse(image.getDrawable() instanceof BitmapDrawable);assertFalse(requested.contains("/api/resume-only-poster.png"));assertFalse(requested.contains("/api/files/70/thumbnail"));snapshot(root,"android-home-missing-thumbnail.png");
         }
     }
-    @Test public void discoveryInputsAndActionsKeepEightDpGapAtNarrowAndRegularWidths()throws Exception {
-        try(MockWebServer server=server();ActivityController<MainActivity> life=Robolectric.buildActivity(MainActivity.class).create()){
-            MainActivity activity=life.get();connect(activity,server);set(activity,"mainPage","discover");set(activity,"discovery",true);call(activity,"showLibrary");View root=(View)get(activity,"root");waitForCatalog(root);
-            for(int width:new int[]{320,393}){layout(root,width,852);View input=root.findViewWithTag("discoveryTag"),dropdown=root.findViewWithTag("discoveryTagDropdown"),apply=root.findViewWithTag("discoverySearch");assertTrue(input.getWidth()>=120);assertEquals(48,dropdown.getWidth());assertEquals(8,dropdown.getLeft()-input.getRight());assertTrue(apply.getWidth()>=200);assertTrue(apply.getTop()-((View)input.getParent()).getBottom()>=8);assertTrue(apply.getHeight()>=48);snapshot(root,"android-discovery-"+width+".png");}
-        }
-    }
     @Test public void queueLongNamesStayTwoLinesAndAllActionsFitNarrowDialog()throws Exception {
         for(float fontScale:new float[]{1f,1.3f}){
             try(MockWebServer server=server();ActivityController<MainActivity> life=Robolectric.buildActivity(MainActivity.class).create()){

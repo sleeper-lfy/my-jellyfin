@@ -41,7 +41,7 @@ public class DiscoveryBrowseTest {
         return null;
     }
     private EditText name(View view){
-        if(view instanceof EditText&&"发现影片名称搜索".contentEquals(view.getContentDescription()))return (EditText)view;
+        if(view instanceof EditText&&"发现影片名称和标签搜索".contentEquals(view.getContentDescription()))return (EditText)view;
         if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){EditText found=name(((ViewGroup)view).getChildAt(i));if(found!=null)return found;}
         return null;
     }
@@ -57,8 +57,12 @@ public class DiscoveryBrowseTest {
     }
     private void show(MainActivity activity,MockWebServer server,boolean online)throws Exception{
         set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
-        set(activity,"discovery",true);set(activity,"discoveryOnline",online);call(activity,"showLibrary");
+        set(activity,"mainPage","discover");set(activity,"discovery",true);set(activity,"discoveryOnline",online);call(activity,"showLibrary");
     }
+    private DiscoveryCoordinator coordinator(MainActivity activity){return (DiscoveryCoordinator)get(activity,"discoveryCoordinator");}
+    private void submit(MainActivity activity,String value){coordinator(activity).onSubmitSearch(value);}
+    private void selectSort(MainActivity activity,int index){coordinator(activity).onSelectSort(new String[]{"discovered","site_added","title","year","community_rating"}[index]);}
+    private void applyTag(MainActivity activity,String value){DiscoveryFilters draft=coordinator(activity).snapshot().filters.copy();draft.tag=value;coordinator(activity).onApplyFilters(draft);}
     private MockResponse json(String body){return new MockResponse().setHeader("Content-Type","application/json").setBody(body);}
     private String providers(){return "{\"items\":[{\"id\":\"archive\",\"name\":\"Archive\",\"supports_tags\":true},{\"id\":\"names\",\"name\":\"Names only\",\"supports_tags\":false}]}";}
     private String facets(){return "{\"tags\":[\"Drama\",\"Travel\"],\"actors\":[],\"years\":[]}";}
@@ -69,14 +73,12 @@ public class DiscoveryBrowseTest {
                 assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));
                 return json(request.getPath().startsWith("/api/filters")?facets():"{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();show(activity,server,false);
-            assertEquals("按影片名称搜索",name(root(activity)).getHint().toString());
-            AutoCompleteTextView tag=root(activity).findViewWithTag("discoveryTag");assertNotNull(tag);
-            waitFor(()->tag.getAdapter().getCount()==2);
-            name(root(activity)).setText("Sample title");tag.setText("Dra",false);root(activity).findViewWithTag("discoverySearch").performClick();
+            assertNotNull(coordinator(activity));assertEquals("",coordinator(activity).snapshot().query);
+            applyTag(activity,"Dra");submit(activity,"Sample title");
             String selected=path(activity);assertTrue(selected.contains("q=Sample%20title"));assertTrue(selected.contains("tag_q=Dra"));assertTrue(selected.contains("sort=discovered"));
-            set(activity,"offset",60);Spinner sort=root(activity).findViewWithTag("discoverySort");sort.getOnItemSelectedListener().onItemSelected(sort,null,2,2);
+            set(activity,"offset",60);selectSort(activity,2);
             assertTrue(path(activity).contains("offset=0"));assertTrue(path(activity).contains("sort=title"));
-            root(activity).findViewWithTag("discoveryDirection").performClick();assertTrue(path(activity).contains("direction=asc"));
+            selectSort(activity,2);assertTrue(path(activity).contains("direction=asc"));
             assertEquals("title",activity.getSharedPreferences("discovery",0).getString("sort",""));assertFalse(activity.getSharedPreferences("discovery",0).getBoolean("descending",true));
             assertEquals("added",get(activity,"sortField"));assertEquals(true,get(activity,"sortDescending"));
             assertTrue(path(activity).contains("q=Sample%20title")&&path(activity).contains("tag_q=Dra"));
@@ -96,21 +98,19 @@ public class DiscoveryBrowseTest {
                 if(path.startsWith("/api/discover?")){resultPath.set(path);return json("{\"items\":[{\"id\":42,\"title\":\"Provider spelling differs\",\"kind\":\"movie\"},{\"id\":43,\"title\":\"Another match\",\"kind\":\"movie\"}],\"total\":2}");}
                 return json("{}");
             }});server.start();MainActivity activity=lifecycle.get();show(activity,server,true);
-            waitFor(()->root(activity).findViewWithTag("discoverySearch").isEnabled());
+            waitFor(()->Boolean.TRUE.equals(get(activity,"discoveryProvidersLoaded")));
             set(activity,"kind","fans");set(activity,"actorFilter","Old actor");set(activity,"yearMinFilter","2020");set(activity,"favorites",true);set(activity,"watchFilter","completed");set(activity,"savedList","Old list");
-            name(root(activity)).setText("Search words");((AutoCompleteTextView)root(activity).findViewWithTag("discoveryTag")).setText("Drama",false);
-            root(activity).findViewWithTag("discoverySearch").performClick();root(activity).findViewWithTag("discoveryDirection").performClick();
-            waitFor(()->root(activity).findViewWithTag("card:42")!=null);
+            set(activity,"tagFilter","Drama");submit(activity,"Search words");selectSort(activity,0);
+            waitFor(()->activity.browseRecords.containsKey(42L));
             JSONObject submitted=new JSONObject(payload.get());assertEquals("Search words",submitted.getString("query"));assertEquals("Drama",submitted.getString("tag"));assertEquals("",submitted.getString("plugin"));
             assertTrue(resultPath.get().contains("ids=42,43"));assertTrue(resultPath.get().contains("&q=&tag_q="));assertFalse(resultPath.get().contains("Search%20words"));
             assertTrue(resultPath.get().contains("&kind=&favorite=false"));assertTrue(resultPath.get().contains("&actor=&year_min="));assertTrue(resultPath.get().contains("&watch_state=&list=&ids="));
-            assertNotNull(text(root(activity),"Names only：不支持标签搜索",true));assertEquals(1,posts.get());
-            Spinner sort=root(activity).findViewWithTag("discoverySort");sort.getOnItemSelectedListener().onItemSelected(sort,null,4,4);
+            assertTrue(coordinator(activity).snapshot().statusError.contains("Names only：不支持标签搜索"));assertEquals(1,posts.get());
+            selectSort(activity,4);
             assertTrue(path(activity).contains("sort=community_rating"));assertTrue(path(activity).contains("ids=42,43"));assertEquals(1,posts.get());
-            call(activity,"showFilters");android.app.AlertDialog filter=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
-            firstTag(filter.getWindow().getDecorView()).setText("Narrow result",false);filter.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
-            assertTrue(path(activity).contains("ids=42,43"));assertTrue(path(activity).contains("tag_q=Narrow%20result"));assertEquals("Drama",((AutoCompleteTextView)root(activity).findViewWithTag("discoveryTag")).getText().toString());
-            waitFor(()->root(activity).findViewWithTag("card:42")!=null);root(activity).findViewWithTag("card:42").performClick();
+            DiscoveryFilters filtered=coordinator(activity).snapshot().filters.copy();filtered.tag="Narrow result";coordinator(activity).onApplyFilters(filtered);
+            assertTrue(path(activity).contains("ids=42,43"));assertTrue(path(activity).contains("tag_q=Narrow%20result"));assertEquals("Drama",get(activity,"tagFilter"));
+            waitFor(()->activity.browseRecords.containsKey(42L));coordinator(activity).onOpenMovie(42);
             waitFor(()->text(root(activity),"Other tag",false)!=null);text(root(activity),"Other tag",false).performClick();
             assertTrue(path(activity).contains("tag_q=Other%20tag"));assertFalse(path(activity).contains("&ids="));
             activity.onBackPressed();assertEquals(42L,get(activity,"detailId"));assertTrue(path(activity).contains("ids=42,43"));assertTrue(path(activity).contains("sort=community_rating"));assertTrue(path(activity).contains("tag_q=Narrow%20result"));
@@ -128,15 +128,15 @@ public class DiscoveryBrowseTest {
                 if(path.startsWith("/api/discovery/search/"))return json(path.endsWith("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")?"{\"status\":\"failed\",\"error\":\"Source unavailable\",\"result\":{\"errors\":[{\"name\":\"Names only\",\"message\":\"HTTP 503\"}]}}":"{\"status\":\"done\",\"result\":{\"ids\":[],\"errors\":[]}}");
                 return json("{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();set(activity,"discoveryProvider","names");show(activity,server,true);
-            waitFor(()->root(activity).findViewWithTag("discoverySearch").isEnabled());
-            name(root(activity)).setText("Title");((AutoCompleteTextView)root(activity).findViewWithTag("discoveryTag")).setText("Drama",false);root(activity).findViewWithTag("discoverySearch").performClick();
-            assertNotNull(text(root(activity),"该站点不支持标签搜索",true));assertEquals(0,posts.get());
-            ((AutoCompleteTextView)root(activity).findViewWithTag("discoveryTag")).setText("",false);root(activity).findViewWithTag("discoverySearch").performClick();
+            waitFor(()->Boolean.TRUE.equals(get(activity,"discoveryProvidersLoaded")));
+            set(activity,"tagFilter","Drama");submit(activity,"Title");
+            assertTrue(coordinator(activity).snapshot().statusMessage.contains("该站点不支持标签搜索"));assertEquals(0,posts.get());
+            set(activity,"tagFilter","");submit(activity,"Title");
             waitFor(()->"failed".equals(get(activity,"discoverySearchState")));
-            assertNotNull(text(root(activity),"Names only：HTTP 503",true));assertTrue(root(activity).findViewWithTag("discoverySearch").isEnabled());
-            root(activity).findViewWithTag("discoverySearch").performClick();waitFor(()->"done".equals(get(activity,"discoverySearchState")));
+            assertTrue(coordinator(activity).snapshot().statusError.contains("Names only：HTTP 503"));
+            submit(activity,"Title");waitFor(()->"done".equals(get(activity,"discoverySearchState")));
             assertEquals(2,posts.get());assertTrue(path(activity).endsWith("&ids="));
-            waitFor(()->text(root(activity),"本次站点搜索没有匹配结果",true)!=null);
+            waitFor(()->!coordinator(activity).snapshot().loading);assertEquals(0,coordinator(activity).snapshot().total);assertTrue(coordinator(activity).snapshot().items.isEmpty());
         }
     }
 

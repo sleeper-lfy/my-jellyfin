@@ -40,7 +40,7 @@ def preview(library, video_factory):
 def set_artwork(library, work_id, poster, thumbnails):
     with library.db:
         library.db.execute('UPDATE works SET thumbnail=?,metadata=? WHERE id=?',
-                           (str(poster), json.dumps({'nfo_thumbnails': thumbnails}), work_id))
+                           (str(poster), json.dumps({'nfo_poster': True, 'nfo_thumbnails': thumbnails}), work_id))
 
 
 def test_continue_lists_exact_file_thumbnail_and_does_not_decode(library, preview, monkeypatch):
@@ -217,3 +217,107 @@ def test_frame_cpu_budget_wait_uses_the_deadline_and_always_releases(library, pr
     assert target.is_file() and len(calls) == 2
     assert server.budget.active == 0 and not server.budget.leases
     assert not any(Path(path).exists() for path in calls)
+
+
+@pytest.mark.parametrize('role', ['manual', 'cover', 'still'])
+def test_phone_reuses_explicit_pc_thumbnail_without_decoding(library, preview, monkeypatch, role):
+    from lumen.artwork import thumbnail_path
+    client, _, _, work, file, _ = preview
+    cache = library.directory / 'cache'
+    poster = cache / 'poster.jpg'
+    thumb = cache / 'landscape-thumbnail.jpg'
+    picture(poster, 'red', 90, 160)
+    expected = picture(thumb, 'green')
+    set_artwork(library, work['id'], poster, {})
+    metadata = library.work(work['id'])['metadata']
+    if role == 'manual':
+        library.set_setting(f'artwork_{work["id"]}', {'thumbnail': str(thumb)})
+    elif role == 'cover':
+        metadata.update(cover='https://example.test/thumb.jpg',
+                        cover_cache={'url': 'https://example.test/thumb.jpg', 'path': str(thumb)})
+    else:
+        metadata['nfo_stills'] = [str(thumb)]
+    with library.db:
+        library.db.execute('UPDATE works SET metadata=? WHERE id=?', (json.dumps(metadata), work['id']))
+    assert thumbnail_path(library, library.work(work['id'])) == str(thumb)
+    monkeypatch.setattr('lumen.core.thumbnail', lambda *a, **kw: pytest.fail('Existing PC thumbnail must be reused'))
+    route = f"/api/files/{file['id']}/thumbnail"
+    assert client.head(route).status_code == 200
+    assert client.get(route).content == expected
+
+
+def test_nfo_thumbnail_is_not_a_poster_just_because_legacy_column_matches(library, preview, monkeypatch):
+    client, _, _, work, file, _ = preview
+    thumb = library.directory / 'cache' / 'legacy-thumb.jpg'
+    expected = picture(thumb, 'green')
+    with library.db:
+        library.db.execute('UPDATE works SET thumbnail=?,metadata=? WHERE id=?',
+            (str(thumb), json.dumps({'nfo_thumbnails': {str(file['id']): str(thumb)}}), work['id']))
+    monkeypatch.setattr('lumen.core.thumbnail', lambda *a, **kw: pytest.fail('NFO thumbnail is already cached'))
+    assert client.get(f"/api/files/{file['id']}/thumbnail").content == expected
+
+
+@pytest.mark.parametrize('kind', ['series', 'fans'])
+def test_multi_file_works_never_use_work_or_other_file_thumbnails(library, preview, kind):
+    client, _, source, work, file, _ = preview
+    second = source.with_name('Other episode.mp4')
+    second.write_bytes(source.read_bytes())
+    cache = library.directory / 'cache'
+    shared = cache / 'whole-work-thumbnail.jpg'
+    picture(shared, 'red')
+    own = cache / (file['digest'] + '.jpg')
+    expected = picture(own, 'green')
+    metadata = {'cover': 'https://example.test/whole.jpg',
+                'cover_cache': {'url': 'https://example.test/whole.jpg', 'path': str(shared)},
+                'nfo_stills': [str(shared)], 'nfo_thumbnails': {'999999': str(shared)}}
+    with library.db:
+        library.db.execute('UPDATE works SET kind=?,metadata=? WHERE id=?', (kind, json.dumps(metadata), work['id']))
+        library.db.execute('INSERT INTO files(work_id,path,digest,root,duration) VALUES (?,?,?,?,?)',
+            (work['id'], str(second), 'other-episode', str(source.parent), 4))
+    library.set_setting(f'artwork_{work["id"]}', {'thumbnail': str(shared)})
+    assert client.get(f"/api/files/{file['id']}/thumbnail").content == expected
+
+
+@pytest.mark.parametrize('duplicate', ['url', 'path', 'stale'])
+def test_cover_cannot_be_poster_or_belong_to_an_old_source(library, preview, duplicate):
+    client, _, _, work, file, _ = preview
+    cache = library.directory / 'cache'
+    poster = cache / 'actual-poster.jpg'
+    cover = cache / 'cover.jpg'
+    picture(poster, 'red', 90, 160)
+    picture(cover, 'blue')
+    expected = picture(cache / (file['digest'] + '.jpg'), 'green')
+    metadata = {'poster': 'https://example.test/poster.jpg',
+                'poster_cache': {'url': 'https://example.test/poster.jpg', 'path': str(poster)},
+                'cover': 'https://example.test/cover.jpg',
+                'cover_cache': {'url': 'https://example.test/cover.jpg', 'path': str(cover)}}
+    if duplicate == 'url':metadata['cover'] = metadata['cover_cache']['url'] = metadata['poster']
+    elif duplicate == 'path':metadata['cover_cache']['path'] = str(poster)
+    else:metadata['cover_cache']['url'] = 'https://example.test/old.jpg'
+    with library.db:
+        library.db.execute('UPDATE works SET metadata=? WHERE id=?', (json.dumps(metadata), work['id']))
+    assert client.get(f"/api/files/{file['id']}/thumbnail").content == expected
+
+
+def test_explicit_thumbnail_role_can_override_a_matching_user_poster(library, preview):
+    client, _, _, work, file, _ = preview
+    thumb = library.directory / 'cache' / 'chosen-for-both-roles.jpg'
+    expected = picture(thumb, 'green')
+    library.set_setting(f'artwork_{work["id"]}', {'thumbnail': str(thumb), 'poster': str(thumb)})
+    assert client.get(f"/api/files/{file['id']}/thumbnail").content == expected
+
+
+@pytest.mark.parametrize('role', ['manual', 'cover', 'still'])
+def test_pc_thumbnail_candidates_cannot_escape_the_cache(library, preview, tmp_path, role):
+    client, _, _, work, file, _ = preview
+    outside = tmp_path / 'outside-thumbnail.jpg'
+    picture(outside, 'blue')
+    metadata = {}
+    if role == 'manual':library.set_setting(f'artwork_{work["id"]}', {'thumbnail': str(outside)})
+    elif role == 'cover':metadata.update(cover='https://example.test/cover.jpg', cover_cache={'url': 'https://example.test/cover.jpg', 'path': str(outside)})
+    else:metadata['nfo_stills'] = [str(outside)]
+    with library.db:
+        library.db.execute('UPDATE works SET metadata=? WHERE id=?', (json.dumps(metadata), work['id']))
+    response = client.get(f"/api/files/{file['id']}/thumbnail")
+    assert response.status_code == 403
+    assert str(outside) not in response.text

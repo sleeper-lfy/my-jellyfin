@@ -1,6 +1,6 @@
 # 媒体库 UI 与交互规范
 
-当前 Android 的尺寸、间距、完整图片和长标题规则见 [0.4.16 UI 规范与回归](android-ui-0.4.16.md)。播放器 V2 与 PC 调整见 [0.4.15 界面说明](android-ui-0.4.15.md)。下方为历史规范。
+Android 新 UI 开发遵循 [Material 3 规范与发现页迁移](android-material3.md)，覆盖此前自绘 View／44dp 方案。0.4.16 的历史规则见 [旧版 UI 回归](android-ui-0.4.16.md)，播放器 V2 与 PC 调整见 [0.4.15 界面说明](android-ui-0.4.15.md)。下方为历史规范。
 
 当前源码沿用 Jellyfin 深色媒体库的布局：近黑背景、青色主操作、透明海报卡片、悬停播放和内嵌详情。此次重新整理筛选、收藏、想看与评分的组件和层级。规范与截图已随 [0.4.9 EXE / APK Release](releases/0.4.9.md) 交付。
 

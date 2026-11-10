@@ -9,6 +9,7 @@ dist/
 /pc-build.local.json
 
 android/.gradle/
+android/.kotlin/
 android/local.properties
 **/build/
 *.apk

@@ -1,4 +1,8 @@
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
 android {
     namespace 'net.lumen.media'
     compileSdk 36
@@ -7,8 +11,8 @@ android {
         applicationId 'net.lumen.media'
         minSdk 26
         targetSdk 35
-        versionCode 32
-        versionName '0.4.16'
+        versionCode 33
+        versionName '0.4.17'
         // Real phones are ARM; x86/x86_64 only serve emulators and double the APK.
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
     }
@@ -16,6 +20,8 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    kotlinOptions { jvmTarget = '17' }
+    buildFeatures { compose true }
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
@@ -46,6 +52,17 @@ android {
     buildTypes { release { minifyEnabled false } }
 }
 dependencies {
+    implementation platform('androidx.compose:compose-bom:2025.04.01')
+    implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-core'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    testImplementation platform('androidx.compose:compose-bom:2025.04.01')
+    testImplementation 'androidx.compose.ui:ui-test-junit4'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
     implementation 'org.videolan.android:libvlc-all:3.7.7'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     testImplementation 'junit:junit:4.13.2'

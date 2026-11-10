@@ -12,6 +12,11 @@ import java.util.concurrent.*;
 
 /** Image work never occupies the operation executor. All targets are weak. */
 final class ImageRequests implements AutoCloseable {
+    interface TargetState {
+        void onImageLoading();
+        void onImageLoaded();
+        void onImageFailed();
+    }
     private static final long[] THUMBNAIL_RETRY_MS={500,1000,2000};
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new PriorityBlockingQueue<>());
@@ -38,8 +43,9 @@ final class ImageRequests implements AutoCloseable {
             if(!current())return;
             boolean busyThumbnail=error instanceof Api.StatusException&&((Api.StatusException)error).status==503&&path.matches("/api/files/[0-9]+/thumbnail");
             if(busyThumbnail&&retries<THUMBNAIL_RETRY_MS.length){main.postDelayed(retry,THUMBNAIL_RETRY_MS[retries++]);}
-            else pending.remove(key);
+            else {pending.remove(key);failedTargets();}
         }
+        private void failedTargets(){for(WeakReference<ImageView> ref:targets){ImageView view=ref.get();if(view!=null&&key.equals(view.getTag()))ImageRequests.failed(view);}}
         Load(Api api,String path,String key){this.api=api;this.path=path;this.key=key;}
         public int compareTo(Load other){int priority=Boolean.compare(other.visible,visible);return priority!=0?priority:Long.compare(order,other.order);}
         public void run(){
@@ -49,21 +55,37 @@ final class ImageRequests implements AutoCloseable {
                 main.post(()->{
                     if(closed||cancellation.cancelled()||pending.get(key)!=this)return;
                     pending.remove(key);
-                    if(bitmap==null)return;
+                    if(bitmap==null){failedTargets();return;}
                     cache.put(key,bitmap);
-                    for(WeakReference<ImageView> ref:targets){ImageView view=ref.get();if(view!=null&&key.equals(view.getTag()))view.setImageBitmap(bitmap);}
+                    for(WeakReference<ImageView> ref:targets){ImageView view=ref.get();if(view!=null&&key.equals(view.getTag())){view.setImageBitmap(bitmap);loaded(view);}}
                 });
             }catch(Exception error){main.post(()->failed(error));}
         }
     }
     void load(Api api,ImageView view,String path){
-        if(closed||path.isEmpty()||path.equals("null"))return;
+        if(closed)return;
+        if(path==null||path.isEmpty()||path.equals("null")){view.setTag(null);failed(view);return;}
         String key=api.connection.base+path;view.setTag(key);
-        Bitmap bitmap=cache.get(key);if(bitmap!=null){view.setImageBitmap(bitmap);return;}
+        Bitmap bitmap=cache.get(key);if(bitmap!=null){view.setImageBitmap(bitmap);loaded(view);return;}
+        if(view instanceof TargetState)((TargetState)view).onImageLoading();
         Load load=pending.get(key);
         if(load==null){load=new Load(api,path,key);load.targets.add(new WeakReference<>(view));load.visible=view.getGlobalVisibleRect(new Rect());pending.put(key,load);workers.execute(load);}
         else {boolean present=false;for(WeakReference<ImageView> ref:load.targets)if(ref.get()==view){present=true;break;}if(!present)load.targets.add(new WeakReference<>(view));}
         prioritizeVisible();
+    }
+    private static void loaded(ImageView view){if(view instanceof TargetState)((TargetState)view).onImageLoaded();}
+    private static void failed(ImageView view){if(view instanceof TargetState)((TargetState)view).onImageFailed();}
+    /** Compose targets are offscreen views; release only that consumer when its item leaves composition. */
+    void release(ImageView view){
+        view.setTag(null);
+        Iterator<Load> iterator=pending.values().iterator();
+        while(iterator.hasNext()){
+            Load load=iterator.next();
+            load.targets.removeIf(ref->{ImageView target=ref.get();return target==null||target==view||!load.key.equals(target.getTag());});
+            if(load.targets.isEmpty()){
+                main.removeCallbacks(load.retry);workers.getQueue().remove(load);load.cancellation.cancel();iterator.remove();
+            }
+        }
     }
     void prioritizeVisible(){
         if(!closed&&!priorityPending){priorityPending=true;main.postDelayed(priorityUpdate,16);}

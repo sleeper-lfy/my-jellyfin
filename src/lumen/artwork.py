@@ -74,17 +74,42 @@ def _thumbnail_cache_path(library, path):
 
 
 def file_thumbnail_path(library, work, file):
-    """Exact-file NFO thumbnail or video frame, with no artwork/poster fallback."""
+    """Reuse explicit thumbnail roles while keeping multi-episode previews file-specific."""
     frame = file_thumbnail_target(library, file)
-    local = work.get('metadata', {}).get('nfo_thumbnails', {})
+    metadata = work.get('metadata', {})
+    artwork = library.setting(f'artwork_{work["id"]}', {})
+    if not isinstance(artwork, dict):artwork = {}
+    posters = [artwork.get('poster'), scraped_image_path(work, 'poster')]
+    if metadata.get('nfo_poster'):
+        posters.append(work.get('thumbnail'))
+
+    def known_poster(target):
+        return any(isinstance(path, str) and Path(path).resolve() == target for path in posters)
+
+    # Movies can share artwork between alternate files. Other multi-file works
+    # (series, creators, folders) must not show another episode's thumbnail.
+    shared = work.get('kind') == 'movie' or len(work.get('files', [])) == 1
+    if shared:
+        manual = artwork.get('thumbnail')
+        if isinstance(manual, str) and manual:
+            target = _thumbnail_cache_path(library, manual)
+            if target.is_file() and target.stat().st_size:return target
+        cover = scraped_image_path(work, 'cover')
+        if cover:
+            target = _thumbnail_cache_path(library, cover)
+            same_source = bool(metadata.get('poster')) and metadata.get('cover') == metadata.get('poster')
+            if not same_source and not known_poster(target) and target.stat().st_size:return target
+        for path in still_paths(work):
+            target = _thumbnail_cache_path(library, path)
+            if not known_poster(target) and target.is_file() and target.stat().st_size:return target
+
+    local = metadata.get('nfo_thumbnails', {})
     selected = local.get(str(file['id'])) if isinstance(local, dict) else None
     if isinstance(selected, str) and selected:
         target = _thumbnail_cache_path(library, selected)
-        # Some sidecars label the same cover as both poster and thumb. Such a
-        # reference is not a file preview; its real digest frame is still valid.
-        posters = [work.get('thumbnail'), scraped_image_path(work, 'poster')]
-        is_poster = any(isinstance(path, str) and Path(path).resolve() == target for path in posters)
-        if (not is_poster or target == frame) and target.is_file() and target.stat().st_size:
+        # The historical works.thumbnail column also stores frames/NFO thumbs;
+        # only an explicit poster role can identify it as a poster.
+        if (not known_poster(target) or target == frame) and target.is_file() and target.stat().st_size:
             return target
     return frame if frame.is_file() and frame.stat().st_size else None
 

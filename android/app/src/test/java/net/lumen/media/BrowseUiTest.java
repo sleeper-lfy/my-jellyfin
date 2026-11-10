@@ -165,14 +165,16 @@ public class BrowseUiTest {
             activity.onBackPressed();
             View discovery=activity.findViewById(android.R.id.content).findViewWithTag("nav:discover");assertNotNull(discovery);discovery.performClick();
             assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
-            activity.findViewById(android.R.id.content).findViewWithTag("nav:home").performClick();View recommendation=findText(activity.findViewById(android.R.id.content),"为我推荐");assertNotNull(recommendation);recommendation.performClick();
+            activity.discoveryCoordinator.onNavigatePrimary("home");View recommendation=findText(activity.findViewById(android.R.id.content),"为我推荐");assertNotNull(recommendation);recommendation.performClick();
             assertTrue(((String)path.invoke(activity)).startsWith("/api/recommendations?"));
         }
     }
 
     @Test public void immediateBackDuringHistoryPageRestoreReissuesCancelledLibraryRead()throws Exception{
+        java.util.concurrent.atomic.AtomicInteger discoveryReads=new java.util.concurrent.atomic.AtomicInteger();
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                if(request.getPath().startsWith("/api/discover?"))discoveryReads.incrementAndGet();
                 return new MockResponse().setHeader("Content-Type","application/json")
                     .setBody("{\"items\":[{\"id\":42,\"title\":\"Restored movie\",\"kind\":\"movie\",\"favorite\":0}],\"total\":1}")
                     .setBodyDelay(300,java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -187,9 +189,12 @@ public class BrowseUiTest {
             assertTrue(((String)path.invoke(activity)).contains("tag_q=Remote%20tag"));
             activity.onBackPressed();activity.onBackPressed();
             long deadline=System.currentTimeMillis()+6000;
-            while(activity.findViewById(android.R.id.content).findViewWithTag("card:42")==null&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
-            assertNotNull("Restored list must finish after immediately returning from its detail",activity.findViewById(android.R.id.content).findViewWithTag("card:42"));
-            assertNull(findText(activity.findViewById(android.R.id.content),"正在读取媒体库…"));
+            DiscoveryCoordinator restored=activity.discoveryCoordinator;
+            while((restored.snapshot().loading||restored.snapshot().items.stream().noneMatch(item->item.id==42))&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
+            assertSame("return must resume the same saved discovery host",restored,activity.discoveryCoordinator);
+            assertTrue("Restored list must finish after immediately returning from its detail",restored.snapshot().items.stream().anyMatch(item->item.id==42));
+            assertFalse("cancelled generation must not leave the coordinator loading",restored.snapshot().loading);
+            assertTrue("history restoration must perform a fresh discover read",discoveryReads.get()>=2);
             assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
         }
     }

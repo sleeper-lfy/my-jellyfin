@@ -1,0 +1,4 @@
+<resources>
+    <string name="player_diagnostics_upstream_cache">\n电脑视频请求：%1$d · 缓存命中：%2$d</string>
+    <string name="player_diagnostics_cache_supply">\n缓存累计供给：%1$.1f MiB（内存上限 16 MiB，退出释放）</string>
+</resources>

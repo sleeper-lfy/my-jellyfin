@@ -839,6 +839,8 @@ public final class PlayerActivity extends Activity {
                     if(sample.ready&&stats!=null)data.append(String.format(java.util.Locale.ROOT,"\n近一秒显示：%.1f fps · 新增丢帧：%d",sample.displayedPerSecond,sample.newlyLost));
                     data.append(String.format(java.util.Locale.ROOT,"\n累计视频读取：%.1f MiB",transfer.videoBytesRead/1048576.0));
                     data.append("\n活动视频连接：").append(transfer.activeVideoRequests).append(" · Range 请求：").append(transfer.rangeRequests);
+                    data.append(getString(R.string.player_diagnostics_upstream_cache,transfer.upstreamVideoRequests,transfer.cacheHits));
+                    data.append(getString(R.string.player_diagnostics_cache_supply,transfer.cachedVideoBytes/1048576.0));
                     if(transfer.lastResponseMillis>=0)data.append("\n最近响应：HTTP ").append(transfer.lastResponseCode).append(" · ").append(transfer.lastResponseMillis).append(" ms（响应头）");
                     data.append("\n读取速度为服务端视频正文，缓存在手机时可能暂为 0。");
                 }else data.append("\n局域网读取：不可用");

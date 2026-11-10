@@ -20,65 +20,84 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int BG=MediaStyle.BG, BLUE=MediaStyle.ACCENT, MUTED=MediaStyle.MUTED;
-    private final android.os.Handler downloadUpdates=new android.os.Handler(android.os.Looper.getMainLooper());
-    private final ExecutorService network=Executors.newFixedThreadPool(4);
+    final android.os.Handler downloadUpdates=new android.os.Handler(android.os.Looper.getMainLooper());
+    final ExecutorService network=Executors.newFixedThreadPool(4);
     private final LruCache<String,Bitmap> pictures=new LruCache<String,Bitmap>(24*1024) {
         @Override protected int sizeOf(String key,Bitmap image){return image.getByteCount()/1024;}
     };
-    private final ImageRequests imageRequests=new ImageRequests(pictures);
-    private Api api;
+    final ImageRequests imageRequests=new ImageRequests(pictures);
+    Api api;
     private LinearLayout root,content;
     private PosterGrid posters;
     private ScrollView detailScroll;
-    private String kind="",query="",tagFilter="",actorFilter="",yearMinFilter="",yearMaxFilter="",ratingMinFilter="",tagsAllFilter="",tagsAnyFilter="",tagsNotFilter="";
+    String kind="",query="",tagFilter="",actorFilter="",yearMinFilter="",yearMaxFilter="",ratingMinFilter="",tagsAllFilter="",tagsAnyFilter="",tagsNotFilter="";
     private boolean actresses=false;
-    private boolean favorites=false,recommended=false,discovery=false,watchlistOnly=false,dislikedOnly=false;
+    boolean favorites=false,recommended=false,discovery=false,watchlistOnly=false,dislikedOnly=false;
     private String mainPage="home";
     private boolean mineLanding=false;
-    private int offset=0,generation=0;
-    private long detailId=0,renderedDetailId=0;
+    int offset=0,generation=0;
+    long detailId=0,renderedDetailId=0;
     private boolean returned=false;
     private JSONObject detail;
+    private static final String[] PERSONAL_FIELDS={"favorite","liked","disliked","watchlist","rating"};
+    private Api personalClient;
+    private long personalIntent,personalConfirmation;
+    private final java.util.Map<Long,PersonalState> personalStates=new java.util.HashMap<>();
+    private static final class PersonalState {
+        final java.util.Map<String,Long> intents=new java.util.HashMap<>();
+        final java.util.Map<String,PersonalValue> confirmed=new java.util.HashMap<>();
+    }
+    private static final class PersonalValue {
+        final Object value;final long intent,confirmation;
+        PersonalValue(Object value,long intent,long confirmation){this.value=value;this.intent=intent;this.confirmation=confirmation;}
+    }
     private LinearLayout browseRoot;
-    private final java.util.Map<Long,JSONObject> browseRecords=new java.util.HashMap<>();
-    private String sortField="added",watchFilter="",savedList="";
+    final java.util.Map<Long,JSONObject> browseRecords=new java.util.HashMap<>();
+    String sortField="added",watchFilter="",savedList="";
     private boolean sortDescending=true;
     private static final String[] DISCOVERY_SORT_KEYS={"discovered","site_added","title","year","community_rating"};
     private static final String[] DISCOVERY_SORT_NAMES={"首次发现","网站收录时间","影片名称","发行年份","来源评分"};
-    private String discoverySort="discovered";
-    private boolean discoveryDescending=true;
-    private AutoCompleteTextView discoveryTagInput;
-    private boolean discoveryOnline=false,discoveryProvidersLoaded=false;
-    private String discoveryProvider="",discoverySearchTask="",discoverySearchState="",discoverySearchMessage="",discoverySearchErrors="";
-    private JSONArray discoveryProviders=new JSONArray(),discoveryResultIds;
-    private String discoveryResultTag="";
+    String discoverySort="discovered";
+    boolean discoveryDescending=true;
+    boolean discoveryOnline=false,discoveryProvidersLoaded=false;
+    String discoveryProvider="",discoverySearchTask="",discoverySearchState="",discoverySearchMessage="",discoverySearchErrors="";
+    JSONArray discoveryProviders=new JSONArray(),discoveryResultIds;
+    String discoveryResultTag="";
     private int discoverySubmission=0;
-    private final java.util.Map<Long,Integer> browsePositions=new java.util.HashMap<>();
+    final java.util.Map<Long,Integer> browsePositions=new java.util.HashMap<>();
     private final java.util.ArrayDeque<NavigationState> navigationHistory=new java.util.ArrayDeque<>();
     private ScrollView browseScroll;
-    private int restoreOffset=0,restoreScroll=0;
+    int restoreOffset=0,restoreScroll=0;
     private TextView browseLoading,catalogCount;
     private LinearLayout continuePanel;
+    DiscoveryCoordinator discoveryCoordinator;
+    DiscoveryFilters discoveryNextSearchFilters;
+    int discoveryGridIndex,discoveryGridScroll;
+    boolean discoveryRestoreScroll;
+    private androidx.activity.OnBackPressedCallback navigationBack;
     private static final class NavigationState {
         String kind,query,tag,actor,year,yearMin,yearMax,ratingMin,tagsAll,tagsAny,tagsNot,sort,watch,list,discoverySort,discoveryProvider,searchTask,searchState,searchMessage,searchErrors,resultIds,resultTag;
-        boolean favorites,recommended,discovery,actresses,descending,discoveryDescending,discoveryOnline,watchlistOnly,dislikedOnly;
+        boolean favorites,recommended,discovery,actresses,descending,discoveryDescending,discoveryOnline,watchlistOnly,dislikedOnly,nextSearchFilters;
         String mainPage;
-        int offset,scroll,detailScroll;
+        int offset,scroll,detailScroll,gridIndex,gridScroll;
         JSONObject detail;
     }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        navigationBack=new androidx.activity.OnBackPressedCallback(true){@Override public void handleOnBackPressed(){
+            if(detailId>0)returnLibrary();else if(!navigationHistory.isEmpty())restoreNavigation();else if(!mainPage.equals("home"))navigatePrimary("home");else{setEnabled(false);try{getOnBackPressedDispatcher().onBackPressed();}finally{setEnabled(true);}}
+        }};getOnBackPressedDispatcher().addCallback(navigationBack);
         sortField=getSharedPreferences("catalog",0).getString("sort","added");sortDescending=getSharedPreferences("catalog",0).getBoolean("descending",true);
         discoverySort=getSharedPreferences("discovery",0).getString("sort","discovered");discoveryDescending=getSharedPreferences("discovery",0).getBoolean("descending",true);
         if(!java.util.Arrays.asList(DISCOVERY_SORT_KEYS).contains(discoverySort))discoverySort="discovered";
         Connection connection=Connection.load(this);
         if(connection==null)showConnection();else {api=new Api(connection);if(state!=null&&state.containsKey("browse"))restoreBrowseState(state.getBundle("browse"));else showLibrary();}
     }
-    @Override protected void onStop() {imageRequests.cancelPage();super.onStop();}
-    @Override protected void onStart() {super.onStart();if(api!=null&&root!=null)imageRequests.restore(api,root);}
+    @Override protected void onStop() {if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);imageRequests.cancelPage();super.onStop();}
+    @Override protected void onStart() {super.onStart();if(discoveryCoordinator!=null&&discovery&&detailId==0)discoveryCoordinator.setActive(true);if(api!=null&&root!=null)imageRequests.restore(api,root);}
     @Override protected void onResume() {
         super.onResume();
         if(returned && api!=null) { if(detailId>0)openDetail(detailId);else if(continuePanel!=null)loadContinue(); }
@@ -86,6 +105,10 @@ public final class MainActivity extends Activity {
     }
     @Override public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
+        if(api!=null&&discovery&&detailId==0&&discoveryCoordinator!=null){
+            // Compose handles configuration in place, preserving modal drafts and grid state.
+            androidx.activity.EdgeToEdge.enable(this);discoveryCoordinator.publish();return;
+        }
         if(api!=null) { try {if(detailId>0 && detail!=null)renderDetail(detail);else {Bundle state=browseState();restoreBrowseState(state);}} catch(Exception e){message(e.getMessage());} }
     }
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -99,7 +122,7 @@ public final class MainActivity extends Activity {
         state.putString("mainPage",mainPage);state.putBoolean("mineLanding",mineLanding);state.putBoolean("watchlistOnly",watchlistOnly);state.putBoolean("dislikedOnly",dislikedOnly);
         state.putBoolean("favorites",favorites);state.putBoolean("recommended",recommended);state.putBoolean("discovery",discovery);state.putBoolean("actresses",actresses);
         state.putBoolean("descending",sortDescending);state.putBoolean("discoveryDescending",discoveryDescending);state.putBoolean("online",discoveryOnline);
-        state.putString("results",discoveryResultIds==null?null:discoveryResultIds.toString());
+        state.putString("results",discoveryResultIds==null?null:discoveryResultIds.toString());state.putBoolean("nextSearchFilters",discoveryNextSearchFilters!=null);state.putInt("discoveryGridIndex",discoveryGridIndex);state.putInt("discoveryGridScroll",discoveryGridScroll);
         state.putInt("offset",Math.max(offset,restoreOffset));state.putInt("scroll",browseScroll==null?restoreScroll:browseScroll.getScrollY());
         return state;
     }
@@ -113,13 +136,12 @@ public final class MainActivity extends Activity {
         favorites=state.getBoolean("favorites");recommended=state.getBoolean("recommended");discovery=state.getBoolean("discovery");actresses=state.getBoolean("actresses");
         sortDescending=state.getBoolean("descending",true);discoveryDescending=state.getBoolean("discoveryDescending",true);discoveryOnline=state.getBoolean("online");
         try{String results=state.getString("results");discoveryResultIds=results==null?null:new JSONArray(results);}catch(Exception ignored){discoveryResultIds=null;}
+        discoveryGridIndex=state.getInt("discoveryGridIndex",0);discoveryGridScroll=state.getInt("discoveryGridScroll",0);discoveryRestoreScroll=discovery;
+        discoveryNextSearchFilters=state.getBoolean("nextSearchFilters")?discoveryFilterState():null;
         if(state.getBoolean("mineLanding")){showMine();return;}
         showLibrary();restoreOffset=Math.max(1,state.getInt("offset"));restoreScroll=state.getInt("scroll");
     }
-    @Override public void onBackPressed() {
-        if(detailId>0) {returnLibrary();}else if(!navigationHistory.isEmpty())restoreNavigation();else if(!mainPage.equals("home"))navigatePrimary("home");else super.onBackPressed();
-    }
-    @Override protected void onDestroy() {downloadUpdates.removeCallbacksAndMessages(null);imageRequests.close();network.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy() {if(navigationBack!=null)navigationBack.remove();if(discoveryCoordinator!=null)discoveryCoordinator.dispose();downloadUpdates.removeCallbacksAndMessages(null);imageRequests.close();network.shutdownNow();super.onDestroy();}
     private int dp(float value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private TextView text(String value,int size,int color) {
         TextView view=new TextView(this);view.setText(value);view.setTextSize(size);if(size>=20)view.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);view.setTextColor(color);view.setFontFeatureSettings("kern");view.setPadding(0,dp(5),0,dp(5));return view;
@@ -129,16 +151,20 @@ public final class MainActivity extends Activity {
         MediaStyle.button(button,false,false,false);button.setOnClickListener(v->action.run());return button;
     }
     private void base() {
+        if(discoveryCoordinator!=null){discoveryCoordinator.setActive(false);if(detailId==0&&browseRoot==null){discoveryCoordinator.dispose();discoveryCoordinator=null;}}
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),true);
+        getWindow().setStatusBarColor(MediaStyle.BG);getWindow().setNavigationBarColor(MediaStyle.BG);
+        androidx.core.view.WindowInsetsControllerCompat bars=new androidx.core.view.WindowInsetsControllerCompat(getWindow(),getWindow().getDecorView());bars.setAppearanceLightStatusBars(false);bars.setAppearanceLightNavigationBars(false);
         imageRequests.cancelPage();
         root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(BG);root.setFitsSystemWindows(true);setContentView(root);
     }
-    private void message(String value){if(!isDestroyed())Toast.makeText(this,value,Toast.LENGTH_LONG).show();}
+    void message(String value){if(!isDestroyed()){if(discovery&&detailId==0&&discoveryCoordinator!=null)discoveryCoordinator.message(value);else Toast.makeText(this,value,Toast.LENGTH_LONG).show();}}
     interface Work {JSONObject run() throws Exception;}
     interface Result {void accept(JSONObject result) throws Exception;}
-    private void request(Work work,Result result) {
+    void request(Work work,Result result) {
         request(work,result,null);
     }
-    private void request(Work work,Result result,java.util.function.Consumer<String> failed) {
+    void request(Work work,Result result,java.util.function.Consumer<String> failed) {
         final int ticket=generation;
         network.execute(()->{
             try {JSONObject value=work.run();runOnUiThread(()->{if(isDestroyed() || ticket!=generation)return;try{result.accept(value);}catch(Exception e){message(e.getMessage());}});}
@@ -223,7 +249,7 @@ public final class MainActivity extends Activity {
         kind="";query="";tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";watchFilter="";savedList="";
         favorites=false;watchlistOnly=false;dislikedOnly=false;recommended=false;discovery=false;actresses=false;navigationHistory.clear();clearDiscoverySearch();
     }
-    private void navigatePrimary(String page){
+    void navigatePrimary(String page){
         resetBrowseFilters();mainPage=page;
         if(page.equals("mine")){showMine();return;}
         discovery=page.equals("discover");showLibrary();
@@ -232,7 +258,7 @@ public final class MainActivity extends Activity {
         LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);nav.setTag("primaryNavigation");nav.setGravity(Gravity.CENTER_VERTICAL);nav.setPadding(dp(8),dp(5),dp(8),dp(6));nav.setBackgroundColor(MediaStyle.PANEL);
         String[] labels={"首页","媒体库","发现","我的"},pages={"home","library","discover","mine"},icons={"home","library","discover","user"};
         String active=discovery?"discover":favorites||watchlistOnly||!savedList.isEmpty()?"mine":!kind.isEmpty()||actresses?"library":mainPage;
-        for(int i=0;i<pages.length;i++){final String page=pages[i];Button tab=MediaStyle.navigation(this,labels[i],icons[i],page.equals(active));tab.setTag("nav:"+page);tab.setOnClickListener(v->navigatePrimary(page));LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);cell.setMargins(dp(3),0,dp(3),0);nav.addView(tab,cell);}
+        for(int i=0;i<pages.length;i++){final String page=pages[i];Button tab=MediaStyle.navigation(this,labels[i],icons[i],page.equals(active));tab.setTag("nav:"+page);if(discovery){tab.setBackgroundColor(Color.TRANSPARENT);tab.setTextColor(page.equals(active)?MediaStyle.ACCENT:MediaStyle.MUTED);}tab.setOnClickListener(v->navigatePrimary(page));LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);cell.setMargins(dp(3),0,dp(3),0);nav.addView(tab,cell);}
         root.addView(nav,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showMine(){
@@ -257,12 +283,13 @@ public final class MainActivity extends Activity {
         PopupMenu menu=new PopupMenu(this,anchor);if(savedList.isEmpty())menu.getMenu().add("保存当前筛选为片单");menu.getMenu().add("随机播放当前列表");menu.getMenu().add("手机播放队列");
         menu.setOnMenuItemClickListener(item->{switch(item.getTitle().toString()){case "保存当前筛选为片单":saveSmartList();break;case "随机播放当前列表":shuffle();break;default:queueEditor();}return true;});menu.show();
     }
-    private void showLibrary() {
-        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;discoveryTagInput=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();header(mainPage.equals("home")?"Lumen":discovery?"发现":"媒体库",false);
+    void showLibrary() {
+        if(discovery){showDiscoveryPage();return;}
+        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();header(mainPage.equals("home")?"Lumen":discovery?"发现":"媒体库",false);
         boolean home=mainPage.equals("home")&&kind.isEmpty()&&!favorites&&!watchlistOnly&&!dislikedOnly&&!recommended&&!discovery&&!actresses&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearMinFilter.isEmpty()&&yearMaxFilter.isEmpty()&&ratingMinFilter.isEmpty()&&tagsAllFilter.isEmpty()&&tagsAnyFilter.isEmpty()&&tagsNotFilter.isEmpty()&&watchFilter.isEmpty()&&savedList.isEmpty();
         LinearLayout searchRow=MediaStyle.row(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);searchRow.setPadding(dp(16),0,dp(16),dp(8));
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint(discovery?"按影片名称搜索":actresses?"搜索女演员":"搜索媒体库");search.setContentDescription(discovery?"发现影片名称搜索":actresses?"女演员搜索":"媒体库搜索");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        Runnable applySearch=()->{if(discovery&&discoveryOnline){startDiscoverySearch(search);return;}query=search.getText().toString().trim();if(discovery&&discoveryTagInput!=null)tagFilter=discoveryTagInput.getText().toString().trim();showLibrary();};
+        Runnable applySearch=()->{if(discovery&&discoveryOnline){startDiscoverySearch(search);return;}query=search.getText().toString().trim();showLibrary();};
         search.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
         search.setBackground(MediaStyle.surface(this,0xff15212c,0xff2c414f,8));search.setPadding(dp(12),0,dp(8),0);
         searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(48),1));Button searchButton=button("",applySearch);MediaStyle.quiet(searchButton,"search","搜索");searchButton.setContentDescription("搜索");LinearLayout.LayoutParams searchParams=new LinearLayout.LayoutParams(dp(48),dp(48));searchRow.addView(searchButton,searchParams);
@@ -294,11 +321,29 @@ public final class MainActivity extends Activity {
         listHeading.addView(text(title,22,Color.WHITE),new LinearLayout.LayoutParams(0,-2,1));
         if(!actresses){Button listMore=button("",()->{});listMore.setContentDescription("当前列表操作");MediaStyle.quiet(listMore,"more","当前列表操作");listMore.setOnClickListener(this::showListActions);listHeading.addView(listMore,new LinearLayout.LayoutParams(dp(48),dp(48)));if(home||favorites||watchlistOnly||recommended||!savedList.isEmpty()){Button sort=button("排序",this::sorting);listHeading.addView(sort,new LinearLayout.LayoutParams(dp(64),dp(48)));}}
         if(home||discovery||actresses||favorites||watchlistOnly||recommended||!savedList.isEmpty())content.addView(listHeading);
-        if(discovery)showDiscoveryTools(search,applySearch);
         posters=new PosterGrid(this);content.addView(posters);bottomNavigation();
         if(actresses){loadActresses();return;}
         if(discovery&&discoveryOnline&&discoveryResultIds==null){content.addView(text(discoverySearchState.equals("running")||discoverySearchState.equals("queued")?"正在搜索站点，完成后显示本次结果。":"输入影片名称或标签，点击“搜索站点”。",15,MUTED));}else loadPage();
         if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&(discoverySearchState.equals("running")||discoverySearchState.equals("queued")))pollDiscoverySearch(discoverySearchTask,generation);
+    }
+    /** Only this destination is Compose; existing native pages keep their layout. */
+    void showDiscoveryPage(){
+        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;
+        offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();browseScroll=null;content=null;
+        if(!discoveryRestoreScroll){discoveryGridIndex=0;discoveryGridScroll=0;}base();
+        root.setFitsSystemWindows(false);androidx.activity.EdgeToEdge.enable(this);
+        discoveryCoordinator=new DiscoveryCoordinator(this);root.addView(discoveryCoordinator.getView(),new LinearLayout.LayoutParams(-1,-1));discoveryCoordinator.start();discoveryRestoreScroll=false;
+        if(discoveryOnline&&!discoverySearchTask.isEmpty()&&discoverySearchBusy())pollDiscoverySearch(discoverySearchTask,generation);
+    }
+    DiscoveryFilters discoveryFilterState(){
+        DiscoveryFilters initial=new DiscoveryFilters();initial.tag=discoveryOnline?discoveryResultTag:tagFilter;initial.searchTag=tagFilter;initial.hasResults=discoveryOnline&&discoveryResultIds!=null;initial.actor=actorFilter;initial.yearMin=yearMinFilter;initial.yearMax=yearMaxFilter;initial.ratingMin=ratingMinFilter;initial.tagsAll=tagsAllFilter;initial.tagsAny=tagsAnyFilter;initial.tagsNot=tagsNotFilter;initial.watch=watchFilter;initial.favorite=favorites;initial.wanted=watchlistOnly;initial.disliked=dislikedOnly;initial.online=discoveryOnline;initial.provider=discoveryProvider;return initial;
+    }
+    void applyDiscoveryFilters(DiscoveryFilters next,String queryText){
+
+            boolean queryChanged=!queryText.trim().equals(query);boolean modeChanged=next.online!=discoveryOnline;boolean providerChanged=!next.provider.equals(discoveryProvider);boolean sourceTagChanged=!next.searchTag.equals(tagFilter);if(discoveryOnline&&next.online&&discoverySearchBusy()&&(queryChanged||providerChanged||sourceTagChanged)){message(getString(R.string.discovery_controller_busy_source_edit));return;}query=queryText.trim();if(modeChanged){if(!next.online)clearDiscoverySearch();else {discoveryOnline=true;discoveryResultIds=null;discoveryResultTag="";}}
+            discoveryOnline=next.online;discoveryProvider=next.provider;if(discoveryOnline){tagFilter=next.searchTag;discoveryResultTag=next.tag;if(queryChanged||modeChanged||providerChanged||sourceTagChanged||discoveryResultIds==null)discoveryNextSearchFilters=next.copy();}else{tagFilter=next.tag;discoveryNextSearchFilters=null;}
+            actorFilter=next.actor;yearMinFilter=next.yearMin;yearMaxFilter=next.yearMax;ratingMinFilter=next.ratingMin;tagsAllFilter=next.tagsAll;tagsAnyFilter=next.tagsAny;tagsNotFilter=next.tagsNot;watchFilter=next.watch;favorites=next.favorite;watchlistOnly=next.wanted;dislikedOnly=next.disliked;
+            showLibrary();if(discoveryOnline&&(queryChanged||modeChanged||providerChanged||sourceTagChanged)&&(!query.isEmpty()||!tagFilter.isEmpty()))discoveryCoordinator.startSearchWhenReady();
     }
     private String continueTime(double seconds){long n=(long)Math.max(0,seconds);return String.format(java.util.Locale.ROOT,"%d:%02d:%02d",n/3600,n/60%60,n%60);}
     private void loadContinue() {
@@ -326,119 +371,47 @@ public final class MainActivity extends Activity {
             }
         },error->{if(panel!=continuePanel)return;panel.removeAllViews();panel.setVisibility(View.VISIBLE);panel.addView(button("续播读取失败，点击重试",this::loadContinue));});
     }
-    private String listPath() {
+    String listPath() {
         String path=recommended?"/api/recommendations?":discovery?"/api/discover?":"/api/works?";
         boolean onlineResult=discovery&&discoveryOnline;
         String ids="";if(onlineResult){java.util.ArrayList<String> selected=new java.util.ArrayList<>();if(discoveryResultIds!=null)for(int i=0;i<discoveryResultIds.length();i++)selected.add(Long.toString(discoveryResultIds.optLong(i)));ids="&ids="+android.text.TextUtils.join(",",selected);}
-        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&watchlist="+watchlistOnly+(dislikedOnly?"&disliked=true":"")+"&q="+android.net.Uri.encode(onlineResult?"":query)+(discovery?"&tag_q=":"&tag=")+android.net.Uri.encode(onlineResult?discoveryResultTag:tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year_min="+android.net.Uri.encode(discovery?"":yearMinFilter)+"&year_max="+android.net.Uri.encode(discovery?"":yearMaxFilter)+"&rating_min="+android.net.Uri.encode(discovery?"":ratingMinFilter)+"&tags_all="+android.net.Uri.encode(discovery?"":tagsAllFilter)+"&tags_any="+android.net.Uri.encode(tagsAnyFilter)+"&tags_not="+android.net.Uri.encode(tagsNotFilter)+"&sort="+(discovery?discoverySort:sortField)+"&direction="+((discovery?discoveryDescending:sortDescending)?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList)+ids;
+        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&watchlist="+watchlistOnly+(dislikedOnly?"&disliked=true":"")+"&q="+android.net.Uri.encode(onlineResult?"":query)+(discovery?"&tag_q=":"&tag=")+android.net.Uri.encode(onlineResult?discoveryResultTag:tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year_min="+android.net.Uri.encode(yearMinFilter)+"&year_max="+android.net.Uri.encode(yearMaxFilter)+"&rating_min="+android.net.Uri.encode(ratingMinFilter)+"&tags_all="+android.net.Uri.encode(tagsAllFilter)+"&tags_any="+android.net.Uri.encode(tagsAnyFilter)+"&tags_not="+android.net.Uri.encode(tagsNotFilter)+"&sort="+(discovery?discoverySort:sortField)+"&direction="+((discovery?discoveryDescending:sortDescending)?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList)+ids;
     }
-    private void showDiscoveryTools(EditText search,Runnable applySearch){
-        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(16),dp(8),dp(16),dp(16));
-        panel.setBackground(MediaStyle.surface(this,0xff101b24,0xff30303a,10));
-        Spinner scope=new Spinner(this);scope.setTag("discoveryScope");scope.setContentDescription("发现搜索范围");scope.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"筛选已发现资料","在线搜索站点"}));scope.setSelection(discoveryOnline?1:0);
-        scope.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
-            boolean online=position==1;if(online==discoveryOnline)return;query=search.getText().toString().trim();if(discoveryTagInput!=null)tagFilter=discoveryTagInput.getText().toString().trim();if(!online)clearDiscoverySearch();discoveryOnline=online;showLibrary();
-        }});panel.addView(scope,new LinearLayout.LayoutParams(-1,dp(48)));
-        TextView label=text("标签搜索",13,MUTED);panel.addView(label);
-        AutoCompleteTextView tag=new SearchDropdown(this);discoveryTagInput=tag;
-        tag.setTag("discoveryTag");tag.setContentDescription("发现影片标签搜索");tag.setSingleLine(true);tag.setTextColor(Color.WHITE);tag.setHintTextColor(MUTED);
-        tag.setHint("搜索标签");tag.setText(tagFilter);tag.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        tag.setPadding(dp(12),0,dp(8),0);tag.setBackground(MediaStyle.surface(this,0xff13212c,0xff314652,8));
-        tag.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_dropdown_item_1line));
-        tag.setOnItemClickListener((parent,view,position,id)->applySearch.run());
-        tag.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
-        LinearLayout tagRow=MediaStyle.row(this);tagRow.addView(tag,new LinearLayout.LayoutParams(0,dp(48),1));
-        Button dropdown=button("⌄",()->{tag.requestFocus();tag.showDropDown();});dropdown.setContentDescription("选择发现标签");dropdown.setTag("discoveryTagDropdown");tagRow.addView(dropdown,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        Button apply=button(discoveryOnline?"搜索站点":"应用",applySearch);apply.setTag("discoverySearch");apply.setContentDescription(discoveryOnline?"搜索站点":"应用发现名称与标签搜索");panel.addView(tagRow);LinearLayout.LayoutParams applySize=new LinearLayout.LayoutParams(-1,dp(48));applySize.setMargins(0,dp(8),0,0);panel.addView(apply,applySize);
-        if(discoveryOnline)showDiscoveryProviders(panel,apply);
-        panel.addView(text("排序",13,MUTED));LinearLayout sortRow=MediaStyle.row(this);
-        Spinner order=new Spinner(this);order.setTag("discoverySort");order.setContentDescription("发现影片排序字段");
-        order.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,DISCOVERY_SORT_NAMES));
-        order.setSelection(Math.max(0,java.util.Arrays.asList(DISCOVERY_SORT_KEYS).indexOf(discoverySort)));
-        order.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
-            if(position<0||position>=DISCOVERY_SORT_KEYS.length||DISCOVERY_SORT_KEYS[position].equals(discoverySort))return;
-            discoverySort=DISCOVERY_SORT_KEYS[position];saveDiscoverySort();if(discoveryOnline)showLibrary();else applySearch.run();
-        }});
-        sortRow.addView(order,new LinearLayout.LayoutParams(0,dp(48),1));
-        Button direction=button(discoveryDescending?"降序 ↓":"升序 ↑",()->{discoveryDescending=!discoveryDescending;saveDiscoverySort();if(discoveryOnline)showLibrary();else applySearch.run();});
-        direction.setTag("discoveryDirection");direction.setContentDescription("切换发现排序方向");sortRow.addView(direction,new LinearLayout.LayoutParams(dp(96),dp(48)));panel.addView(sortRow);
-        LinearLayout.LayoutParams spacing=new LinearLayout.LayoutParams(-1,-2);spacing.setMargins(0,0,0,dp(16));content.addView(panel,spacing);
-        loadDiscoveryTags(tag);
+    void saveDiscoverySort(){getSharedPreferences("discovery",0).edit().putString("sort",discoverySort).putBoolean("descending",discoveryDescending).apply();}
+    void clearDiscoverySearch(){
+        discoveryNextSearchFilters=null;discoverySubmission++;discoveryOnline=false;discoverySearchTask="";discoverySearchState="";discoverySearchMessage="";discoverySearchErrors="";discoveryResultIds=null;discoveryResultTag="";
     }
-    private void loadDiscoveryTags(AutoCompleteTextView target){
-        request(()->api.get("/api/filters?discover=true&kind="+android.net.Uri.encode(kind)),options->{
-            if(target!=discoveryTagInput)return;
-            JSONArray tags=options.optJSONArray("tags");java.util.ArrayList<String> names=new java.util.ArrayList<>();
-            if(tags!=null)for(int i=0;i<tags.length();i++)names.add(tags.optString(i));
-            target.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line,names));
-        });
-    }
-    private void saveDiscoverySort(){getSharedPreferences("discovery",0).edit().putString("sort",discoverySort).putBoolean("descending",discoveryDescending).apply();}
-    private void clearDiscoverySearch(){
-        discoverySubmission++;discoveryOnline=false;discoverySearchTask="";discoverySearchState="";discoverySearchMessage="";discoverySearchErrors="";discoveryResultIds=null;discoveryResultTag="";
-    }
-    private boolean discoverySearchBusy(){return discoverySearchState.equals("queued")||discoverySearchState.equals("running");}
-    private void showDiscoveryProviders(LinearLayout panel,Button apply){
-        panel.addView(text("搜索来源",13,MUTED));LinearLayout sourceRow=MediaStyle.row(this);Spinner sources=new Spinner(this);sources.setTag("discoveryProvider");sources.setContentDescription("在线搜索来源");sourceRow.addView(sources,new LinearLayout.LayoutParams(0,dp(48),1));
-        Button refresh=button("↻",()->{});refresh.setContentDescription("刷新搜索来源");sourceRow.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));panel.addView(sourceRow);
-        TextView capability=text("正在读取可用站点…",12,MUTED);capability.setTag("discoveryProviderHint");panel.addView(capability);
-        TextView status=text(discoverySearchMessage+(discoverySearchErrors.isEmpty()?"":"\n"+discoverySearchErrors),13,MUTED);status.setTag("discoverySearchStatus");panel.addView(status);
-        apply.setEnabled(discoveryProvidersLoaded&&discoveryProviders.length()>0&&!discoverySearchBusy());
-        Runnable populate=()->{
-            java.util.ArrayList<String> labels=new java.util.ArrayList<>();labels.add("全部可用站点");int selected=0;
-            for(int i=0;i<discoveryProviders.length();i++){
-                JSONObject provider=discoveryProviders.optJSONObject(i);if(provider==null)continue;
-                labels.add(provider.optString("name",provider.optString("id"))+(provider.optBoolean("supports_tags")?" · 名称和标签":" · 仅名称"));
-                if(provider.optString("id").equals(discoveryProvider))selected=i+1;
-            }
-            sources.setOnItemSelectedListener(null);sources.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));sources.setSelection(selected);
-            if(selected==0)discoveryProvider="";
-            capability.setText(discoveryProviders.length()==0?"暂无可用站点，请在电脑端启用支持搜索的插件。":discoveryProviderHint());
-            sources.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
-                discoveryProvider=position==0?"":discoveryProviders.optJSONObject(position-1).optString("id");capability.setText(discoveryProviderHint());
-            }});
-            apply.setEnabled(discoveryProviders.length()>0&&!discoverySearchBusy());
-        };
-        if(discoveryProvidersLoaded)populate.run();
-        Runnable reload=()->request(()->api.get("/api/discovery/providers"),result->{
-            discoveryProviders=result.optJSONArray("items");if(discoveryProviders==null)discoveryProviders=new JSONArray();discoveryProvidersLoaded=true;populate.run();
-        },error->{capability.setText("来源读取失败，点击右侧刷新按钮重试："+error);apply.setEnabled(discoveryProvidersLoaded&&discoveryProviders.length()>0&&!discoverySearchBusy());});
-        refresh.setOnClickListener(view->reload.run());reload.run();
-    }
-    private String discoveryProviderHint(){
-        if(discoveryProvider.isEmpty())return "名称和标签同时填写时，只搜索声明支持标签的站点；不支持的站点会显示原因。";
-        for(int i=0;i<discoveryProviders.length();i++){
-            JSONObject provider=discoveryProviders.optJSONObject(i);if(provider!=null&&provider.optString("id").equals(discoveryProvider))return provider.optBoolean("supports_tags")?"此站点支持名称与标签组合搜索。":"此站点仅支持名称搜索；标签搜索请更换来源。";
-        }
-        return "请选择可用站点。";
-    }
-    private void startDiscoverySearch(EditText search){
+    boolean discoverySearchBusy(){return discoverySearchState.equals("queued")||discoverySearchState.equals("running");}
+    void startDiscoverySearch(EditText search){
         if(discoverySearchBusy())return;
-        query=search.getText().toString().trim();tagFilter=discoveryTagInput==null?"":discoveryTagInput.getText().toString().trim();
-        if(query.isEmpty()&&tagFilter.isEmpty()){message("请输入影片名称或标签");return;}
-        if(!discoveryProvidersLoaded||discoveryProviders.length()==0){message("请先选择可用的搜索站点");return;}
+        if(search!=null)query=search.getText().toString().trim();
+        if(query.isEmpty()&&tagFilter.isEmpty()){message(getString(R.string.discovery_controller_enter_query));return;}
+        if(!discoveryProvidersLoaded||discoveryProviders.length()==0){message(getString(R.string.discovery_controller_choose_provider));return;}
         if(!tagFilter.isEmpty()&&!discoveryProvider.isEmpty())for(int i=0;i<discoveryProviders.length();i++){
             JSONObject provider=discoveryProviders.optJSONObject(i);
             if(provider!=null&&provider.optString("id").equals(discoveryProvider)&&!provider.optBoolean("supports_tags")){
-                discoverySearchTask="";discoverySearchState="failed";discoveryResultIds=null;discoverySearchMessage="该站点不支持标签搜索，请更换来源或清空标签。";discoverySearchErrors="";showLibrary();return;
+                discoverySearchTask="";discoverySearchState="failed";discoveryResultIds=null;discoverySearchMessage=getString(R.string.discovery_controller_source_unsupported_tag);discoverySearchErrors="";showLibrary();return;
             }
         }
         // A new site search uses only its explicit name/tag/provider inputs;
         // old local-library conditions must not silently discard site matches.
-        kind="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";favorites=false;watchFilter="";savedList="";discoveryResultTag="";
+        kind="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";favorites=false;watchlistOnly=false;dislikedOnly=false;watchFilter="";savedList="";discoveryResultTag="";
+        // Only an explicitly applied sheet draft carries result conditions into a
+        // new site task. Conditions left behind by other pages never do.
+        if(discoveryNextSearchFilters!=null){DiscoveryFilters selected=discoveryNextSearchFilters;discoveryResultTag=selected.tag;actorFilter=selected.actor;yearMinFilter=selected.yearMin;yearMaxFilter=selected.yearMax;ratingMinFilter=selected.ratingMin;tagsAllFilter=selected.tagsAll;tagsAnyFilter=selected.tagsAny;tagsNotFilter=selected.tagsNot;watchFilter=selected.watch;favorites=selected.favorite;watchlistOnly=selected.wanted;dislikedOnly=selected.disliked;discoveryNextSearchFilters=null;}
         final JSONObject payload=new JSONObject();
         try{payload.put("query",query).put("tag",tagFilter).put("plugin",discoveryProvider);}catch(Exception error){message(error.getMessage());return;}
-        savedList="";discoveryResultIds=null;discoverySearchTask="";discoverySearchState="queued";discoverySearchMessage="正在提交站点搜索…";discoverySearchErrors="";showLibrary();
+        savedList="";discoveryResultIds=null;discoverySearchTask="";discoverySearchState="queued";discoverySearchMessage=getString(R.string.discovery_controller_submitting);discoverySearchErrors="";showLibrary();
         final int submission=++discoverySubmission;final Api client=api;
         network.execute(()->{
             try{
                 String task=client.post("/api/discovery/search",payload).getString("task_id");
                 runOnUiThread(()->{if(isDestroyed()||submission!=discoverySubmission||api!=client)return;
-                    discoverySearchTask=task;discoverySearchState="queued";discoverySearchMessage="站点搜索已加入队列…";
+                    discoverySearchTask=task;discoverySearchState="queued";discoverySearchMessage=getString(R.string.discovery_controller_queued);
                     if(discovery&&discoveryOnline&&detailId==0)showLibrary();
                 });
             }catch(Exception error){runOnUiThread(()->{if(isDestroyed()||submission!=discoverySubmission||api!=client)return;
-                discoverySearchState="failed";discoverySearchMessage="搜索提交失败，可重新搜索。";discoverySearchErrors=error.getMessage()==null?error.toString():error.getMessage();
+                discoverySearchState="failed";discoverySearchMessage=getString(R.string.discovery_controller_submit_failed);discoverySearchErrors=error.getMessage()==null?error.toString():error.getMessage();
                 if(discovery&&discoveryOnline&&detailId==0)showLibrary();
             });}
         });
@@ -451,18 +424,18 @@ public final class MainActivity extends Activity {
                 discoverySearchState=phase;discoverySearchErrors=discoveryErrors(result);
                 if(phase.equals("done")){
                     discoveryResultIds=result==null?new JSONArray():result.optJSONArray("ids");if(discoveryResultIds==null)discoveryResultIds=new JSONArray();
-                    discoverySearchMessage="本次找到 "+discoveryResultIds.length()+" 部影片，已加入发现资料。";
+                    discoverySearchMessage=getString(R.string.discovery_controller_search_done,discoveryResultIds.length());
                 }else{
-                    discoveryResultIds=null;discoverySearchMessage=phase.equals("cancelled")?"搜索已取消，可重新搜索。":"站点搜索失败，可更换条件或来源重试。";
+                    discoveryResultIds=null;discoverySearchMessage=phase.equals("cancelled")?getString(R.string.discovery_controller_cancelled):getString(R.string.discovery_controller_failed);
                     if(!state.isNull("error")&&!state.optString("error").isEmpty())discoverySearchErrors=state.optString("error")+(discoverySearchErrors.isEmpty()?"":"\n"+discoverySearchErrors);
                 }
                 showLibrary();return;
             }
-            discoverySearchState=phase;discoverySearchMessage=phase.equals("queued")?"正在等待搜索…":"正在搜索站点…";
-            TextView status=root.findViewWithTag("discoverySearchStatus");if(status!=null)status.setText(discoverySearchMessage);
+            discoverySearchState=phase;discoverySearchMessage=phase.equals("queued")?getString(R.string.discovery_controller_waiting):getString(R.string.discovery_controller_running);
+            if(discoveryCoordinator!=null)discoveryCoordinator.publish();
             downloadUpdates.postDelayed(()->pollDiscoverySearch(task,ticket),750);
         },error->{
-            discoverySearchState="interrupted";discoverySearchMessage="暂时无法读取搜索进度，可重新搜索。";discoverySearchErrors=error;showLibrary();
+            discoverySearchState="interrupted";discoverySearchMessage=getString(R.string.discovery_controller_poll_failed);discoverySearchErrors=error;showLibrary();
         });
     }
     private String discoveryErrors(JSONObject result){
@@ -485,6 +458,7 @@ public final class MainActivity extends Activity {
         return input;
     }
     private void showFilters(){
+        if(discovery){if(discoveryCoordinator!=null)discoveryCoordinator.onOpenFilters();return;}
         LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(12),dp(20),dp(12));
         final boolean[] onlyFavorites={favorites},onlyDisliked={dislikedOnly};
         Button collection=button("已收藏",()->{});
@@ -557,6 +531,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void loadPage() {
+        if(discovery){if(discoveryCoordinator!=null)discoveryCoordinator.loadPage();return;}
         TextView loading=text("正在读取媒体库…",14,MUTED);browseLoading=loading;content.addView(loading);String path=listPath();
         request(()->api.get(path),result->{
             content.removeView(loading);if(browseLoading==loading)browseLoading=null;JSONArray items=result.getJSONArray("items");int total=result.optInt("total");if(catalogCount!=null)catalogCount.setText(total+" 部");
@@ -568,7 +543,7 @@ public final class MainActivity extends Activity {
                 JSONObject work=items.getJSONObject(i);long id=work.getLong("id");browseRecords.put(id,work);browsePositions.put(id,offset+i);
                 LinearLayout card=new LinearLayout(this);card.setTag("card:"+id);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(0,dp(4),0,dp(10));
                 FrameLayout cover=new FrameLayout(this);cover.setBackground(MediaStyle.surface(this,0xff172a35,0,12));cover.setClipToOutline(true);
-                ImageView poster=new ImageView(this);MediaStyle.artwork(poster);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
+                ImageView poster=new ImageView(this);MediaStyle.artwork(poster);if(mainPage.equals("home")&&!recommended)poster.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
                 Button favorite=markButton(work,"favorite",true);FrameLayout.LayoutParams badge=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.TOP|Gravity.RIGHT);badge.setMargins(0,dp(6),dp(6),0);cover.addView(favorite,badge);
                 card.addView(cover,new LinearLayout.LayoutParams(-1,(int)((width-dp(6))*1.5)));loadImage(poster,work.optString("cover",""));
                 TextView title=text(work.optString("title"),15,Color.WHITE);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setMinHeight(dp(48));card.addView(title);
@@ -616,10 +591,11 @@ public final class MainActivity extends Activity {
         if(view.getBackground()==null)view.setBackground(new MediaStyle.ArtworkPlaceholder());
         if(api!=null)imageRequests.load(api,view,path);
     }
-    private void openDetail(long id) {
-        if(detailId==0)browseRoot=root;
+    void openDetail(long id) {
+        if(detailId==0){browseRoot=root;if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);}
         generation++;detailId=id;
-        request(()->api.get("/api/works/"+id),this::renderDetail);
+        Api client=api;long version=personalReadVersion(client);
+        request(()->client.get("/api/works/"+id),work->{mergePersonalRead(client,id,version,work);renderDetail(work);});
     }
     private void renderDetail(JSONObject work) throws Exception {
         int previousScroll=renderedDetailId==work.optLong("id")&&detailScroll!=null?detailScroll.getScrollY():0;
@@ -782,14 +758,14 @@ public final class MainActivity extends Activity {
         state.tagsAny=tagsAnyFilter;state.tagsNot=tagsNotFilter;state.sort=sortField;state.watch=watchFilter;state.list=savedList;state.descending=sortDescending;
         state.discoverySort=discoverySort;state.discoveryDescending=discoveryDescending;
         state.discoveryOnline=discoveryOnline;state.discoveryProvider=discoveryProvider;state.searchTask=discoverySearchTask;state.searchState=discoverySearchState;state.searchMessage=discoverySearchMessage;state.searchErrors=discoverySearchErrors;state.resultIds=discoveryResultIds==null?null:discoveryResultIds.toString();
-        state.resultTag=discoveryResultTag;
+        state.resultTag=discoveryResultTag;state.nextSearchFilters=discoveryNextSearchFilters!=null;
         state.mainPage=mainPage;state.watchlistOnly=watchlistOnly;state.dislikedOnly=dislikedOnly;state.favorites=favorites;state.recommended=recommended;state.discovery=discovery;state.actresses=actresses;
-        state.offset=offset;state.scroll=browseScroll==null?0:browseScroll.getScrollY();
+        state.gridIndex=discoveryGridIndex;state.gridScroll=discoveryGridScroll;state.offset=offset;state.scroll=browseScroll==null?0:browseScroll.getScrollY();
         state.detailScroll=detailScroll==null?0:detailScroll.getScrollY();
         try{state.detail=detailId>0&&detail!=null?new JSONObject(detail.toString()):null;}catch(Exception ignored){}
         navigationHistory.addLast(state);while(navigationHistory.size()>20)navigationHistory.removeFirst();
         savedList="";watchFilter="";tagFilter=field.equals("tag")?value:"";actorFilter=field.equals("actor")?value:"";
-        yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;watchlistOnly=false;dislikedOnly=false;mainPage="library";recommended=false;discovery=state.discovery;actresses=false;discoveryOnline=false;query="";kind="";showLibrary();
+        yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";discoveryNextSearchFilters=null;favorites=false;watchlistOnly=false;dislikedOnly=false;mainPage="library";recommended=false;discovery=state.discovery;actresses=false;discoveryOnline=false;query="";kind="";showLibrary();
     }
     private void restoreNavigation(){
         NavigationState state=navigationHistory.removeLast();
@@ -800,7 +776,7 @@ public final class MainActivity extends Activity {
         discoveryResultTag=state.resultTag;
         try{discoveryResultIds=state.resultIds==null?null:new JSONArray(state.resultIds);}catch(Exception ignored){discoveryResultIds=null;}
         mainPage=state.mainPage;watchlistOnly=state.watchlistOnly;dislikedOnly=state.dislikedOnly;favorites=state.favorites;recommended=state.recommended;discovery=state.discovery;actresses=state.actresses;
-        showLibrary();restoreOffset=Math.max(1,state.offset);restoreScroll=state.scroll;
+        discoveryNextSearchFilters=state.nextSearchFilters?discoveryFilterState():null;discoveryGridIndex=state.gridIndex;discoveryGridScroll=state.gridScroll;discoveryRestoreScroll=discovery;showLibrary();restoreOffset=Math.max(1,state.offset);restoreScroll=state.scroll;
         if(state.detail!=null){
             browseRoot=root;
             try{renderDetail(state.detail);ScrollView target=detailScroll;target.post(()->target.scrollTo(0,state.detailScroll));}
@@ -812,23 +788,21 @@ public final class MainActivity extends Activity {
             long id=detail.optLong("id");JSONObject record=browseRecords.get(id);
             if(record!=null){
                 try{for(String field:new String[]{"favorite","watchlist","rating","watch_state","liked","disliked"})record.put(field,detail.opt(field));}catch(Exception ignored){}
+                if(discovery&&discoveryCoordinator!=null)discoveryCoordinator.personalChanged(id,record);else{
                 Button favorite=browseRoot.findViewWithTag("mark:"+id+":favorite");
                 if(favorite!=null){markStyle(favorite,record,"favorite",record.optInt("favorite")==1,true);favorite.setEnabled(true);}
                 if((favorites&&record.optInt("favorite")==0)||(watchlistOnly&&record.optInt("watchlist")==0)||(dislikedOnly&&record.optInt("disliked")==0)||(!watchFilter.isEmpty()&&!watchFilter.equals(record.optString("watch_state")))){
                     View card=browseRoot.findViewWithTag("card:"+id);if(card!=null&&card.getParent() instanceof android.view.ViewGroup){((android.view.ViewGroup)card.getParent()).removeView(card);offset=Math.max(0,offset-1);int position=browsePositions.getOrDefault(id,-1);browsePositions.remove(id);for(Long key:new java.util.ArrayList<>(browsePositions.keySet()))if(browsePositions.get(key)>position)browsePositions.put(key,browsePositions.get(key)-1);}
                 }
+                }
             }
         }
         detailId=0;renderedDetailId=0;detailScroll=null;generation++;
-        if(browseRoot!=null){root=browseRoot;setContentView(root);imageRequests.restore(api,root);browseRoot=null;if(browseLoading!=null){content.removeView(browseLoading);browseLoading=null;loadPage();}if(discovery&&discoveryTagInput!=null&&discoveryTagInput.getAdapter().isEmpty())loadDiscoveryTags(discoveryTagInput);if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&discoverySearchBusy())pollDiscoverySearch(discoverySearchTask,generation);}else showLibrary();
+        if(browseRoot!=null){root=browseRoot;setContentView(root);if(discovery&&discoveryCoordinator!=null){androidx.activity.EdgeToEdge.enable(this);discoveryCoordinator.setActive(true);}imageRequests.restore(api,root);browseRoot=null;if(browseLoading!=null){content.removeView(browseLoading);browseLoading=null;loadPage();}if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&discoverySearchBusy())pollDiscoverySearch(discoverySearchTask,generation);}else showLibrary();
     }
     private void sorting(){
         if(discovery){
-            String[] choices=java.util.Arrays.copyOf(DISCOVERY_SORT_NAMES,DISCOVERY_SORT_NAMES.length+1);choices[choices.length-1]=discoveryDescending?"改为升序":"改为降序";
-            new AlertDialog.Builder(this).setTitle("发现影片排序").setItems(choices,(dialog,index)->{
-                if(index==DISCOVERY_SORT_KEYS.length)discoveryDescending=!discoveryDescending;else discoverySort=DISCOVERY_SORT_KEYS[index];
-                saveDiscoverySort();showLibrary();
-            }).show();return;
+            if(discoveryCoordinator!=null)discoveryCoordinator.onSelectSort(discoverySort);return;
         }
         new AlertDialog.Builder(this).setTitle("排序").setItems(new String[]{"入库时间","名称","年份","个人评分","时长","切换升序 / 降序"},(d,index)->{
             if(index==5)sortDescending=!sortDescending;else sortField=new String[]{"added","title","year","rating","duration"}[index];
@@ -843,7 +817,7 @@ public final class MainActivity extends Activity {
             else dialog.setItems(names,(d,index)->{resetBrowseFilters();mainPage="mine";savedList=names[index];JSONObject stored=lists.optJSONObject(index).optJSONObject("filters");if(stored!=null){String sort=stored.optString("sort","added");sortField=java.util.Arrays.asList("added","title","year","rating","duration").contains(sort)?sort:"added";sortDescending=stored.optBoolean("descending",true);}showLibrary();});dialog.show();
         });
     }
-    private void saveSmartList(){
+    void saveSmartList(){
         EditText input=new EditText(this);input.setSingleLine(true);input.setHint("片单名称（同名会覆盖）");
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("保存当前筛选为片单").setView(input).setPositiveButton("保存",null).setNegativeButton("取消",null).create();dialog.show();MediaStyle.sheet(dialog);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
@@ -878,7 +852,7 @@ public final class MainActivity extends Activity {
         controls.addView(button("上一张",()->{index[0]=(index[0]+paths.length()-1)%paths.length();render.run();}));controls.addView(button("下一张",()->{index[0]=(index[0]+1)%paths.length();render.run();}));controls.addView(button("关闭",dialog::dismiss));page.addView(controls);
         dialog.setContentView(page);dialog.show();render.run();
     }
-    private void queueEditor(){
+    void queueEditor(){
         android.content.SharedPreferences prefs=getSharedPreferences("queue",0);
         try{
             JSONArray ids=new JSONArray(prefs.getString("ids","[]"));
@@ -905,6 +879,38 @@ public final class MainActivity extends Activity {
         }catch(Exception error){message(error.getMessage());}
     }
 
+    private PersonalState personalState(Api client,long id){
+        if(personalClient!=client){personalClient=client;personalStates.clear();personalIntent=0;personalConfirmation=0;}
+        PersonalState state=personalStates.get(id);if(state==null){state=new PersonalState();personalStates.put(id,state);}return state;
+    }
+    private long personalReadVersion(Api client){personalState(client,detailId);return personalConfirmation;}
+    long beginPersonalWrite(Api client,long id,String field){
+        PersonalState state=personalState(client,id);long intent=++personalIntent;
+        // Favorite, liked and disliked are one mutually exclusive server operation.
+        if(field.equals("favorite")||field.equals("liked")||field.equals("disliked"))for(String key:new String[]{"favorite","liked","disliked"})state.intents.put(key,intent);else state.intents.put(field,intent);return intent;
+    }
+    static void copyPersonal(JSONObject target,JSONObject fields){
+        if(target==null||fields==null)return;try{for(String key:PERSONAL_FIELDS)if(fields.has(key))target.put(key,fields.opt(key));}catch(Exception ignored){}
+    }
+    JSONObject confirmPersonalWrite(Api client,long id,long intent,JSONObject fields,String field,Object value){
+        JSONObject accepted=new JSONObject();if(isDestroyed()||api!=client)return accepted;PersonalState state=personalState(client,id);long confirmation=++personalConfirmation;
+        try{
+            if(fields==null){fields=new JSONObject().put(field,value instanceof Boolean?((Boolean)value?1:0):value);if(field.equals("favorite")){fields.put("liked",Boolean.TRUE.equals(value)?1:0);if(Boolean.TRUE.equals(value))fields.put("disliked",0);}}
+            for(String key:PERSONAL_FIELDS){if(!fields.has(key))continue;PersonalValue previous=state.confirmed.get(key);if(state.intents.getOrDefault(key,0L)>intent||(previous!=null&&previous.intent>intent))continue;Object canonical=fields.opt(key);accepted.put(key,canonical);state.confirmed.put(key,new PersonalValue(canonical,intent,confirmation));}
+        }catch(Exception ignored){}
+        // A list write may finish while this work's older detail is already visible.
+        if(detailId==id&&detail!=null&&detail.optLong("id")==id){copyPersonal(detail,accepted);refreshPersonalButtons(detail,accepted);}
+        return accepted;
+    }
+    private void mergePersonalRead(Api client,long id,long version,JSONObject work){
+        if(api!=client||personalClient!=client)return;PersonalState state=personalStates.get(id);if(state==null)return;
+        // Only overlay confirmations newer than this GET, so later reads can still see external edits.
+        try{for(java.util.Map.Entry<String,PersonalValue> entry:state.confirmed.entrySet()){PersonalValue value=entry.getValue();if(value.confirmation>version&&state.intents.getOrDefault(entry.getKey(),0L)<=value.intent)work.put(entry.getKey(),value.value);}}catch(Exception ignored){}
+    }
+    private void refreshPersonalButtons(JSONObject work,JSONObject fields){
+        if(root==null)return;long id=work.optLong("id");for(String field:new String[]{"favorite","watchlist"})if(fields.has(field)){Button button=root.findViewWithTag("mark:"+id+":"+field);if(button!=null)markStyle(button,work,field,work.optInt(field)==1,false);}
+        if(fields.has("rating")){Button score=root.findViewWithTag("rating:"+id);if(score!=null){score.setText(work.isNull("rating")?getString(R.string.personal_rating_unset):getString(R.string.personal_rating_value,work.optInt("rating")));MediaStyle.icon(score,"star",!work.isNull("rating"));}}
+    }
     private void markStyle(Button button,JSONObject work,String field,boolean active,boolean compact){
         String title=field.equals("favorite")?"收藏":"想看";
         button.setText(compact?"":(active?"已":"")+title);button.setContentDescription((active?"取消":"加入")+title);
@@ -914,17 +920,17 @@ public final class MainActivity extends Activity {
     private Button markButton(JSONObject work,String field,boolean compact){
         Button button=button("",()->{});button.setTag("mark:"+work.optLong("id")+":"+field);markStyle(button,work,field,work.optInt(field)==1,compact);
         button.setOnClickListener(view->{
-            boolean old=work.optInt(field)==1,value=!old;int ticket=generation;Api client=api;
+            boolean old=work.optInt(field)==1,value=!old;int ticket=generation;Api client=api;long id=work.optLong("id"),intent=beginPersonalWrite(client,id,field);
             markStyle(button,work,field,value,compact);button.setEnabled(false);
             network.execute(()->{
                 try{
-                    client.post("/api/works/"+work.optLong("id")+"/personal",new JSONObject().put(field,value));
+                    JSONObject result=client.post("/api/works/"+id+"/personal",new JSONObject().put(field,value));
                     runOnUiThread(()->{
                         if(isDestroyed())return;
-                        try{work.put(field,value?1:0);}catch(Exception ignored){}
+                        copyPersonal(work,confirmPersonalWrite(client,id,intent,result.optJSONObject("personal"),field,value));
                         if(ticket!=generation)return;
                         Button current=root.findViewWithTag("mark:"+work.optLong("id")+":"+field);
-                        if(current!=null){markStyle(current,work,field,value,compact);current.setEnabled(true);}
+                        if(current!=null){markStyle(current,work,field,work.optInt(field)==1,compact);current.setEnabled(true);}
                         if(field.equals("favorite")&&favorites&&!value&&detailId==0){View card=root.findViewWithTag("card:"+work.optLong("id"));if(card!=null&&card.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)card.getParent()).removeView(card);}
                         message(value?"已加入"+(field.equals("favorite")?"收藏":"想看"):"已取消"+(field.equals("favorite")?"收藏":"想看"));
                     });
@@ -933,9 +939,9 @@ public final class MainActivity extends Activity {
         });return button;
     }
     private void personal(String field,Object value) {
-        long id=detailId;JSONObject current=detail;
-        request(()->api.post("/api/works/"+id+"/personal",new JSONObject().put(field,value)),result->{
-            current.put(field,value);Button score=root.findViewWithTag("rating:"+id);
+        long id=detailId;JSONObject current=detail;Api client=api;long intent=beginPersonalWrite(client,id,field);
+        request(()->client.post("/api/works/"+id+"/personal",new JSONObject().put(field,value)),result->{
+            copyPersonal(current,confirmPersonalWrite(client,id,intent,result.optJSONObject("personal"),field,value));Button score=root.findViewWithTag("rating:"+id);
             if(score!=null){score.setText(current.isNull("rating")?"评分":current.optInt("rating")+" 分");MediaStyle.icon(score,"star",!current.isNull("rating"));}
             message("评分已保存");
         });
@@ -949,7 +955,7 @@ public final class MainActivity extends Activity {
         intent.putExtra("browse_path",listPath().replaceFirst("offset=[0-9]+&limit=30&",""));
         intent.putExtra("browse_position",browsePositions.getOrDefault(detailId,-1));return intent;
     }
-    private void shuffle() {
+    void shuffle() {
         final String scope=listPath();
         request(()->api.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope)),result->{
             JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message("当前列表没有可播放的本地视频");return;}
