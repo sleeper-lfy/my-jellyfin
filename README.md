@@ -2,7 +2,7 @@
 
 Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
-最新测试预发布：[Lumen 0.4.15 Preview 2](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.15-preview.2) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.15-preview.2/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.15-preview.2/Lumen-android-debug.apk)。Android 统一全应用界面、分组筛选与播放器，支持长按临时 2×；两端单击视频空白切换控制层。PC 我的媒体置顶、同宽卡片换行及右键文件定位。Windows 785 项测试与安装／卸载验收、Android 107 项测试和 lint 通过；真机验收仍待完成。[版本说明](docs/releases/0.4.15.md) · [实际界面](docs/android-ui-0.4.15.md) · [发布验证](docs/validation/preview-0.4.15-2.json)。
+最新测试预发布：[Lumen 0.4.16 Preview 2](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.16-preview.2) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.16-preview.2/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.16-preview.2/Lumen-android-debug.apk)。请同时更新两端：继续观看使用具体视频的缩略图，不回退海报；Android 完整图片、8dp 间距、48dp 触控及两行队列标题。播放器减少重复刷新，新增 JNI 兼容解码与真实传输／缓冲诊断；小米 15 的 4K 实机效果仍待确认。Windows 796 项测试及安装／卸载验收、Android 122 项测试和 lint 通过。[版本说明](docs/releases/0.4.16.md) · [UI 规范与实际截图](docs/android-ui-0.4.16.md) · [发布验证](docs/validation/preview-0.4.16-2.json)。
 
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 

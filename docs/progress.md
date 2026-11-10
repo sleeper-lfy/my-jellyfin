@@ -667,3 +667,14 @@ Preview 1 云端 Android 门禁发现既有图片取消用例失败（ImageReque
 
 
 Preview 2 取消顺序修正后本地再次完成 Android 122 项全量测试、lint 与 APK 打包，零失败／错误／跳过，准备从新标签重建双端公开包。
+
+
+## 0.4.16 Preview 2 发布与公开下载验证（2026-11-10）
+
+源码已推送至 origin/work，构建提交 `b532dba402475df91a0d6b521303951cc08b7021`，标签 `v0.4.16-preview.2`，Android versionCode 32。[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42831761360)全部成功：Windows **796 项测试通过，零失败／错误／跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 和卸载验收；Android **122 项测试、lint、持久签名、版本与 ZIP 对齐验证通过**。
+
+[Preview 2 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.16-preview.2)的六个附件均已公开并完整下载；EXE／APK 大小、SHA-256、源码绑定与验收证据一致。下载后的 APK 再次通过本地签名、versionCode 32／0.4.16 和 ZIP 对齐检查，保持此前证书；EXE PE 头检查通过。详细证据见 [发布验证记录](validation/preview-0.4.16-2.json)。README 下载入口已更新。
+
+实际截图使用虚构媒体、合成缩略图和真实 Android View，覆盖有资料列表、窄屏、横屏与大字号；不包含用户提供的私人媒体图片。电脑端文件缩略图、视频流、续播相关 33 项回归在本地通过；忙碌时的缩略图生成按配额限时等待，资源暂忙返回 503 并允许手机有限重试，不把资源忙当作图片损坏冷却。
+
+仍为测试预发布，需从发布页手动安装；请同时更新 PC 与 Android 以使用视频缩略图接口。小米 15 的 HEVC 4K 持续播放、JNI 模式实际效果和音画同步保持未验证。下一轮真机反馈可对同一文件切换自动／JNI 兼容并复制新增诊断，不将自动测试视为卡顿已彻底解决。
