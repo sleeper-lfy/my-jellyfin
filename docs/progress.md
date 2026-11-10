@@ -716,3 +716,10 @@ Android 本地完整 **183 项测试通过，零失败／错误／跳过**；lin
 Preview 1 的 Android 云端 183 项及签名校验成功，但 Windows 839 项中 837 项通过、2 项既有 UI 测试失败，发布按门禁停止，没有公开安装包。任务关闭用例依赖固定 100ms 启动且失败后未清理，播放器用例未确认全屏切换后的鼠标事件送达。补齐确定性等待和失败清理，保留原有全部行为断言，不改生产导入／播放器逻辑。准备新标签 v0.4.18-preview.2、Android versionCode 35 重建；保留旧标签，不覆盖历史。
 
 Preview 2 本地最终验证：上述导入／播放器测试两个完整文件 **28 项通过**；额外将 worker 启动延迟 300ms 的同一关闭用例通过。新版 code35 的 Android **183 项全量测试、lint 零错误／67 警告、APK 打包全部通过**。13 张原生截图重新生成后与已记录图片字节一致；生产导入及播放器代码未改。
+
+
+## 0.4.18 Preview 2 发布与公开下载验证
+
+Windows 全量 **839 项测试通过，零失败／错误／跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 与卸载验收；Android **183 项测试、lint、持久签名、版本与 ZIP 对齐验证通过**。六个公开附件已完整下载，大小、SHA-256、GitHub 附件摘要、源码绑定及验收记录一致；下载后的 APK 再次通过原证书、versionCode 35／0.4.18 和 ZIP 对齐检查，EXE PE 头检查通过。源码提交 `04330904790bb6406817fd1b709c9a76a22e1b6f`，标签 `v0.4.18-preview.2`；[完整构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42863511722)、[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.18-preview.2)与[公开验证记录](validation/preview-0.4.18-2.json)。
+
+源码与发布标签已推送至 origin/work，README 顶部和下载章节同步本版。电影／VR 卡片改用真实海报，继续观看独立使用视频缩略图；已确认的紧凑基础组件尚未整体迁移所有页面。自动测试和虚构素材截图不替代小米 15 的 HEVC 4K 持续播放与拖动验证，实机卡顿仍未标为已解决。

@@ -41,7 +41,7 @@ Android 本地完整测试共 183 项，失败、错误、跳过均为 0；lint 
 
 `PosterPresentationTest` 验证电影／VR 作品使用对应海报、加载失败和缺图的卡片尺寸不变、其他分类的显示方式保留，以及继续观看只请求指定视频文件缩略图。基础层测试验证深浅主题、普通按钮的 32dp 视觉和至少 48dp 触控、视觉外缘的真实点击、禁用按钮不执行操作、窄屏大字文本不裁切等情况。
 
-电脑端海报、图片角色、发现卡片异步加载、LAN 封面与续播相关 135 项回归通过，完整 Python 收集 839 项。Windows 云端全量构建与安装／卸载验收、发布 CI、签名及公开下载检查待执行。截图与自动测试也不能证明小米 15 的 HEVC 4K 卡顿已经解决，仍需实机持续播放和拖动验证。
+电脑端海报、图片角色、发现卡片异步加载、LAN 封面与续播相关 135 项回归通过，完整 Python 收集 839 项。Windows 全量 **839 项测试通过，零失败／错误／跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 与卸载验收；Android **183 项测试、lint、持久签名、版本与 ZIP 对齐验证通过**。六个公开附件已完整下载，大小、SHA-256、GitHub 附件摘要、源码绑定及验收记录一致；下载后的 APK 再次通过原证书、versionCode 35／0.4.18 和 ZIP 对齐检查，EXE PE 头检查通过。源码提交 `04330904790bb6406817fd1b709c9a76a22e1b6f`，标签 `v0.4.18-preview.2`；[完整构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42863511722)、[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.18-preview.2)与[公开验证记录](validation/preview-0.4.18-2.json)。截图与自动测试也不能证明小米 15 的 HEVC 4K 卡顿已经解决，仍需实机持续播放和拖动验证。
 
 ## 实际页面截图
 
