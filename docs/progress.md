@@ -593,3 +593,14 @@ Preview 8 的 Android 工具准备失败；本地同一脚本复现 Google 清�
 
 
 用户允许只读诊断后，工作流进一步限定输出为经仓库 AST 白名单验证的测试 ID 和固定异常类型，不输出任何日志正文或错误消息，不回写仓库。诊断确认 Windows 唯一失败用例为混合拖入测试的路径字符串比较；已统一使用 Path 语义比较 Qt / Windows 路径，保持实际导入代码及验证范围不变。采用新标签 v0.4.14-preview.10（Android versionCode 27）完整重建。
+
+
+## 0.4.14 Preview 10 发布与公开下载验证（2026-11-10）
+
+单视频拖入相关源码已推送至 origin/work，构建提交 `f6056c79c1bfaa488256eb07c2fdfc8a258d19f5`，标签 `v0.4.14-preview.10`，Android versionCode 27。[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42807242448)成功：Windows **778 项测试通过，零失败 / 错误 / 跳过**，同一安装包完成安装、界面启动、mpv、插件 worker 与卸载验收；Android **99 项测试、lint、持久签名、版本与 ZIP 对齐验证通过**。
+
+Preview 8 因非必需 platform-tools 归档失效未发布，Preview 9 因新增混合拖入测试的 Windows 路径字符串断言未通过门禁；修复后使用全新 Preview 10 标签完整重建，未跳过测试、未改写历史标签。只读诊断未修改远程 main。
+
+[Preview 10 Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.14-preview.10)六个附件已公开并完整下载，校验 EXE / APK 大小、SHA-256、源码绑定及自动验收证据；下载 APK 再次通过签名、versionCode 27 与 ZIP 对齐检查，保持此前证书，Windows EXE PE 头检查通过。详细证据见 [发布验证记录](validation/preview-0.4.14-10.json)，README 下载入口已更新。
+
+仍为测试预发布，需从发布页手动安装；人工真机音频、DPI、升级恢复、原生目录地址栏和真实刮削站点验收仍未完成。
