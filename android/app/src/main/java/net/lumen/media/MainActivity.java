@@ -543,7 +543,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 JSONObject work=items.getJSONObject(i);long id=work.getLong("id");browseRecords.put(id,work);browsePositions.put(id,offset+i);
                 LinearLayout card=new LinearLayout(this);card.setTag("card:"+id);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(0,dp(4),0,dp(10));
                 FrameLayout cover=new FrameLayout(this);cover.setBackground(MediaStyle.surface(this,0xff172a35,0,12));cover.setClipToOutline(true);
-                ImageView poster=new ImageView(this);MediaStyle.artwork(poster);if(mainPage.equals("home")&&!recommended)poster.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
+                boolean cinema=work.optString("kind").equals("movie")||work.optString("kind").equals("vr");
+                ImageView poster=cinema?new CatalogPoster(work.optString("title")):new ImageView(this);MediaStyle.artwork(poster);if(cinema||(mainPage.equals("home")&&!recommended))poster.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
                 Button favorite=markButton(work,"favorite",true);FrameLayout.LayoutParams badge=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.TOP|Gravity.RIGHT);badge.setMargins(0,dp(6),dp(6),0);cover.addView(favorite,badge);
                 card.addView(cover,new LinearLayout.LayoutParams(-1,(int)((width-dp(6))*1.5)));loadImage(poster,work.optString("cover",""));
                 TextView title=text(work.optString("title"),15,Color.WHITE);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setMinHeight(dp(48));card.addView(title);
@@ -590,6 +591,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void loadImage(ImageView view,String path) {
         if(view.getBackground()==null)view.setBackground(new MediaStyle.ArtworkPlaceholder());
         if(api!=null)imageRequests.load(api,view,path);
+    }
+    /** Movie/VR cards keep poster geometry while the existing image loader reports availability. */
+    private final class CatalogPoster extends ImageView implements ImageRequests.TargetState {
+        private final String title;
+        CatalogPoster(String title){super(MainActivity.this);this.title=title;onImageLoading();}
+        @Override public void onImageLoading(){setImageDrawable(new MediaStyle.ArtworkPlaceholder());setContentDescription(getString(R.string.catalog_poster_loading,title));}
+        @Override public void onImageLoaded(){setContentDescription(getString(R.string.catalog_poster_description,title));}
+        @Override public void onImageFailed(){setImageDrawable(new MediaStyle.ArtworkPlaceholder());setContentDescription(getString(R.string.catalog_poster_unavailable,title));}
     }
     void openDetail(long id) {
         if(detailId==0){browseRoot=root;if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);}

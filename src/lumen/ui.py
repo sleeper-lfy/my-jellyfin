@@ -1831,9 +1831,17 @@ class MainWindow(QMainWindow):
         if record['_landscape']:
             from .artwork import thumbnail_path
             record['_cover']=thumbnail_path(self.library,data)
-        selected=self.library.setting(f'artwork_{data.get("id")}',{}) if data.get('kind') else {}
-        custom=selected.get('thumbnail' if record['_landscape'] else 'poster')
-        if custom and Path(custom).is_file():record['_cover']=custom
+        if data.get('kind') in {'movie','vr'} and not record['_landscape']:
+            from .artwork import poster_path
+            try:cover=poster_path(self.library,data)
+            except (ValueError,OSError):cover=None
+            record['_cover']=cover
+            # The delegate must not fall back to a video frame when no poster exists.
+            record['thumbnail']=cover
+        else:
+            selected=self.library.setting(f'artwork_{data.get("id")}',{}) if data.get('kind') else {}
+            custom=selected.get('thumbnail' if record['_landscape'] else 'poster')
+            if custom and Path(custom).is_file():record['_cover']=custom
         return record
 
     def refresh(self, *_, _data=None):

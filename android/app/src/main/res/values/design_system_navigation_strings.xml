@@ -1,0 +1,23 @@
+<resources>
+    <string name="design_system_nav_home">首页</string>
+    <string name="design_system_nav_library">媒体库</string>
+    <string name="design_system_nav_discover">发现</string>
+    <string name="design_system_nav_mine">我的</string>
+    <string name="design_system_icon_favorite">收藏</string>
+    <string name="design_system_icon_watchlist">想看</string>
+    <string name="design_system_icon_smart_playlist">智能片单</string>
+    <string name="design_system_icon_statistics">观影统计</string>
+    <string name="design_system_icon_phone_queue">手机播放队列</string>
+    <string name="design_system_icon_remote">电脑遥控</string>
+    <string name="design_system_icon_tasks">电脑任务中心</string>
+    <string name="design_system_icon_connections">连接管理</string>
+    <string name="design_system_icon_sort">排序</string>
+    <string name="design_system_icon_filter">筛选</string>
+    <string name="design_system_icon_search">搜索</string>
+    <string name="design_system_icon_more">更多操作</string>
+    <string name="design_system_navigation_back">返回</string>
+    <string name="design_system_navigation_view_all">查看全部</string>
+    <string name="design_system_navigation_preview_title">Lumen</string>
+    <string name="design_system_navigation_preview_section">最近入库</string>
+    <string name="design_system_navigation_preview_content">内容区域已避让顶栏、底部导航及系统安全区。</string>
+</resources>

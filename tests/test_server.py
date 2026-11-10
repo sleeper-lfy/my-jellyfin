@@ -18,7 +18,12 @@ def lan(library, video_factory):
 
 
 def test_auth_library_and_personal(lan, library):
+    from PySide6.QtGui import QImage, QColor
     client, server, source, _ = lan
+    work = library.query()[0]
+    poster = library.directory/'cache'/'lan-poster.jpg'
+    image = QImage(200,300,QImage.Format.Format_RGB32);image.fill(QColor('blue'));assert image.save(str(poster))
+    library.set_setting(f'artwork_{work["id"]}', {'poster':str(poster)})
     assert client.get('/api/info', headers={'Authorization': ''}).status_code == 401
     assert client.get('/api/info?token='+server.token, headers={'Authorization': ''}).status_code == 401
     assert client.get('/api/info').json()['api_version'] == 1

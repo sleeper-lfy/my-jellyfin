@@ -115,13 +115,18 @@ def search_sites(library, query, tag='', plugin_id='', progress=None):
     return result
 
 
-def cache_discovery_cover(library, work_id):
+def cache_discovery_cover(library, work_id, *, poster_only=False):
     """Fetch one small visible poster without holding a database write lock."""
     import json
+    from pathlib import Path
     from urllib.parse import urlparse
     from .matching import preview_cover
     work = library.work(work_id)
-    if work['thumbnail']: return work['thumbnail']
+    if poster_only:
+        from .artwork import poster_path
+        existing = poster_path(library, work)
+        if existing:return existing
+    elif work['thumbnail']: return work['thumbnail']
     poster = work['metadata'].get('poster')
     if not isinstance(poster, str) or not poster or 'poster' in work['locked']:
         return None
@@ -134,6 +139,28 @@ def cache_discovery_cover(library, work_id):
     if not path: return None
     with library.db:
         library.db.execute('BEGIN IMMEDIATE')
+        if poster_only:
+            current = library.work(work_id)
+            existing = poster_path(library, current)
+            selected = library.setting(f'artwork_{work_id}', {}).get('poster')
+            # preview_cover has just created its URL-derived cache filename.
+            # Seeing that same path is not a concurrent selection and must not
+            # bypass source/import checks or the metadata-only cache write.
+            if existing and (selected and Path(selected).resolve() == Path(existing).resolve() or 'poster' in current['locked']):return existing
+            if current['metadata'].get('poster') != poster or 'poster' in current['locked']:return None
+            if bool(current['files']) != bool(work['files']):return None
+            sources = lambda item:sorted((source['plugin'],source['source_id'],source['url']) for source in item['sources'])
+            if sources(current) != sources(work):return None
+            active = next((plugin for plugin in Plugins(library).installed() if plugin['id'] == provider['id'] and plugin['config'].get('enabled') and hostname in plugin['domains']), None)
+            if active is None:return None
+            if existing and Path(existing).resolve() != Path(path).resolve():return existing
+            proposed = {**current, 'metadata':{**current['metadata'], 'poster_cache':{'url':poster,'path':path}}}
+            cached = poster_path(library, proposed)
+            if not cached:return None
+            library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(proposed['metadata'],ensure_ascii=False),work_id))
+            if not current['files'] and not current['thumbnail']:
+                library.db.execute('UPDATE works SET thumbnail=? WHERE id=?',(cached,work_id))
+            return cached
         row = library.db.execute('SELECT thumbnail,metadata,locked FROM works WHERE id=?', (work_id,)).fetchone()
         if not row: return None
         if row['thumbnail']: return row['thumbnail']

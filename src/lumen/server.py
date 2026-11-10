@@ -60,12 +60,18 @@ def parse_range(value, size):
     return start, end, 206
 
 
-def public_work(work, detail=False):
+def public_work(work, detail=False, *, library=None):
     result = {key: work[key] for key in ['id','kind','title','year','rating','favorite','watchlist','disliked','liked','added']}
     result.update(cover=f"/api/works/{work['id']}/cover" if work['thumbnail'] or
                   work['sources'] and isinstance(work['metadata'].get('poster'),str) and work['metadata']['poster'] and 'poster' not in work['locked'] else None,
                   file_count=len(work['files']), tags=work['metadata'].get('tags', []),
                   position=max((f['position'] for f in work['files']),default=0))
+    if library is not None and work['kind'] in {'movie','vr'}:
+        from .artwork import poster_path
+        try:cached = poster_path(library, work, probe=False)
+        except ValueError:cached = None
+        remote = work['sources'] and isinstance(work['metadata'].get('poster'), str) and work['metadata']['poster'] and 'poster' not in work['locked']
+        result['cover'] = f"/api/works/{work['id']}/cover" if cached or remote else None
     from .catalog import watch_state
     result['watch_state']=watch_state(work['files'])
     if work['kind']=='fans':result['creator']=work['metadata'].get('creator') or work['title']
@@ -320,7 +326,7 @@ class LanServer:
                             from .continuation import continue_works
                             limit=max(1,min(100,int(query.get('limit',['24'])[0])))
                             items=continue_works(library,limit)
-                            return self.send_json(200,{'items':[{**public_work(work),'resume':{**work['_resume'],
+                            return self.send_json(200,{'items':[{**public_work(work,library=library),'resume':{**work['_resume'],
                                 'thumbnail':f"/api/files/{work['_resume']['file_id']}/thumbnail"}} for work in items],'limit':limit})
                         if path == '/api/actresses':
                             minimum = max(0, int(query.get('minimum', ['0'])[0]))
@@ -345,7 +351,7 @@ class LanServer:
                         if path in {'/api/works','/api/recommendations','/api/discover'}:
                             items = self.browse_items(library, path, query)
                             offset = max(0,int(query.get('offset',['0'])[0])); limit=max(1,min(100,int(query.get('limit',['40'])[0])))
-                            return self.send_json(200,{'total':len(items),'items':[public_work(w) for w in items[offset:offset+limit]],'offset':offset,'limit':limit})
+                            return self.send_json(200,{'total':len(items),'items':[public_work(w,library=library) for w in items[offset:offset+limit]],'offset':offset,'limit':limit})
                         match = re.fullmatch(r'/api/downloads/([a-f0-9]{32})',path)
                         if match:
                             row=library.db.execute('SELECT * FROM tasks WHERE id=? AND kind=?',(match[1],'download-library')).fetchone()
@@ -376,7 +382,12 @@ class LanServer:
                         if match:
                             work = library.work(int(match[1]))
                             if match[2]:
-                                cover = work['thumbnail']
+                                poster_only = work['kind'] in {'movie','vr'}
+                                from .artwork import poster_path, PosterPathError
+                                if poster_only:
+                                    try:cover = poster_path(library, work)
+                                    except ValueError:raise ApiError(403,'封面路径无效')
+                                else:cover = work['thumbnail']
                                 if not cover:
                                     if not service.cover_slots.acquire(blocking=False):raise ApiError(503,'封面正在载入，请稍后重试')
                                     with service.lock:
@@ -386,7 +397,8 @@ class LanServer:
                                         service.cover_slots.release();raise ApiError(503,'此封面正在载入，请稍后重试')
                                     try:
                                         from .discovery_search import cache_discovery_cover
-                                        try:cover = cache_discovery_cover(library, work['id'])
+                                        try:cover = cache_discovery_cover(library, work['id'],poster_only=poster_only)
+                                        except PosterPathError:raise ApiError(403,'封面路径无效')
                                         except Exception:raise ApiError(404,'来源封面暂不可用')
                                     finally:
                                         with service.lock:service.active_covers.discard(work['id'])
@@ -395,7 +407,7 @@ class LanServer:
                                 target=Path(cover).resolve()
                                 if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'封面路径不在缓存内')
                                 return self.send_file(target,'image/jpeg')
-                            result=public_work(work,True)
+                            result=public_work(work,True,library=library)
                             rows=library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=? ORDER BY b.file_id,b.position LIMIT 300',(work['id'],))
                             result['bookmarks']=[{**{key:row[key] for key in row.keys() if key!='image'},'image':f"/api/bookmarks/{row['id']}/image" if row['image'] else None} for row in rows]
                             target=library.resume_file(work['id']) if work['files'] else None
@@ -517,7 +529,7 @@ class LanServer:
                             return self.send_json(200,library.edit_queue(body.get('ids'),body.get('repeat')))
                         if path == '/api/fans/merge':
                             merged=library.merge_fans_folders(body.get('ids'),body.get('target_id'),creator=body.get('creator'))
-                            return self.send_json(200,{'ok':True,'result':merged,'work':public_work(library.work(merged['work_id']),detail=True)})
+                            return self.send_json(200,{'ok':True,'result':merged,'work':public_work(library.work(merged['work_id']),detail=True,library=library)})
                         match=re.fullmatch(r'/api/works/(\d+)/watched',path)
                         if match:
                             library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))

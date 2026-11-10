@@ -1,0 +1,17 @@
+<resources>
+    <string name="design_system_sheet_reset">重置</string>
+    <string name="design_system_sheet_apply">应用筛选</string>
+    <string name="design_system_sheet_preview_title">筛选</string>
+    <string name="design_system_sheet_preview_content">可滚动内容与固定操作栏分别布局，所有筛选条件由调用页面提供。</string>
+    <string name="design_system_input_clear">清除输入内容</string>
+    <string name="design_system_input_preview_label">片名或标签</string>
+    <string name="design_system_input_preview_placeholder">搜索片名或标签</string>
+    <string name="design_system_input_preview_query">海</string>
+    <string name="design_system_input_preview_movies">片名</string>
+    <string name="design_system_input_preview_tags">标签</string>
+    <string name="design_system_input_preview_movie_one">海岸纪行</string>
+    <string name="design_system_input_preview_movie_two">山海相逢</string>
+    <string name="design_system_input_preview_tag">海岸</string>
+    <string name="design_system_input_preview_year_label">年份</string>
+    <string name="design_system_input_preview_year_placeholder">起始年份</string>
+</resources>

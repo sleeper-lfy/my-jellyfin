@@ -1,0 +1,5 @@
+<resources>
+    <string name="catalog_poster_loading">正在加载海报：%1$s</string>
+    <string name="catalog_poster_description">海报：%1$s</string>
+    <string name="catalog_poster_unavailable">海报暂不可用：%1$s</string>
+</resources>

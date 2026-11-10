@@ -1,7 +1,81 @@
 """Shared, cache-backed still gallery for desktop and authenticated LAN clients."""
 from pathlib import Path
+from functools import lru_cache
 
 MAX_STILLS = 40
+
+
+class PosterPathError(ValueError):
+    pass
+
+
+@lru_cache(maxsize=256)
+def _poster_dimensions(path, modified, size):
+    """Read cached image headers, not pixels; invalidate after any file change."""
+    from PySide6.QtGui import QImageReader
+    bounds = QImageReader(path).size()
+    return bounds.width(), bounds.height()
+
+
+def poster_path(library, work, *, probe=True, cache_only=True):
+    """Choose poster artwork, never the work's known video/thumbnail fallback.
+
+    Listings use probe=False and perform only role/path checks. GET and desktop
+    rendering additionally validate image headers; untyped legacy images must
+    have the existing portrait-poster proportions.
+    """
+    import re
+    metadata = work.get('metadata', {})
+    selected = library.setting(f'artwork_{work["id"]}', {})
+    if not isinstance(selected, dict):selected = {}
+    cache = library.directory / 'cache'
+    frames = {(cache / (file['digest'] + '.jpg')).resolve() for file in work.get('files', [])
+              if isinstance(file.get('digest'), str) and re.fullmatch(r'[A-Za-z0-9_-]{1,160}', file['digest'])}
+    local = metadata.get('nfo_thumbnails', {})
+    thumbs = [selected.get('thumbnail'), scraped_image_path(work, 'cover')]
+    if isinstance(local, dict):thumbs.extend(local.values())
+    thumbnail_paths = {Path(path).resolve() for path in thumbs if isinstance(path, str) and path}
+
+    def candidate(path, role):
+        if not isinstance(path, (str, Path)) or not path:return None
+        source = Path(path)
+        if source.is_symlink():raise PosterPathError('海报路径无效')
+        try:target = _thumbnail_cache_path(library, source) if cache_only else source.resolve()
+        except ValueError:raise PosterPathError('海报路径无效') from None
+        if target in frames or role == 'legacy' and target in thumbnail_paths:return None
+        try:
+            if not target.is_file() or not (stat := target.stat()).st_size:return None
+            if probe:
+                width, height = _poster_dimensions(str(target), stat.st_mtime_ns, stat.st_size)
+                if width <= 0 or height <= 0 or width * height > 40_000_000:return None
+                if role == 'legacy' and not .55 <= width / height <= .8:return None
+            return str(target)
+        except OSError:
+            return None
+
+    manual = candidate(selected.get('poster'), 'manual')
+    if manual:return manual
+    sources = [scraped_image_path(work, 'poster')]
+    poster_url = metadata.get('poster')
+    if isinstance(poster_url, str) and poster_url:
+        import hashlib
+        # Older plugin/preview caches predate the explicit poster_cache role.
+        sources.append(cache / (hashlib.sha256(poster_url.encode()).hexdigest() + '.jpg'))
+        sources.extend(cache / ('match-' + hashlib.sha256((source['plugin'] + poster_url).encode()).hexdigest() + '.jpg') for source in work.get('sources', []))
+    legacy = work.get('thumbnail')
+    source_legacy = legacy and any(path and Path(path).resolve() == Path(legacy).resolve() for path in sources)
+    role = 'nfo' if metadata.get('nfo_poster') else 'source' if source_legacy else 'legacy'
+    if 'poster' in work.get('locked', []):return candidate(legacy, role)
+    if metadata.get('nfo_poster'):
+        current = candidate(legacy, 'nfo')
+        if current:return current
+    for source in sources:
+        current = candidate(source, 'source')
+        if current:return current
+    # A stale source cache must not re-enter through the legacy column.
+    entry = metadata.get('poster_cache', {})
+    if isinstance(entry, dict) and entry.get('path') and entry.get('url') != metadata.get('poster') and legacy and Path(entry['path']).resolve() == Path(legacy).resolve():return None
+    return candidate(legacy, role)
 
 
 def scraped_poster_path(library, work, poster=None, *, fallback_paths=()):

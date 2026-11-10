@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="design_system_card_poster_description">海报：%1$s</string>
+    <string name="design_system_card_loading">图片加载中</string>
+    <string name="design_system_card_failed">图片暂不可用</string>
+    <string name="design_system_card_loaded">图片已加载</string>
+    <string name="design_system_card_favorite">收藏：%1$s</string>
+    <string name="design_system_card_unfavorite">取消收藏：%1$s</string>
+    <string name="design_system_card_preview_title">海岸纪行：海风与群岛之间</string>
+    <string name="design_system_card_preview_subtitle">2025 · 纪录片</string>
+    <string name="design_system_card_preview_tag">旅行</string>
+    <string name="design_system_card_remove_tag">移除标签：%1$s</string>
+</resources>

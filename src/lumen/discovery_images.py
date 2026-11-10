@@ -40,7 +40,9 @@ class CoverTask(QRunnable):
         try:
             library=Library(self.directory,initialize=False,timeout=1)
             library.cancelled=lambda:self.owner.stopped
-            path=cache_discovery_cover(library,self.work_id) or ''
+            if library.work(self.work_id)['kind'] in {'movie','vr'}:
+                path=cache_discovery_cover(library,self.work_id,poster_only=True) or ''
+            else:path=cache_discovery_cover(library,self.work_id) or ''
         except Exception as error:
             logging.info('Discovery cover %s could not be loaded: %s',self.work_id,error)
         finally:

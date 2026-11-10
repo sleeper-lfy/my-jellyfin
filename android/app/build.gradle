@@ -11,8 +11,8 @@ android {
         applicationId 'net.lumen.media'
         minSdk 26
         targetSdk 35
-        versionCode 33
-        versionName '0.4.17'
+        versionCode 34
+        versionName '0.4.18'
         // Real phones are ARM; x86/x86_64 only serve emulators and double the APK.
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
     }

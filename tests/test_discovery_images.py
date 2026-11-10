@@ -1,12 +1,15 @@
 """Visible-only cover downloads must not block or replace another browse page."""
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QEventLoop,QTimer,QSize,Qt
+from PySide6.QtGui import QImage,QColor
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QListWidget,QListWidgetItem,QAbstractItemView
 
 from lumen import discovery_images
+from test_core import add_work
 
 
 def spin(app,ms=25):
@@ -30,7 +33,8 @@ def view(qapp,library):
     cards.setUniformItemSizes(True);cards.setSpacing(4)
     cards.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
     for index in range(160):
-        record={'id':index+1,'kind':'movie','title':str(index+1),'files':[],'thumbnail':None}
+        identifier=add_work(library,str(index+1),local=False)
+        record={'id':identifier,'kind':'movie','title':str(index+1),'files':[],'thumbnail':None}
         item=QListWidgetItem(record['title']);item.setSizeHint(QSize(120,150));item.setData(Qt.ItemDataRole.UserRole,record);cards.addItem(item)
         window.current_items.append(dict(record))
     window.show();spin(qapp)
@@ -57,8 +61,9 @@ def test_visible_grid_lookup_handles_deep_scroll_without_enumerating_full_catalo
 
 def test_slow_visible_downloads_are_bounded_and_gui_ticks_while_scrolling(qapp,view,monkeypatch):
     window,controller=view;cards=window.cards;release=threading.Event();calls=[]
-    def slow(library,work_id):
+    def slow(library,work_id,*,poster_only=False):
         assert threading.current_thread() is not threading.main_thread()
+        assert poster_only is True
         calls.append(work_id);release.wait(5)
         return str(library.directory/'cache'/f'{work_id}.jpg')
     monkeypatch.setattr(discovery_images,'cache_discovery_cover',slow)
@@ -80,7 +85,8 @@ def test_slow_visible_downloads_are_bounded_and_gui_ticks_while_scrolling(qapp,v
 
 def test_page_generation_rejects_old_callbacks_and_only_updates_current_card(qapp,view,monkeypatch):
     window,controller=view;cards=window.cards;release=threading.Event();entered=threading.Event()
-    def slow(library,work_id):
+    def slow(library,work_id,*,poster_only=False):
+        assert poster_only is True
         entered.set();release.wait(5);return '/old-page-cover.jpg'
     monkeypatch.setattr(discovery_images,'cache_discovery_cover',slow)
     try:
@@ -102,7 +108,54 @@ def test_local_cards_are_never_requested_and_stopping_can_resume(qapp,view,monke
     for index in range(cards.count()):
         item=cards.item(index);record=item.data(Qt.ItemDataRole.UserRole)
         record['files']=[{'id':index+1}];item.setData(Qt.ItemDataRole.UserRole,record)
-    monkeypatch.setattr(discovery_images,'cache_discovery_cover',lambda library,work_id:calls.append(work_id))
+    monkeypatch.setattr(discovery_images,'cache_discovery_cover',lambda library,work_id,**kwargs:calls.append(work_id))
     controller.refresh_visible();spin(qapp,70);assert not calls and controller.idle
     controller.stop();window.section='movie';controller.refresh_visible();spin(qapp);assert not calls
     window.section='discover';controller.resume();spin(qapp);assert not calls and not controller.stopped
+
+
+@pytest.mark.parametrize('kind',['movie','vr'])
+def test_real_worker_does_not_restore_a_legacy_image_rejected_by_portrait_cards(qapp,view,library,monkeypatch,kind):
+    from lumen.ui import MainWindow
+    window,controller=view;cards=window.cards
+    identifier=cards.item(0).data(Qt.ItemDataRole.UserRole)['id']
+    legacy=library.directory/'cache'/'legacy-landscape.jpg'
+    current=library.directory/'cache'/'new-source-poster.jpg'
+    for path,width,height,color in [(legacy,480,270,'blue'),(current,200,300,'green')]:
+        image=QImage(width,height,QImage.Format.Format_RGB32);image.fill(QColor(color));assert image.save(str(path))
+    poster_url='https://example.test/current-poster.jpg'
+    library.edit_metadata(identifier,{'poster':poster_url},[])
+    with library.db:
+        library.db.execute('UPDATE works SET kind=?,thumbnail=? WHERE id=?',(kind,str(legacy),identifier))
+        library.db.execute('INSERT INTO sources(work_id,plugin,site,source_id,url,updated) VALUES (?,?,?,?,?,?)',
+                           (identifier,'catalog-json','Fixture catalog',str(identifier),'https://example.test/detail','2026-01-01'))
+    # The real desktop projection refuses an untyped landscape legacy image.
+    projection=MainWindow.card_data(SimpleNamespace(library=library,view_mode=SimpleNamespace(currentData=lambda:'poster')),
+                                    library.work(identifier))
+    assert projection['thumbnail'] is None and projection['_cover'] is None
+    for index in range(cards.count()):
+        item=cards.item(index);record=item.data(Qt.ItemDataRole.UserRole)
+        if record['id']==identifier:record=projection
+        else:record.update(thumbnail='/already-loaded-cover.jpg',_cover='/already-loaded-cover.jpg')
+        item.setData(Qt.ItemDataRole.UserRole,record)
+        window.current_items[index]=dict(record)
+    providers=[{'id':'catalog-json','config':{'enabled':True},'domains':['example.test']}]
+    monkeypatch.setattr('lumen.discovery_search.Plugins',lambda _:SimpleNamespace(installed=lambda:providers))
+    fetched=[]
+    def preview(lib,plugin_id,record):
+        assert threading.current_thread() is not threading.main_thread()
+        assert plugin_id=='catalog-json' and record=={'poster':poster_url}
+        fetched.append(lib.directory)
+        return str(current)
+    monkeypatch.setattr('lumen.matching.preview_cover',preview)
+    # Keep CoverTask, the poster-only helper, transaction, and queued callback real.
+    controller.refresh_visible()
+    until(qapp,lambda:cards.item(0).data(Qt.ItemDataRole.UserRole).get('_cover')==str(current) and controller.idle)
+    record=cards.item(0).data(Qt.ItemDataRole.UserRole)
+    assert record['thumbnail']==record['_cover']==str(current)
+    assert len(fetched)==1 and not controller.pending
+    assert window.current_items[0]['thumbnail']==str(current)
+    stored=library.work(identifier)
+    assert stored['thumbnail']==str(legacy)
+    assert stored['metadata']['poster_cache']=={'url':poster_url,'path':str(current)}
+    assert MainWindow.card_data(SimpleNamespace(library=library,view_mode=SimpleNamespace(currentData=lambda:'poster')),stored)['_cover']==str(current)
