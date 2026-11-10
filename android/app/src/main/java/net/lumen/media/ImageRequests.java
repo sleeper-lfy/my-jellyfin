@@ -12,6 +12,7 @@ import java.util.concurrent.*;
 
 /** Image work never occupies the operation executor. All targets are weak. */
 final class ImageRequests implements AutoCloseable {
+    private static final long[] THUMBNAIL_RETRY_MS={500,1000,2000};
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new PriorityBlockingQueue<>());
     private final Map<String,Load> pending=new HashMap<>();
@@ -24,7 +25,21 @@ final class ImageRequests implements AutoCloseable {
         final String key,path;final Api api;final long order=sequence++;
         final Api.Cancellation cancellation=new Api.Cancellation();
         final List<WeakReference<ImageView>> targets=new ArrayList<>();
-        boolean visible;
+        boolean visible;int retries;
+        final Runnable retry=this::retryDownload;
+        private boolean current(){return !closed&&!cancellation.cancelled()&&pending.get(key)==this;}
+        private void retryDownload(){
+            if(!current())return;
+            targets.removeIf(ref->{ImageView view=ref.get();return view==null||!key.equals(view.getTag());});
+            if(targets.isEmpty()){pending.remove(key);cancellation.cancel();return;}
+            workers.execute(this);
+        }
+        private void failed(Exception error){
+            if(!current())return;
+            boolean busyThumbnail=error instanceof Api.StatusException&&((Api.StatusException)error).status==503&&path.matches("/api/files/[0-9]+/thumbnail");
+            if(busyThumbnail&&retries<THUMBNAIL_RETRY_MS.length){main.postDelayed(retry,THUMBNAIL_RETRY_MS[retries++]);}
+            else pending.remove(key);
+        }
         Load(Api api,String path,String key){this.api=api;this.path=path;this.key=key;}
         public int compareTo(Load other){int priority=Boolean.compare(other.visible,visible);return priority!=0?priority:Long.compare(order,other.order);}
         public void run(){
@@ -37,7 +52,7 @@ final class ImageRequests implements AutoCloseable {
                     cache.put(key,bitmap);
                     for(WeakReference<ImageView> ref:targets){ImageView view=ref.get();if(view!=null&&key.equals(view.getTag()))view.setImageBitmap(bitmap);}
                 });
-            }catch(Exception ignored){main.post(()->{if(pending.get(key)==this)pending.remove(key);});}
+            }catch(Exception error){main.post(()->failed(error));}
         }
     }
     void load(Api api,ImageView view,String path){
@@ -65,10 +80,10 @@ final class ImageRequests implements AutoCloseable {
             if(workers.getQueue().remove(load)){load.visible=visible;workers.execute(load);}
         }
     }
-    boolean idle(){return workers.getActiveCount()==0&&workers.getQueue().isEmpty();}
+    boolean idle(){return pending.isEmpty()&&workers.getActiveCount()==0&&workers.getQueue().isEmpty();}
     void cancelPage(){
         main.removeCallbacks(priorityUpdate);priorityPending=false;
-        for(Load load:pending.values())load.cancellation.cancel();
+        for(Load load:pending.values()){main.removeCallbacks(load.retry);load.cancellation.cancel();}
         pending.clear();workers.getQueue().clear();
     }
     void restore(Api api,android.view.View root){

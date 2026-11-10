@@ -60,7 +60,7 @@ public final class PlayerActivity extends Activity {
         if(player==null||!player.isPlaying()||this.buffering||vrEnabled||this.swipeCancelled||this.swipeSeeking||this.dragging||this.playbackDialogs>0)return;
         final MediaPlayer decoder=player;
         if(holdSpeed.begin(new HoldSpeed.Decoder(){public float rate(){return decoder.getRate();}public boolean rate(float value){decoder.setRate(value);return Math.abs(decoder.getRate()-value)<.05f;}})){
-            holdActivated=true;holdControlsVisible=controlsVisible;showControls(false);speedHint.setText(String.format(java.util.Locale.ROOT,"%.2g× 倍速播放中\n松手恢复 %.2g×",holdSpeed.temporary(),holdSpeed.original()));speedHint.setVisibility(View.VISIBLE);
+            holdActivated=true;holdControlsVisible=controlsVisible;showControls(false);speedHint.setText(PlaybackPolicy.speedLabel(holdSpeed.temporary())+"× 倍速播放中\n松手恢复 "+PlaybackPolicy.speedLabel(holdSpeed.original())+"×");speedHint.setVisibility(View.VISIBLE);
         }
     }
 
@@ -87,6 +87,8 @@ public final class PlayerActivity extends Activity {
     private boolean navigationPending=false;
     private int browsePosition=-1;
     private boolean software=false,dragging=false,ready=false,buffering=false;
+    private int decoderMode=PlaybackDecoderPolicy.AUTOMATIC;
+    private PlaybackMeasurements measurements=new PlaybackMeasurements();
     private long lastPosition=0;
     private android.media.AudioManager audio;
     private android.media.AudioFocusRequest audioFocus;
@@ -425,7 +427,7 @@ public final class PlayerActivity extends Activity {
     private void seekTo(long position){
         cancelHoldSpeed();
         if(player==null||!player.isSeekable())return;
-        seekGuard=2;lastPosition=PlaybackPolicy.seek(position,durationMs(),0);player.setTime(lastPosition);tick(false,false);updateProgress();
+        long origin=positionMs();seekGuard=2;lastPosition=PlaybackPolicy.seek(position,durationMs(),0);measurements.seek(lastPosition,origin,android.os.SystemClock.elapsedRealtime());player.setTime(lastPosition);tick(false,false);updateProgress();
     }
     private void saveFov(float value){getSharedPreferences("playback",0).edit().putInt("vr_fov",Math.round(value)).apply();saveVrPreferences();}
     private void performAction(ControllerBindings.Action action){
@@ -460,7 +462,7 @@ public final class PlayerActivity extends Activity {
     private void load(long workId,long fileId) {
         flushPreferences();
         pauseAfterStyleChange=false;
-        desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;refreshPersonal();software=getSharedPreferences("playback",0).getBoolean("software",false);
+        desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;refreshPersonal();decoderMode=PlaybackDecoderPolicy.load(getSharedPreferences("playback",0));software=decoderMode==PlaybackDecoderPolicy.SOFTWARE;
         final int ticket=++generation;setNavigationPending(true);
         network.execute(()->{
             try {
@@ -484,7 +486,7 @@ public final class PlayerActivity extends Activity {
     private void startPlayback() {
         if(player!=null||file==null||!started||(usesGlVideo()&&vrVideo.videoTexture()==null))return;
         ending=false;sequence=0;seekGuard=2;session=null;
-        ready=false;buffering=true;lastPosition=resumeMs;
+        ready=false;buffering=true;lastPosition=resumeMs;measurements=new PlaybackMeasurements();measurements.buffering(true,android.os.SystemClock.elapsedRealtime());
         try {
             bridge=new PlaybackBridge(api.connection.base,api.connection.token,file.optLong("id"));
             ArrayList<String> options=new ArrayList<>();options.add("--network-caching=1500");
@@ -499,15 +501,23 @@ public final class PlayerActivity extends Activity {
                 player.getVLCVout().attachViews();
             }else {playerGlRendering=false;player.attachViews(video,null,true,false);player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);}
             Media media=new Media(vlc,Uri.parse(bridge.url(file.optString("stream"))));
-            media.setHWDecoderEnabled(!software,false);
+            if(software)media.setHWDecoderEnabled(false,false);
+            else if(decoderMode==PlaybackDecoderPolicy.MEDIACODEC_JNI){
+                // Alternate Android MediaCodec API; retain software fallback for unsupported streams.
+                media.addOption(":codec=mediacodec_jni,all");
+                media.addOption(":network-caching=1500");
+            }else media.setHWDecoderEnabled(true,false);
             media.addOption(":start-time="+(resumeMs/1000.0));
             player.setMedia(media);media.release();
             final MediaPlayer current=player;
             player.setEventListener(event->{
                 if(player!=current||!started)return;
-                if(event.type==MediaPlayer.Event.Buffering)buffering=event.getBuffering()<100;
+                // Native clock events can arrive much more often than the one-second UI heartbeat.
+                // They must not rebuild text/layout and publish a MediaSession state each time.
+                if(handleClockEvent(event))return;
+                if(event.type==MediaPlayer.Event.Buffering){boolean active=event.getBuffering()<100;measurements.buffering(active,android.os.SystemClock.elapsedRealtime());if(buffering==active)return;buffering=active;}
                 if(event.type==MediaPlayer.Event.Playing){
-                    buffering=false;
+                    buffering=false;measurements.buffering(false,android.os.SystemClock.elapsedRealtime());
                     if(!ready){
                         ready=true;
                         for(int i=0;i<subtitles.length();i++)current.addSlave(Media.Slave.Type.Subtitle,Uri.parse(bridge.url(subtitles.optJSONObject(i).optString("url"))),i==0);
@@ -520,13 +530,14 @@ public final class PlayerActivity extends Activity {
                     current.setSpuDelay((long)(filePreferences.optDouble("subtitle_delay",0)*1_000_000));
                     if(pauseAfterStyleChange){pauseAfterStyleChange=false;current.pause();showControls(true);}
                     current.setRate(getSharedPreferences("player",0).getFloat("speed",1f));
-                    status.setText(software?"软件解码 · 原画直传":"自动解码 · 硬件优先，软件兜底");
+                    status.setText(PlaybackDecoderPolicy.description(software?PlaybackDecoderPolicy.SOFTWARE:decoderMode));
                 }
                 if(event.type==MediaPlayer.Event.EncounteredError){
                     if(!software){
                         handler.post(()->{if(player==current && started){restartDecoder(true);status.setText("正在改用软件解码重试…");}});
                     }else {buffering=true;tick(false,false);status.setText("播放失败，请检查网络或文件是否损坏。可切换音轨、字幕或解码模式后重试。");}
                 }
+                if(event.type==MediaPlayer.Event.Vout||event.type==MediaPlayer.Event.ESSelected)updateVideoGeometry();
                 if(event.type==MediaPlayer.Event.EndReached&&!ending){
                     ending=true;handler.post(()->{if(player==current)onPlaybackEnded();});
                 }
@@ -585,16 +596,22 @@ public final class PlayerActivity extends Activity {
         long position=positionMs();if(ready)lastPosition=position;
         long duration=durationMs();if(!dragging&&duration>0)seek.setProgress((int)(Math.max(0,position)*10000/duration));
         seek.setEnabled(player.isSeekable());renderPlaybackState(player.isPlaying());
-        time.setText(clock(position)+" / "+clock(duration));updatePortraitInfo();
+        time.setText(clock(position)+" / "+clock(duration));
         if(portraitControls&&!holdSpeed.active())transportControls.setVisibility(controlsVisible?View.VISIBLE:View.GONE);
         if(buffering){cancelHoldSpeed();gestureHint.setText("正在缓冲…");gestureHint.setVisibility(View.VISIBLE);}else if(!swipeSeeking)gestureHint.setVisibility(View.GONE);
-        updateVideoGeometry();
         if(controller!=null)controller.state(player.isPlaying(),buffering,position,duration,title.getText().toString());
 
     }
     private void renderPlaybackState(boolean playing){
         ((PlaybackIconButton)pause).setSymbol(playing?"pause":"play",playing?"暂停":"播放");
         if(transportControls!=null&&!holdSpeed.active())transportControls.setVisibility(controlsVisible?View.VISIBLE:View.GONE);
+    }
+    private boolean handleClockEvent(MediaPlayer.Event event){
+        if(event.type==MediaPlayer.Event.TimeChanged){
+            if(player!=null)measurements.progress(event.getTimeChanged(),player.isPlaying(),android.os.SystemClock.elapsedRealtime());
+            return true;
+        }
+        return event.type==MediaPlayer.Event.PositionChanged;
     }
     private void restartDecoder(boolean useSoftware){
         generation++;setNavigationPending(false);stopPlayback(false);software=useSoftware;startPlayback();
@@ -797,22 +814,54 @@ public final class PlayerActivity extends Activity {
         TextView text=label("正在读取播放信息…",14);text.setTextIsSelectable(true);text.setPadding(dp(20),dp(12),dp(20),dp(12));ScrollView scroll=new ScrollView(this);scroll.addView(text);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("播放诊断").setView(scroll).setPositiveButton("关闭",null).setNeutralButton("复制",(d,w)->{
             android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Lumen 播放诊断",text.getText()));}).create();
-        final long[] previous={0,0};Runnable update=new Runnable(){public void run(){
-            if(!dialog.isShowing()||player==null)return;
-            StringBuilder data=new StringBuilder("内核：LibVLC\n解码策略：").append(software?"软件解码":"硬件优先，软件兜底（内核未公开实际硬解状态）");
-            org.videolan.libvlc.interfaces.IMedia.VideoTrack track=player.getCurrentVideoTrack();if(track!=null)data.append("\n视频：").append(track.codec).append(" · ").append(track.width).append('×').append(track.height).append(" · ").append(track.frameRateNum/(double)Math.max(1,track.frameRateDen)).append(" fps");
-            org.videolan.libvlc.interfaces.IMedia media=player.getMedia();if(media!=null){try{
-                org.videolan.libvlc.interfaces.IMedia.Stats stats=media.getStats();if(stats!=null){long now=android.os.SystemClock.elapsedRealtime(),bytes=Integer.toUnsignedLong(stats.readBytes);double speed=previous[0]>0?((bytes-previous[1])&0xffffffffL)/1048576.0/Math.max(.001,(now-previous[0])/1000.0):0;previous[0]=now;previous[1]=bytes;
-                    data.append("\n已解码帧：").append(stats.decodedVideo).append("\n已显示帧：").append(stats.displayedPictures).append("\n丢帧：").append(stats.lostPictures).append(String.format(java.util.Locale.ROOT,"\n网络读取：%.2f MiB/s",speed));}
-            }finally{media.release();}}
-            data.append("\n状态：").append(buffering?"缓冲":player.isPlaying()?"播放":"暂停").append("\n播放位置：").append(clock(positionMs())).append("\n字幕延后：").append(filePreferences.optDouble("subtitle_delay",0)).append(" 秒\n诊断不包含文件路径、服务器地址或访问密钥。");text.setText(data);handler.postDelayed(this,1000);
-        }};dialog.setOnDismissListener(d->handler.removeCallbacks(update));dialog.show();handler.post(update);
+        Runnable update=new Runnable(){
+            PlaybackBridge observedBridge;
+            PlaybackMeasurements.Sample sample=new PlaybackMeasurements.Sample();
+            public void run(){
+                if(!dialog.isShowing()||player==null)return;
+                if(bridge!=observedBridge){observedBridge=bridge;sample=new PlaybackMeasurements.Sample();}
+                long now=android.os.SystemClock.elapsedRealtime();
+                StringBuilder data=new StringBuilder("内核：LibVLC\n解码策略：").append(PlaybackDecoderPolicy.description(software?PlaybackDecoderPolicy.SOFTWARE:decoderMode))
+                    .append("（内核未公开实际硬解状态）\n画面输出：").append(playerGlRendering?"OpenGL（VR / 美颜）":"SurfaceView（普通播放）");
+                org.videolan.libvlc.interfaces.IMedia.VideoTrack track=player.getCurrentVideoTrack();
+                if(track!=null)data.append("\n视频：").append(track.codec).append(" · ").append(track.width).append('×').append(track.height).append(String.format(java.util.Locale.ROOT," · %.2f fps",track.frameRateNum/(double)Math.max(1,track.frameRateDen)));
+                org.videolan.libvlc.interfaces.IMedia.Stats stats=null;
+                org.videolan.libvlc.interfaces.IMedia media=player.getMedia();
+                if(media!=null){try{stats=media.getStats();}finally{media.release();}}
+                PlaybackBridge.Stats transfer=bridge==null?null:bridge.snapshot();
+                if(stats!=null){
+                    data.append("\n已解码帧：").append(stats.decodedVideo).append("\n已显示帧：").append(stats.displayedPictures).append("\n丢帧：").append(stats.lostPictures);
+                    data.append("\n帧计数来自内核，不能用解码 / 显示总数之比判断丢帧。");
+                }
+                if(transfer!=null){
+                    sample.update(now,transfer.videoBytesRead,stats==null?0:stats.displayedPictures,stats==null?0:stats.lostPictures);
+                    data.append(sample.ready?String.format(java.util.Locale.ROOT,"\n局域网读取：%.2f MiB/s",sample.mebibytesPerSecond):"\n局域网读取：采样中…");
+                    if(sample.ready&&stats!=null)data.append(String.format(java.util.Locale.ROOT,"\n近一秒显示：%.1f fps · 新增丢帧：%d",sample.displayedPerSecond,sample.newlyLost));
+                    data.append(String.format(java.util.Locale.ROOT,"\n累计视频读取：%.1f MiB",transfer.videoBytesRead/1048576.0));
+                    data.append("\n活动视频连接：").append(transfer.activeVideoRequests).append(" · Range 请求：").append(transfer.rangeRequests);
+                    if(transfer.lastResponseMillis>=0)data.append("\n最近响应：HTTP ").append(transfer.lastResponseCode).append(" · ").append(transfer.lastResponseMillis).append(" ms（响应头）");
+                    data.append("\n读取速度为服务端视频正文，缓存在手机时可能暂为 0。");
+                }else data.append("\n局域网读取：不可用");
+                data.append(String.format(java.util.Locale.ROOT,"\n缓冲：%d 次 · 累计 %.1f 秒（含首次加载）",measurements.bufferingCount,measurements.bufferingMs(now)/1000.0));
+                if(measurements.seeking())data.append("\n最近跳转：等待恢复播放…");
+                else if(measurements.lastSeekMs>=0)data.append("\n跳转后进度响应：").append(measurements.lastSeekMs).append(" ms（目标附近进度推进，非首帧实测）");
+                data.append("\n状态：").append(buffering?"缓冲":player.isPlaying()?"播放":"暂停").append("\n播放位置：").append(clock(positionMs())).append("\n字幕延后：").append(filePreferences.optDouble("subtitle_delay",0)).append(" 秒\n诊断不包含文件路径、服务器地址或访问密钥。");
+                text.setText(data);handler.postDelayed(this,1000);
+            }
+        };dialog.setOnDismissListener(d->handler.removeCallbacks(update));dialog.show();handler.post(update);
     }
     private void decoder(){
+        int selected=software?PlaybackDecoderPolicy.SOFTWARE:decoderMode;
         new AlertDialog.Builder(this).setTitle("解码模式（保留播放位置）")
-            .setSingleChoiceItems(new String[]{"自动：硬件优先，软件兜底","软件：兼容性优先，耗电更高"},software?1:0,(dialog,index)->{
-                getSharedPreferences("playback",0).edit().putBoolean("software",index==1).apply();dialog.dismiss();restartDecoder(index==1);
+            .setSingleChoiceItems(new String[]{"自动：MediaCodec NDK 硬件优先","兼容：MediaCodec JNI 硬件优先","软件：耗电更高，4K 可能不流畅"},selected,(dialog,index)->{
+                dialog.dismiss();applyDecoderMode(index);
             }).setNegativeButton("取消",null).show();
+    }
+    private void applyDecoderMode(int mode){
+        if(mode<PlaybackDecoderPolicy.AUTOMATIC||mode>PlaybackDecoderPolicy.SOFTWARE)return;
+        pauseAfterStyleChange=player!=null&&!player.isPlaying();
+        decoderMode=mode;PlaybackDecoderPolicy.save(getSharedPreferences("playback",0),mode);
+        restartDecoder(mode==PlaybackDecoderPolicy.SOFTWARE);
     }
     private void tracks(boolean captions){
         if(player==null)return;

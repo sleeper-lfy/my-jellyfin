@@ -53,4 +53,40 @@ public class ImageRequestsTest {
             }finally{release.countDown();images.close();}
         }
     }
+    private void backgroundPaused(ImageRequests images)throws Exception {
+        Field field=ImageRequests.class.getDeclaredField("workers");field.setAccessible(true);ThreadPoolExecutor workers=(ThreadPoolExecutor)field.get(images);
+        waitFor(()->workers.getActiveCount()==0&&workers.getQueue().isEmpty());shadowOf(Looper.getMainLooper()).idle();
+    }
+    @Test public void busyVideoThumbnailRetriesThenFillsBothViewsAndCache()throws Exception {
+        AtomicInteger count=new AtomicInteger();okio.Buffer png=new okio.Buffer();Bitmap bitmap=Bitmap.createBitmap(12,8,Bitmap.Config.ARGB_8888);bitmap.eraseColor(android.graphics.Color.CYAN);bitmap.compress(Bitmap.CompressFormat.PNG,100,png.outputStream());
+        try(MockWebServer server=new MockWebServer();ActivityController<android.app.Activity> lifecycle=Robolectric.buildActivity(android.app.Activity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){return count.incrementAndGet()<=2?new MockResponse().setResponseCode(503):new MockResponse().setHeader("Content-Type","image/png").setBody(png.clone());}});server.start();
+            Api api=new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456"));ImageRequests images=new ImageRequests(new LruCache<String,Bitmap>(10));
+            try {
+                ImageView first=new ImageView(lifecycle.get()),second=new ImageView(lifecycle.get());String path="/api/files/70/thumbnail";images.load(api,first,path);images.load(api,second,path);
+                waitFor(()->count.get()==1);backgroundPaused(images);assertFalse(images.idle());
+                shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(499));assertEquals(1,count.get());shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1));waitFor(()->count.get()==2);backgroundPaused(images);
+                shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1000));waitFor(()->first.getDrawable()!=null&&second.getDrawable()!=null);assertEquals(3,count.get());
+                ImageView cached=new ImageView(lifecycle.get());images.load(api,cached,path);assertNotNull(cached.getDrawable());assertEquals(3,count.get());backgroundPaused(images);assertTrue(images.idle());
+            }finally{images.close();}
+        }
+    }
+    @Test public void thumbnailRetriesAreBoundedAndCancelledAndOtherErrorsDoNotRetry()throws Exception {
+        java.util.Map<String,AtomicInteger> counts=new java.util.concurrent.ConcurrentHashMap<>();
+        try(MockWebServer server=new MockWebServer();ActivityController<android.app.Activity> lifecycle=Robolectric.buildActivity(android.app.Activity.class).create()){
+            server.setDispatcher(new Dispatcher(){public MockResponse dispatch(RecordedRequest request){String path=request.getPath();counts.computeIfAbsent(path,key->new AtomicInteger()).incrementAndGet();return new MockResponse().setResponseCode(path.contains("79")?404:path.contains("80")?401:503);}});server.start();
+            Api api=new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456"));ImageRequests images=new ImageRequests(new LruCache<String,Bitmap>(10));java.util.List<ImageView> targets=new java.util.ArrayList<>();
+            java.util.function.Consumer<String> load=path->{ImageView view=new ImageView(lifecycle.get());targets.add(view);images.load(api,view,path);};
+            java.util.function.ToIntFunction<String> count=path->counts.containsKey(path)?counts.get(path).get():0;
+            try {
+                String capped="/api/files/77/thumbnail";load.accept(capped);waitFor(()->count.applyAsInt(capped)==1);backgroundPaused(images);
+                int expected=1;for(long delay:new long[]{500,1000,2000}){shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(delay));final int next=++expected;waitFor(()->count.applyAsInt(capped)==next);backgroundPaused(images);}
+                assertTrue(images.idle());shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10));assertEquals(4,count.applyAsInt(capped));
+                String cancelled="/api/files/78/thumbnail";load.accept(cancelled);waitFor(()->count.applyAsInt(cancelled)==1);backgroundPaused(images);images.cancelPage();shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10));assertTrue(images.idle());assertEquals(1,count.applyAsInt(cancelled));
+                for(String path:new String[]{"/api/files/79/thumbnail","/api/files/80/thumbnail","/api/works/1/cover"})load.accept(path);waitFor(images::idle);shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10));for(String path:new String[]{"/api/files/79/thumbnail","/api/files/80/thumbnail","/api/works/1/cover"})assertEquals(path,1,count.applyAsInt(path));
+                String closed="/api/files/81/thumbnail";load.accept(closed);waitFor(()->count.applyAsInt(closed)==1);backgroundPaused(images);images.close();shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10));assertEquals(1,count.applyAsInt(closed));assertTrue(images.idle());
+            }finally{images.close();}
+        }
+    }
+
 }

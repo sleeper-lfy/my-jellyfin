@@ -6,6 +6,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -13,10 +15,23 @@ import okhttp3.Response;
 
 /** Loopback-only streaming bridge: native decoders never receive the server credential. */
 final class PlaybackBridge implements AutoCloseable {
+    /** Payload received from the LAN, independent of LibVLC's loopback statistics. */
+    static final class Stats {
+        final long videoBytesRead,rangeRequests,lastResponseMillis;
+        final int activeVideoRequests,lastResponseCode;
+        Stats(long bytes,long ranges,int active,int code,long millis) {
+            videoBytesRead=bytes;rangeRequests=ranges;activeVideoRequests=active;
+            lastResponseCode=code;lastResponseMillis=millis;
+        }
+    }
     private final String base, token, prefix, filePath;
     private final ServerSocket listener;
     private final Set<Socket> sockets=ConcurrentHashMap.newKeySet();
     private final Set<Call> upstreams=ConcurrentHashMap.newKeySet();
+    private final AtomicLong videoBytesRead=new AtomicLong(),rangeRequests=new AtomicLong();
+    private final AtomicInteger activeVideoRequests=new AtomicInteger();
+    private volatile int lastResponseCode;
+    private volatile long lastResponseMillis=-1;
     private final OkHttpClient client=new OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
         .connectTimeout(8,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS)
         .followRedirects(false).followSslRedirects(false).build();
@@ -45,6 +60,9 @@ final class PlaybackBridge implements AutoCloseable {
         if(!allowed(path))throw new IllegalArgumentException("Invalid playback path");
         return "http://127.0.0.1:"+listener.getLocalPort()+prefix+path;
     }
+    Stats snapshot() {
+        return new Stats(videoBytesRead.get(),rangeRequests.get(),activeVideoRequests.get(),lastResponseCode,lastResponseMillis);
+    }
     private boolean allowed(String path) {
         return path.equals(filePath+"stream") || path.matches(java.util.regex.Pattern.quote(filePath)+"subtitles/[0-9]+");
     }
@@ -58,6 +76,7 @@ final class PlaybackBridge implements AutoCloseable {
     }
     private void serve(Socket socket) {
         Call upstream=null;
+        boolean videoRequest=false;
         try(Socket peer=socket) {
             InputStream input=new BufferedInputStream(peer.getInputStream());OutputStream output=peer.getOutputStream();
             String[] request=line(input).split(" ");
@@ -74,6 +93,8 @@ final class PlaybackBridge implements AutoCloseable {
             if(range!=null)requestBuilder.header("Range",range);
             upstream=client.newCall(requestBuilder.build());
             upstreams.add(upstream);if(closed)return;
+            videoRequest=request[0].equals("GET")&&path.equals(filePath+"stream");
+            if(videoRequest){activeVideoRequests.incrementAndGet();if(range!=null)rangeRequests.incrementAndGet();}
             // A seek can close the decoder socket while its old upstream is still
             // blocked reading. Cancel that call immediately, releasing its worker.
             final Call current=upstream;
@@ -82,8 +103,10 @@ final class PlaybackBridge implements AutoCloseable {
                 try {input.read();}catch(IOException ignored){}
                 finally {current.cancel();try{peer.close();}catch(IOException ignored){}}
             });
+            long requestedAt=System.nanoTime();
             try(Response response=upstream.execute()) {
                 int status=response.code();
+                if(videoRequest){lastResponseCode=status;lastResponseMillis=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-requestedAt);}
                 // Never forward redirects or server-generated error bodies.
                 if(status!=200 && status!=206 && status!=416){reject(output,status>=400?status:502);return;}
                 StringBuilder headers=new StringBuilder("HTTP/1.1 "+status+" Media\r\nConnection: close\r\n");
@@ -93,11 +116,14 @@ final class PlaybackBridge implements AutoCloseable {
                 output.write(headers.append("\r\n").toString().getBytes(StandardCharsets.US_ASCII));output.flush();
                 if(!request[0].equals("HEAD") && status!=416 && response.body()!=null)try(InputStream media=response.body().byteStream()) {
                     byte[] buffer=new byte[64*1024];int count;
-                    while(!closed && (count=media.read(buffer))!=-1)output.write(buffer,0,count);
+                    while(!closed && (count=media.read(buffer))!=-1){
+                        if(videoRequest)videoBytesRead.addAndGet(count);
+                        output.write(buffer,0,count);
+                    }
                 }
             }
         }catch(IOException|RejectedExecutionException ignored){/* Seeking and leaving playback cancel in-flight requests. */}
-        finally {sockets.remove(socket);if(upstream!=null){upstreams.remove(upstream);upstream.cancel();}}
+        finally {if(videoRequest)activeVideoRequests.decrementAndGet();sockets.remove(socket);if(upstream!=null){upstreams.remove(upstream);upstream.cancel();}}
     }
     @Override public void close() {
         closed=true;try{listener.close();}catch(IOException ignored){}

@@ -10,6 +10,10 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 final class Api {
+    static final class StatusException extends java.io.IOException {
+        final int status;
+        StatusException(int status,String message){super(message);this.status=status;}
+    }
     static final class Cancellation {
         private volatile boolean stopped;
         private volatile HttpURLConnection connection;
@@ -37,8 +41,8 @@ final class Api {
                 try(java.io.OutputStream output=request.getOutputStream()){output.write(bytes);}
             }
             int status=request.getResponseCode();
-            if(status==401)throw new Exception("访问密钥不正确，请重新连接电脑");
-            if(status<200 || status>=300)throw new Exception("服务端返回 "+status+"，请检查电脑端服务与媒体文件");
+            if(status==401)throw new StatusException(status,"访问密钥不正确，请重新连接电脑");
+            if(status<200 || status>=300)throw new StatusException(status,"服务端返回 "+status+"，请检查电脑端服务与媒体文件");
             try(InputStream input=request.getInputStream();ByteArrayOutputStream output=new ByteArrayOutputStream()) {
                 byte[] buffer=new byte[8192];int count;
                 while((count=input.read(buffer))!=-1) {

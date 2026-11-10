@@ -44,6 +44,34 @@ public class PlaybackBridgeTest {
         assertArrayEquals(movie,connection.getInputStream().readAllBytes());connection.disconnect();
         assertEquals("Bearer test-server-secret",authorization.get());
     }
+    @Test public void measuresActualVideoPayloadWithoutHeadSubtitlesOrErrors() throws Exception {
+        PlaybackBridge.Stats initial=bridge.snapshot();
+        assertEquals(0,initial.videoBytesRead);assertEquals(0,initial.rangeRequests);
+        assertEquals(0,initial.activeVideoRequests);assertEquals(0,initial.lastResponseCode);
+        assertEquals(-1,initial.lastResponseMillis);
+        HttpURLConnection video=open(bridge.url("/api/files/7/stream"));
+        try{assertArrayEquals(movie,video.getInputStream().readAllBytes());}finally{video.disconnect();}
+        PlaybackBridge.Stats read=bridge.snapshot();
+        assertEquals(movie.length,read.videoBytesRead);assertEquals(200,read.lastResponseCode);
+        assertTrue(read.lastResponseMillis>=0);
+
+        HttpURLConnection head=open(bridge.url("/api/files/7/stream"));head.setRequestMethod("HEAD");
+        try{assertEquals(200,head.getResponseCode());assertEquals(0,head.getInputStream().readAllBytes().length);}finally{head.disconnect();}
+        HttpURLConnection subtitle=open(bridge.url("/api/files/7/subtitles/0"));
+        try{assertEquals("subtitle",new String(subtitle.getInputStream().readAllBytes(),StandardCharsets.UTF_8));}finally{subtitle.disconnect();}
+        assertEquals(movie.length,bridge.snapshot().videoBytesRead);
+
+        HttpURLConnection rangeVideo=open(bridge.url("/api/files/7/stream"));rangeVideo.setRequestProperty("Range","bytes=2-5");
+        try{assertEquals(206,rangeVideo.getResponseCode());assertEquals(4,rangeVideo.getInputStream().readAllBytes().length);}finally{rangeVideo.disconnect();}
+        assertEquals(movie.length+4,bridge.snapshot().videoBytesRead);
+        assertEquals(1,bridge.snapshot().rangeRequests);assertEquals(206,bridge.snapshot().lastResponseCode);
+        redirect=true;
+        HttpURLConnection refused=open(bridge.url("/api/files/7/stream"));
+        try{assertEquals(502,refused.getResponseCode());}finally{refused.disconnect();}
+        assertEquals(movie.length+4,bridge.snapshot().videoBytesRead);
+        assertEquals(302,bridge.snapshot().lastResponseCode);
+        assertEquals(0,initial.videoBytesRead); // Snapshots do not change under the caller.
+    }
     @Test public void forwardsRangeAndHead() throws Exception {
         HttpURLConnection connection=open(bridge.url("/api/files/7/stream"));connection.setRequestProperty("Range","bytes=2-5");
         assertEquals(206,connection.getResponseCode());assertEquals("bytes 2-5/"+movie.length,connection.getHeaderField("Content-Range"));

@@ -191,6 +191,8 @@ class LanServer:
         self.discovery_jobs = None
         self.cover_slots = threading.BoundedSemaphore(3)
         self.active_covers = set()
+        self.thumbnail_slots = threading.BoundedSemaphore(1)
+        self.thumbnail_failures = {}
         from concurrent.futures import ThreadPoolExecutor
         self.bookmark_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='Bookmark')
         self.bookmark_slots=threading.BoundedSemaphore(8)
@@ -318,7 +320,8 @@ class LanServer:
                             from .continuation import continue_works
                             limit=max(1,min(100,int(query.get('limit',['24'])[0])))
                             items=continue_works(library,limit)
-                            return self.send_json(200,{'items':[{**public_work(work),'resume':work['_resume']} for work in items],'limit':limit})
+                            return self.send_json(200,{'items':[{**public_work(work),'resume':{**work['_resume'],
+                                'thumbnail':f"/api/files/{work['_resume']['file_id']}/thumbnail"}} for work in items],'limit':limit})
                         if path == '/api/actresses':
                             minimum = max(0, int(query.get('minimum', ['0'])[0]))
                             sort = query.get('sort', ['average'])[0]
@@ -411,6 +414,46 @@ class LanServer:
                             if index>=len(images):raise ApiError(404,'单集剧照不存在')
                             target=Path(images[index]).resolve()
                             if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'剧照路径不在缓存内')
+                            return self.send_file(target,'image/jpeg')
+                        match = re.fullmatch(r'/api/files/(\d+)/thumbnail',path)
+                        if match:
+                            from .artwork import file_thumbnail_path, capture_file_thumbnail
+                            file=self.file(library,int(match[1]));work=library.work(file['work_id'])
+                            try:target=file_thumbnail_path(library,work,file)
+                            except ValueError:raise ApiError(403,'缩略图路径无效')
+                            if target is None:
+                                if self.command=='HEAD':raise ApiError(404,'视频缩略图尚未生成')
+                                with service.lock:
+                                    cooling=service.thumbnail_failures.get(file['id'],0)>service.clock()
+                                if cooling:raise ApiError(404,'视频缩略图暂不可用')
+                                if not service.thumbnail_slots.acquire(timeout=2):raise ApiError(503,'视频缩略图正在生成，请稍后重试')
+                                try:
+                                    # Another request may have finished while this one was
+                                    # checking its cache; never extract the same frame twice.
+                                    try:target=file_thumbnail_path(library,work,file)
+                                    except ValueError:raise ApiError(403,'缩略图路径无效')
+                                    with service.lock:
+                                        cooling=service.thumbnail_failures.get(file['id'],0)>service.clock()
+                                    if target is None and cooling:raise ApiError(404,'视频缩略图暂不可用')
+                                    # Frame extraction stays out of listing requests and is bounded
+                                    # even when many home cards request missing thumbnails together.
+                                    if target is None:
+                                        deadline=time.monotonic()+8
+                                        cancelled=lambda:service.closing.is_set() or time.monotonic()>deadline
+                                        acquired=False
+                                        try:
+                                            service.budget.acquire(cancelled,resource='cpu');acquired=True
+                                            target=capture_file_thumbnail(library,file,cancelled)
+                                        except Exception:
+                                            if not acquired:raise ApiError(503,'缩略图生成资源暂忙')
+                                            with service.lock:
+                                                if len(service.thumbnail_failures)>=256:
+                                                    service.thumbnail_failures.pop(next(iter(service.thumbnail_failures)))
+                                                service.thumbnail_failures[file['id']]=service.clock()+30
+                                            raise ApiError(404,'视频缩略图暂不可用')
+                                        finally:
+                                            if acquired:service.budget.release()
+                                finally:service.thumbnail_slots.release()
                             return self.send_file(target,'image/jpeg')
                         match = re.fullmatch(r'/api/files/(\d+)/(stream|subtitles)(?:/(\d+))?',path)
                         if match:

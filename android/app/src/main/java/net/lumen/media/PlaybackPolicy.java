@@ -16,4 +16,7 @@ public final class PlaybackPolicy {
         return duration>0?Math.min(duration,target):target;
     }
     public static float fov(float value) { return Math.max(50,Math.min(110,value)); }
+    public static String speedLabel(float value) {
+        return java.math.BigDecimal.valueOf((double)value).setScale(2,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+    }
 }

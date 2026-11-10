@@ -15,8 +15,43 @@ import android.widget.Button;
 
 /** Shared surfaces and vector actions for media cards, details and filters. */
 final class MediaStyle {
+    static final int SPACE=8, PAGE=16, SECTION=24, TOUCH=48;
     static final int BG=0xff0b1117, SURFACE=0xff15212c, PANEL=0xff131e28, BORDER=0xff2c414f, TEXT=0xffeef3f5, MUTED=0xff91a9b8, ACCENT=0xff79d8ec, HEART=0xfff3a4b8;
     static int dp(Context context,float value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
+    /** Horizontal controls share one gap; weights leave narrow-window inputs room to shrink. */
+    static LinearRow row(Context context){return new LinearRow(context);}
+    static final class LinearRow extends android.widget.LinearLayout {
+        LinearRow(Context context){super(context);setOrientation(HORIZONTAL);setGravity(android.view.Gravity.CENTER_VERTICAL);}
+        @Override public void addView(android.view.View child,int index,android.view.ViewGroup.LayoutParams params){
+            LayoutParams cell=params instanceof LayoutParams?(LayoutParams)params:new LayoutParams(params);
+            cell.setMarginStart(getChildCount()==0?0:dp(getContext(),SPACE));cell.setMarginEnd(0);
+            super.addView(child,index,cell);
+        }
+    }
+    /** Resume cards follow the actual viewport rather than the physical display. */
+    static final class ResumeStrip extends android.widget.HorizontalScrollView {
+        ResumeStrip(Context context){super(context);setHorizontalScrollBarEnabled(false);}
+        @Override protected void onMeasure(int ws,int hs){
+            int available=Math.max(1,android.view.View.MeasureSpec.getSize(ws)-getPaddingLeft()-getPaddingRight());
+            if(getChildCount()>0&&getChildAt(0) instanceof android.view.ViewGroup){android.view.ViewGroup row=(android.view.ViewGroup)getChildAt(0);
+                int width=Math.min(dp(getContext(),336),Math.max(1,available-dp(getContext(),16)));
+                for(int i=0;i<row.getChildCount();i++){android.view.View card=row.getChildAt(i);card.getLayoutParams().width=width;if(card instanceof android.view.ViewGroup){android.view.View image=((android.view.ViewGroup)card).getChildAt(0);image.getLayoutParams().height=Math.round(width*9f/16);}}
+            }
+            super.onMeasure(ws,hs);
+        }
+    }
+    /** Media artwork is never cropped, regardless of thumbnail/poster availability. */
+    static void artwork(android.widget.ImageView image){image.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);image.setBackgroundColor(0xff09121a);}
+    /** Long work names must not turn a queue item into a full page. */
+    static final class QueueAdapter extends android.widget.ArrayAdapter<String> {
+        QueueAdapter(Context context){super(context,android.R.layout.simple_list_item_single_choice,new java.util.ArrayList<>());}
+        @Override public android.view.View getView(int position,android.view.View reuse,android.view.ViewGroup parent){
+            android.widget.CheckedTextView title=(android.widget.CheckedTextView)super.getView(position,reuse,parent);
+            title.setTextSize(14);title.setTextColor(TEXT);title.setSingleLine(false);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            title.setLayoutParams(new android.widget.AbsListView.LayoutParams(-1,-2));title.setMinHeight(dp(getContext(),72));title.setPadding(dp(getContext(),16),dp(getContext(),8),dp(getContext(),16),dp(getContext(),8));
+            title.setContentDescription(getItem(position));return title;
+        }
+    }
     static GradientDrawable surface(Context context,int color,int stroke,int radius){
         GradientDrawable drawable=new GradientDrawable();drawable.setColor(color);drawable.setCornerRadius(dp(context,radius));
         if(stroke!=0)drawable.setStroke(dp(context,1),stroke);return drawable;
@@ -27,7 +62,7 @@ final class MediaStyle {
         int border=selected?(heart?0xff81575e:0xff427082):BORDER;
         view.setBackgroundTintList(null);view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x25ffffff),surface(context,color,primary?0:border,12),null));
         view.setSelected(selected);view.setTextColor(selected?(heart?0xffffb5cc:0xffa5e5f5):primary?0xff102a35:TEXT);
-        view.setPadding(dp(context,12),dp(context,6),dp(context,12),dp(context,6));view.setMinWidth(0);view.setMinimumWidth(0);view.setMinimumHeight(dp(context,48));view.setMinHeight(dp(context,48));view.setAllCaps(false);
+        view.setPadding(dp(context,12),dp(context,6),dp(context,12),dp(context,6));view.setMinWidth(0);view.setMinimumWidth(0);view.setMinimumHeight(dp(context,48));view.setMinHeight(dp(context,48));view.setAllCaps(false);view.setMaxLines(2);view.setEllipsize(android.text.TextUtils.TruncateAt.END);
     }
     static void icon(Button button,String name,boolean selected){
         Symbol icon=new Symbol(name,name.equals("play")?0xff102a35:selected?(name.equals("heart")?HEART:name.equals("star")?0xffe7c567:name.equals("ban")?0xffef8b87:ACCENT):0xffddddE5,selected);

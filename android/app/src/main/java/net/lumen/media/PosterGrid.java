@@ -8,7 +8,7 @@ import android.view.ViewGroup;
 final class PosterGrid extends ViewGroup {
     private final int gap;
     private int columns=2;
-    PosterGrid(Context context){super(context);gap=MediaStyle.dp(context,12);}
+    PosterGrid(Context context){super(context);gap=MediaStyle.dp(context,MediaStyle.PAGE);}
     @Override protected void onMeasure(int ws,int hs){
         int width=MeasureSpec.getSize(ws),available=Math.max(0,width-getPaddingLeft()-getPaddingRight());
         columns=Math.max(2,Math.min(5,available/MediaStyle.dp(getContext(),165)));
