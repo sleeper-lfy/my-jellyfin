@@ -11,16 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Collect bounded redacted failure evidence
+      - name: Show repository test IDs and fixed exception categories only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp scripts/release-diagnostics-request.json scripts/ci-inspect.json
-          python scripts/inspect-ci.py
-      - name: Show bounded redacted evidence
-        run: |
-          echo '### Release failure evidence' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Structured release test diagnostics' >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          head -c 60000 target/ci-inspection.json >> "$GITHUB_STEP_SUMMARY"
-          echo >> "$GITHUB_STEP_SUMMARY"
+          python scripts/release-test-diagnostics.py >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
