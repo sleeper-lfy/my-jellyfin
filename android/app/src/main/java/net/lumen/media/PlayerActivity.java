@@ -36,6 +36,10 @@ public final class PlayerActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final AtomicBoolean pendingTick=new AtomicBoolean(false);
     private Api api;
+    private boolean externalPlayback=false,externalLoading=false,externalResumed=false,externalPlayWhenResumed=false;
+    private ExternalVideoSource externalSource;
+    private android.os.CancellationSignal externalResolution;
+    private ExternalVideoSource.OpenedMedia externalMedia;
     private MediaPlayer player;
     private boolean playerGlRendering=false;
     private LibVLC vlc;
@@ -53,7 +57,7 @@ public final class PlayerActivity extends Activity {
     private float controlFont=-1;
     private LinearLayout personalRow,quickRow,portraitInfo,bottomActions,timelineRow;
     private View quickSpacer;
-    private TextView portraitTitle,portraitMeta,speedHint,portraitHoldHint;
+    private TextView portraitTitle,portraitMeta,portraitHoldHint;
     private Button topBookmark,railBookmark,railMore,rotate;
     private final HoldSpeed holdSpeed=new HoldSpeed();
     private final Runnable beginHoldSpeed=this::beginTemporarySpeed;
@@ -61,12 +65,12 @@ public final class PlayerActivity extends Activity {
         if(player==null||!player.isPlaying()||this.buffering||vrEnabled||this.swipeCancelled||this.swipeSeeking||this.dragging||this.playbackDialogs>0)return;
         final MediaPlayer decoder=player;
         if(holdSpeed.begin(new HoldSpeed.Decoder(){public float rate(){return decoder.getRate();}public boolean rate(float value){decoder.setRate(value);return Math.abs(decoder.getRate()-value)<.05f;}})){
-            holdActivated=true;holdControlsVisible=controlsVisible;showControls(false);speedHint.setText(PlaybackPolicy.speedLabel(holdSpeed.temporary())+"× 倍速播放中\n松手恢复 "+PlaybackPolicy.speedLabel(holdSpeed.original())+"×");speedHint.setVisibility(View.VISIBLE);
+            holdActivated=true;holdControlsVisible=controlsVisible;showControls(false);
         }
     }
 
     private PlayerController controller;
-    private Button projection,eyeMode,quickSpeed;
+    private Button projection,eyeMode,quickSpeed,quickFiles;
     private PlaybackIconButton centerPause,noticePause;
     private TextView gestureHint;
     private boolean vrSwipeSeek=true,swipeSeeking=false,swipeCancelled=false;
@@ -112,12 +116,13 @@ public final class PlayerActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        Connection connection=Connection.load(this);
-        if(connection==null){finish();return;}api=new Api(connection);
+        externalPlayback=android.content.Intent.ACTION_VIEW.equals(getIntent().getAction());
+        if(!externalPlayback){Connection connection=Connection.load(this);if(connection==null){finish();return;}api=new Api(connection);}
         android.content.SharedPreferences prefs=getSharedPreferences("playback",0);
         vrFish=prefs.getBoolean("vr_fish",false);vrHeadset=prefs.getBoolean("vr_headset",false);
         vrSwap=prefs.getBoolean("vr_swap",false);vrTracking=prefs.getBoolean("vr_tracking",true);
         orientationMode=prefs.getInt("orientation",0);vrSwipeSeek=prefs.getBoolean("vr_swipe_seek",true);
+        if(externalPlayback){decoderMode=PlaybackDecoderPolicy.load(prefs);software=decoderMode==PlaybackDecoderPolicy.SOFTWARE;resumeMs=state==null?0:Math.max(0,state.getLong("external_position",0));}
         buildPlayerUi(prefs);
         controller=new PlayerController(this,new PlayerController.Host(){
             public void action(ControllerBindings.Action action){performAction(action);}
@@ -129,9 +134,25 @@ public final class PlayerActivity extends Activity {
             .setOnAudioFocusChangeListener(change->{if(change<0 && player!=null){cancelHoldSpeed();player.pause();tick(false,false);showControls(true);}},handler).build();
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         setPlayerImmersive(true);applyOrientation();
-        queueMode=getIntent().getBooleanExtra("queue",false);browsePosition=getIntent().getIntExtra("browse_position",-1);
-        desiredWork=getIntent().getLongExtra("work_id",0);desiredFile=getIntent().getLongExtra("file_id",0);
+        if(externalPlayback){title.setText("正在读取外部视频…");loadExternalSource();}
+        else {queueMode=getIntent().getBooleanExtra("queue",false);browsePosition=getIntent().getIntExtra("browse_position",-1);desiredWork=getIntent().getLongExtra("work_id",0);desiredFile=getIntent().getLongExtra("file_id",0);}
     }
+    private void loadExternalSource(){
+        if(!externalPlayback||externalSource!=null||externalLoading||isDestroyed())return;
+        externalLoading=true;final android.os.CancellationSignal cancellation=new android.os.CancellationSignal();externalResolution=cancellation;final android.content.Intent sourceIntent=new android.content.Intent(getIntent());setPlaybackNotice("正在读取外部视频…",Notice.LOADING);
+        network.execute(()->{
+            try{ExternalVideoSource source=ExternalVideoSource.from(this,sourceIntent,cancellation);runOnUiThread(()->{
+                // Metadata belongs to the URI resolution, not a decoder/render generation.
+                // Decoder or VR choices made while a provider is slow remain applicable.
+                if(isDestroyed()||externalResolution!=cancellation){source.close();return;}
+                if(cancellation.isCanceled()){externalLoading=false;externalResolution=null;source.close();return;}
+                externalLoading=false;externalResolution=null;externalSource=source;title.setText(source.title());refreshPersonal();updatePortraitInfo();if(started)startPlayback();
+            });}catch(Exception failure){runOnUiThread(()->{if(!isDestroyed()&&externalResolution==cancellation){externalLoading=false;externalResolution=null;error(failure);}});}
+        });
+    }
+    private void closeExternalSource(){externalLoading=false;if(externalResolution!=null){externalResolution.cancel();externalResolution=null;}if(externalSource!=null){externalSource.close();externalSource=null;}}
+    private boolean libraryAction(String name){return name.equals("自动播放下一集")||name.equals("选集 / 文件")||name.equals("时间点书签")||name.equals("我的评价")||name.equals("播放队列")||name.equals("上个视频")||name.equals("下个视频");}
+    private boolean requireLibrary(String feature){if(!externalPlayback)return true;com.google.android.material.snackbar.Snackbar.make(root,"外部视频独立播放，"+feature+"仅适用于媒体库影片",com.google.android.material.snackbar.Snackbar.LENGTH_LONG).setBackgroundTint(NativeActionTokens.surfaceContainerHigh(true)).setTextColor(NativeActionTokens.onSurface(true)).show();return false;}
     private AlertDialog showDialog(AlertDialog.Builder builder){AlertDialog dialog=builder.show();MediaStyle.dialogActions(dialog);return dialog;}
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private TextView label(String text,float size){
@@ -210,10 +231,10 @@ public final class PlayerActivity extends Activity {
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar bar){cancelHoldSpeed();dragging=true;handler.removeCallbacks(hideControls);}public void onProgressChanged(SeekBar bar,int value,boolean user){if(user)time.setText("跳转到 "+clock(durationMs()*value/10000)+" / "+clock(durationMs()));}public void onStopTrackingTouch(SeekBar bar){dragging=false;seekTo(durationMs()*bar.getProgress()/10000);scheduleHide();}});
         bottomActions=new LinearLayout(this);bottomActions.setGravity(Gravity.CENTER_VERTICAL);bottomActions.addView(playbackRow,new LinearLayout.LayoutParams(-2,dp(56)));quickSpacer=new View(this);bottomActions.addView(quickSpacer,new LinearLayout.LayoutParams(0,1,1));
         quickRow=new LinearLayout(this);quickRow.setGravity(Gravity.CENTER);quickRow.setTag("playerQuickActions");
-        addQuickAction("音轨","audio",()->tracks(false));addQuickAction("字幕","subtitle",this::subtitleOptions);quickSpeed=addQuickAction("倍速",null,this::speedSettings);refreshQuickSpeed();addQuickAction("选集","files",this::chooseFile);bottomActions.addView(quickRow,new LinearLayout.LayoutParams(0,-2,1));bottomBar.addView(bottomActions);
+        addQuickAction("音轨","audio",()->tracks(false));addQuickAction("字幕","subtitle",this::subtitleOptions);quickSpeed=addQuickAction("倍速",null,this::speedSettings);refreshQuickSpeed();quickFiles=addQuickAction("选集","files",this::chooseFile);bottomActions.addView(quickRow,new LinearLayout.LayoutParams(0,-2,1));bottomBar.addView(bottomActions);
         status=label("",NativeActionTokens.labelMediumSp());status.setTag("playbackStatus");status.setMaxLines(2);status.setEllipsize(TextUtils.TruncateAt.END);status.setGravity(Gravity.CENTER_VERTICAL);status.setPadding(dp(12),dp(8),dp(12),dp(8));status.setBackground(MediaStyle.surface(this,NativeActionTokens.surfaceContainerHigh(true),0,8));status.setOnClickListener(v->showDialog(new AlertDialog.Builder(this).setTitle("播放状态").setMessage(status.getText()).setPositiveButton("关闭",null)));status.setContentDescription("播放状态，点击查看完整信息");status.setVisibility(View.GONE);bottomBar.addView(status);overlay.addView(bottomBar,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
         gestureHint=label("",17);gestureHint.setGravity(Gravity.CENTER);gestureHint.setPadding(dp(16),dp(12),dp(16),dp(12));gestureHint.setBackground(MediaStyle.surface(this,NativeActionTokens.surfaceContainerHigh(true),0,14));gestureHint.setVisibility(View.GONE);overlay.addView(gestureHint,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));
-        speedHint=label("",15);speedHint.setGravity(Gravity.CENTER);speedHint.setPadding(dp(18),dp(10),dp(18),dp(10));speedHint.setBackground(MediaStyle.surface(this,NativeActionTokens.surfaceContainerHigh(true),0,22));speedHint.setTextColor(PlayerChrome.accent());speedHint.setVisibility(View.GONE);FrameLayout.LayoutParams hint=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);hint.topMargin=dp(92);overlay.addView(speedHint,hint);refreshPersonal();
+        refreshPersonal();
         setContentView(root);
         if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
         else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
@@ -240,13 +261,14 @@ public final class PlayerActivity extends Activity {
         });
         root.requestApplyInsets();
     }
-    private void bookmarkMenu(){playerOptions("时间点书签",new String[]{"添加当前时间点","查看 / 跳转书签"},new Runnable[]{this::addBookmark,this::showBookmarks});}
+    private void bookmarkMenu(){if(!requireLibrary("时间点书签"))return;playerOptions("时间点书签",new String[]{"添加当前时间点","查看 / 跳转书签"},new Runnable[]{this::addBookmark,this::showBookmarks});}
     private void chooseFile(){
+        if(!requireLibrary("选集 / 文件"))return;
         if(work==null)return;JSONArray files=work.optJSONArray("files");if(files==null||files.length()==0)return;String[] names=new String[files.length()];for(int i=0;i<names.length;i++)names[i]=files.optJSONObject(i).optString("name","视频 "+(i+1));
         showDialog(new AlertDialog.Builder(this).setTitle("选集 / 文件").setItems(names,(d,i)->load(work.optLong("id"),files.optJSONObject(i).optLong("id"))).setNegativeButton("取消",null));
     }
     private void videoTap(){showControls(!controlsVisible);}
-    private void cancelHoldSpeed(){handler.removeCallbacks(beginHoldSpeed);boolean wasActive=holdSpeed.active();boolean restored=holdSpeed.end();if(speedHint!=null)speedHint.setVisibility(View.GONE);if(wasActive){showControls(holdControlsVisible);if(!restored&&status!=null)setPlaybackNotice("恢复原速失败，请重新选择播放速度",Notice.WARNING);}}
+    private void cancelHoldSpeed(){handler.removeCallbacks(beginHoldSpeed);boolean wasActive=holdSpeed.active();boolean restored=holdSpeed.end();if(wasActive){showControls(holdControlsVisible);if(!restored&&status!=null)setPlaybackNotice("恢复原速失败，请重新选择播放速度",Notice.WARNING);}}
     private void arrangePlayerControls(int width,int height){
         if(overlay==null||bottomBar==null||personalRow==null||timelineRow==null)return;
         int w=Math.max(1,width-overlay.getPaddingLeft()-overlay.getPaddingRight()),h=Math.max(1,height-overlay.getPaddingTop()-overlay.getPaddingBottom());float font=getResources().getConfiguration().fontScale;boolean portrait=h>w&&!vrEnabled;
@@ -284,7 +306,9 @@ public final class PlayerActivity extends Activity {
         for(int i=0;i<personalRow.getChildCount();i++){Button action=(Button)personalRow.getChildAt(i);PlayerChrome.quiet(action,symbols[i],true);action.setTextSize(NativeActionTokens.labelSmallSp());action.setMinHeight(dp(large?72:64));action.setMinimumHeight(dp(large?72:64));action.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(large?72:64)));}
     }
     private void updatePortraitInfo(){
-        if(work==null||portraitTitle==null)return;portraitTitle.setText(work.optString("title"));
+        if(portraitTitle==null)return;
+        if(externalPlayback){portraitTitle.setText(externalSource==null?"外部视频":externalSource.title());portraitMeta.setText("外部视频 · "+(externalSource!=null&&externalSource.isNetwork()?"网络直连播放":"本机独立播放"));return;}
+        if(work==null)return;portraitTitle.setText(work.optString("title"));
         String kind=work.optString("kind"),category=kind.equals("series")?"剧集":kind.equals("vr")?"VR":kind.equals("fans")?"Fans 视频":kind.equals("other")?"其他视频":kind.equals("music")?"音乐":kind.equals("movie")?"电影":"视频";
         StringBuilder metadata=new StringBuilder(category);int year=work.optInt("year");if(year>0)metadata.append(" · ").append(year);
         if(file!=null){int pixelHeight=file.optInt("height");if(pixelHeight>0)metadata.append(" · ").append(pixelHeight).append('P');long bytes=file.optLong("size");if(bytes>0)metadata.append(String.format(java.util.Locale.ROOT," · %.1f GB",bytes/1073741824.0));if(kind.equals("series"))metadata.append(" · S").append(file.optInt("season")).append(" E").append(file.optInt("episode"));}
@@ -343,6 +367,7 @@ public final class PlayerActivity extends Activity {
     }
     private void refreshPersonal(){
         if(personalRating==null)return;
+        if(externalPlayback){for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked,railBookmark,topBookmark,quickFiles,previousVideo,nextVideo})if(control!=null){control.setEnabled(false);control.setContentDescription("仅媒体库影片可用");}stylePlayerPersonal();updatePortraitInfo();return;}
         boolean available=work!=null&&file!=null;
         boolean enabled=available&&!personalPending.contains(work.optLong("id"));
         for(Button control:new Button[]{personalRating,personalFavorite,personalDisliked})if(control!=null)control.setEnabled(enabled);
@@ -354,10 +379,12 @@ public final class PlayerActivity extends Activity {
         personalFavorite.setContentDescription(work.optInt("favorite")==1?"取消喜欢 / 收藏":"喜欢 / 收藏");stylePlayerPersonal();updatePortraitInfo();
     }
     private void togglePersonal(String field){
+        if(!requireLibrary("我的评价"))return;
         if(work==null||file==null)return;
         try{savePersonal(work,new JSONObject().put(field,work.optInt(field)!=1));}catch(Exception e){error(e);}
     }
     private void savePersonal(JSONObject target,JSONObject fields){
+        if(!requireLibrary("我的评价"))return;
         long id=target.optLong("id");if(personalPending.contains(id))return;
         personalPending.add(id);refreshPersonal();handler.removeCallbacks(hideControls);
         Api client=api;
@@ -378,6 +405,7 @@ public final class PlayerActivity extends Activity {
         });
     }
     private void choosePersonalRating(){
+        if(!requireLibrary("我的评分"))return;
         if(work==null||file==null)return;
         JSONObject target=work;String[] labels=new String[11];labels[0]="清除评分";for(int i=1;i<=10;i++)labels[i]=i+" 分";
         personalDialogOpen=true;handler.removeCallbacks(hideControls);
@@ -391,6 +419,7 @@ public final class PlayerActivity extends Activity {
         switch(name){case "音轨":return "audio";case "字幕":return "subtitle";case "播放速度":return "speed";case "自动播放下一集":return "auto";case "选集 / 文件":return "files";case "时间点书签":return "bookmark";case "我的评价":case "评分":return "star";case "收藏":return "heart";case "不喜欢":return "ban";case "播放队列":return "files";case "VR 设置":return "eyes";case "上个视频":return "previous";case "下个视频":return "next";default:return "settings";}
     }
     private String settingSummary(String name){
+        if(externalPlayback&&libraryAction(name))return "仅媒体库";
         switch(name){case "音轨":return "默认";case "字幕":return player!=null&&player.getSpuTrack()>=0?"已开启":"关闭";case "播放速度":return PlaybackPolicy.speedLabel(getSharedPreferences("player",0).getFloat("speed",1))+"×";case "自动播放下一集":return getSharedPreferences("player",0).getBoolean("auto_next",true)?"已开启":"关闭";case "实时美颜":return beauty.enabled&&!beautyUnavailable?"已开启":"关闭";case "选集 / 文件":return work!=null&&work.optJSONArray("files")!=null?work.optJSONArray("files").length()+" 个文件":"";case "评分":return work!=null&&!work.isNull("rating")?work.optInt("rating")+" 分":"未评分";case "收藏":return work!=null&&work.optInt("favorite")==1?"已收藏":"";case "不喜欢":return work!=null&&work.optInt("disliked")==1?"已标记":"";case "VR 设置":return vrEnabled?vrHeadset?"双眼":"单眼":"关闭";default:return "";}
     }
     private void addSettingGroup(LinearLayout page,LinearLayout card){LinearLayout.LayoutParams group=new LinearLayout.LayoutParams(-1,-2);if(page.getChildCount()>0)group.topMargin=dp(16);page.addView(card,group);}
@@ -418,6 +447,7 @@ public final class PlayerActivity extends Activity {
     }
     private void renderSettingsTab(LinearLayout page,AlertDialog dialog,int tab){
         page.removeAllViews();String[] names;Runnable[] actions;
+        if(externalPlayback&&tab==0){TextView scope=label("外部视频独立播放；评分、书签、选集和队列等操作仅适用于媒体库影片。",NativeActionTokens.bodyMediumSp());scope.setTextColor(PlayerChrome.muted());scope.setPadding(0,0,0,dp(8));page.addView(scope);}
         if(tab==1){names=new String[]{"屏幕方向","VR 设置","实时美颜","切换全屏"};actions=new Runnable[]{this::orientationSettings,this::vrSettings,this::beautySettings,()->setPlayerImmersive(!immersive)};}
         else if(tab==2){names=new String[]{"解码模式","播放诊断","蓝牙 / 手柄映射"};actions=new Runnable[]{this::decoder,this::diagnostics,()->{if(controller!=null)controller.settings();}};}
         else {names=new String[]{"音轨","字幕","播放速度","自动播放下一集","选集 / 文件","时间点书签","我的评价","播放队列","上个视频","下个视频"};actions=new Runnable[]{()->tracks(false),this::subtitleOptions,this::speedSettings,this::autoNextSettings,this::chooseFile,this::bookmarkMenu,()->playerOptions("我的评价",new String[]{"评分","收藏","不喜欢"},new Runnable[]{this::choosePersonalRating,()->togglePersonal("favorite"),()->togglePersonal("disliked")}),this::showPlayerQueue,()->stepVideo(-1),()->stepVideo(1)};}
@@ -425,14 +455,16 @@ public final class PlayerActivity extends Activity {
         for(int i=0;i<names.length;i++){
             if(names[i].equals("自动播放下一集")){
                 final com.google.android.material.materialswitch.MaterialSwitch[] toggle={null};Button choice=button(names[i],()->toggle[0].setChecked(!toggle[0].isChecked()));
-                toggle[0]=PlayerChrome.toggleRow(card,choice,getSharedPreferences("player",0).getBoolean("auto_next",true),enabled->getSharedPreferences("player",0).edit().putBoolean("auto_next",enabled).apply());continue;
+                toggle[0]=PlayerChrome.toggleRow(card,choice,getSharedPreferences("player",0).getBoolean("auto_next",true),enabled->getSharedPreferences("player",0).edit().putBoolean("auto_next",enabled).apply());if(externalPlayback){choice.setEnabled(false);toggle[0].setEnabled(false);choice.setContentDescription("自动播放下一集，仅媒体库可用");toggle[0].setContentDescription("自动播放下一集，仅媒体库可用");}continue;
             }
             if(tab==0&&(i==4||i==8)){card=PlayerChrome.card(this);addSettingGroup(page,card);}Runnable action=actions[i];Button choice=button(names[i],()->{dialog.dismiss();action.run();});
             if(names[i].equals("上个视频")||names[i].equals("下个视频"))choice.setEnabled(!navigationPending&&work!=null&&file!=null);
+            if(externalPlayback&&libraryAction(names[i])){choice.setEnabled(false);choice.setContentDescription(names[i]+"，仅媒体库可用");}
             PlayerChrome.row(card,choice,settingSymbol(names[i]),settingSummary(names[i]),true);if(names[i].equals("实时美颜")){beautyControl=choice;refreshBeauty();}
         }
     }
     private void showPlayerQueue(){
+        if(!requireLibrary("手机播放队列"))return;
         JSONArray ids;try{ids=new JSONArray(getSharedPreferences("queue",0).getString("ids","[]"));}catch(Exception ignored){ids=new JSONArray();}
         if(ids.length()==0){showDialog(new AlertDialog.Builder(this).setTitle("手机播放队列").setMessage("当前没有手机队列，可从媒体库列表操作中生成随机队列。").setPositiveButton("关闭",null));return;}
         final JSONArray queue=ids;StringBuilder query=new StringBuilder();for(int i=0;i<ids.length();i++){if(i>0)query.append(',');query.append(ids.optLong(i));}
@@ -486,8 +518,8 @@ public final class PlayerActivity extends Activity {
     private void performAction(ControllerBindings.Action action){
         cancelHoldSpeed();
         switch(action){
-            case TOGGLE:if(player!=null){if(player.isPlaying())player.pause();else if(focus())player.play();tick(false,false);updateProgress();}break;
-            case PLAY:if(player!=null&&focus())player.play();break;
+            case TOGGLE:if(externalPlayback&&player==null){startPlayback();break;}if(player!=null){if(player.isPlaying())player.pause();else if(focus())player.play();tick(false,false);updateProgress();}break;
+            case PLAY:if(externalPlayback&&player==null){startPlayback();break;}if(player!=null&&focus())player.play();break;
             case PAUSE:if(player!=null){player.pause();tick(false,false);updateProgress();}break;
             case FORWARD:if(player!=null)seekTo(PlaybackPolicy.seek(positionMs(),durationMs(),10000));break;
             case BACKWARD:if(player!=null)seekTo(PlaybackPolicy.seek(positionMs(),durationMs(),-10000));break;
@@ -524,6 +556,7 @@ public final class PlayerActivity extends Activity {
         runOnUiThread(()->{if(!isDestroyed()){setPlaybackNotice("无法播放："+exception.getMessage(),Notice.ERROR);showDialog(new AlertDialog.Builder(this).setTitle("播放失败").setMessage(exception.getMessage()).setPositiveButton("返回",(d,w)->finish()).setNegativeButton("关闭",null));}});
     }
     private void load(long workId,long fileId) {
+        if(!requireLibrary("媒体库载入"))return;
         flushPreferences();
         pauseAfterStyleChange=false;
         desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;refreshPersonal();decoderMode=PlaybackDecoderPolicy.load(getSharedPreferences("playback",0));software=decoderMode==PlaybackDecoderPolicy.SOFTWARE;
@@ -548,11 +581,11 @@ public final class PlayerActivity extends Activity {
         });
     }
     private void startPlayback() {
-        if(player!=null||file==null||!started||(usesGlVideo()&&vrVideo.videoTexture()==null))return;
+        if(player!=null||(!externalPlayback&&file==null)||(externalPlayback&&externalSource==null)||!started||(usesGlVideo()&&vrVideo.videoTexture()==null))return;
         ending=false;sequence=0;seekGuard=2;session=null;
         ready=false;buffering=true;lastPosition=resumeMs;setPlaybackNotice("正在连接视频…",Notice.LOADING);measurements=new PlaybackMeasurements();measurements.buffering(true,android.os.SystemClock.elapsedRealtime());
         try {
-            bridge=new PlaybackBridge(api.connection.base,api.connection.token,file.optLong("id"));
+            if(!externalPlayback)bridge=new PlaybackBridge(api.connection.base,api.connection.token,file.optLong("id"));
             ArrayList<String> options=new ArrayList<>();options.add("--network-caching=1500");
             options.addAll(SubtitleAppearance.options(dp(filePreferences.optInt("subtitle_size",22)),
                 (root.getHeight()>0?root.getHeight():getResources().getDisplayMetrics().heightPixels)*(100-filePreferences.optInt("subtitle_position",90))/100));
@@ -564,7 +597,23 @@ public final class PlayerActivity extends Activity {
                 player.getVLCVout().setWindowSize(1920,1080);
                 player.getVLCVout().attachViews();
             }else {playerGlRendering=false;player.attachViews(video,null,true,false);player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);}
-            Media media=new Media(vlc,Uri.parse(bridge.url(file.optString("stream"))));
+            if(externalPlayback){openExternalMedia(player,vlc);return;}
+            finishStartPlayback(new Media(vlc,Uri.parse(bridge.url(file.optString("stream")))),false);
+        }catch(Exception exception){stopPlayback(false);error(exception);}
+    }
+    private void openExternalMedia(MediaPlayer decoder,LibVLC decoderVlc){
+        final int ticket=generation;final ExternalVideoSource source=externalSource;
+        if(!decoderVlc.retain())throw new IllegalStateException("播放器已关闭");
+        try{network.execute(()->{
+            if(ticket!=generation||isDestroyed()){decoderVlc.release();return;}
+            try{ExternalVideoSource.OpenedMedia opened=source.openMedia(decoderVlc);runOnUiThread(()->{
+                try{if(isDestroyed()||ticket!=generation||player!=decoder||!started){opened.close();return;}externalMedia=opened;finishStartPlayback(opened.media,true);}
+                finally{decoderVlc.release();}
+            });}catch(Exception failure){runOnUiThread(()->{try{if(!isDestroyed()&&ticket==generation&&player==decoder){stopPlayback(false);error(failure);}}finally{decoderVlc.release();}});}
+        });}catch(RuntimeException failure){decoderVlc.release();throw failure;}
+    }
+    private void finishStartPlayback(Media media,boolean sourceOwnsMedia){
+        try{
             if(software)media.setHWDecoderEnabled(false,false);
             else if(decoderMode==PlaybackDecoderPolicy.MEDIACODEC_JNI){
                 // Alternate Android MediaCodec API; retain software fallback for unsupported streams.
@@ -572,7 +621,7 @@ public final class PlayerActivity extends Activity {
                 media.addOption(":network-caching=1500");
             }else media.setHWDecoderEnabled(true,false);
             media.addOption(":start-time="+(resumeMs/1000.0));
-            player.setMedia(media);media.release();
+            player.setMedia(media);if(!sourceOwnsMedia)media.release();
             final MediaPlayer current=player;
             player.setEventListener(event->{
                 if(player!=current||!started)return;
@@ -584,7 +633,7 @@ public final class PlayerActivity extends Activity {
                     buffering=false;measurements.buffering(false,android.os.SystemClock.elapsedRealtime());
                     if(!ready){
                         ready=true;
-                        for(int i=0;i<subtitles.length();i++)current.addSlave(Media.Slave.Type.Subtitle,Uri.parse(bridge.url(subtitles.optJSONObject(i).optString("url"))),i==0);
+                        for(int i=0;!externalPlayback&&i<subtitles.length();i++)current.addSlave(Media.Slave.Type.Subtitle,Uri.parse(bridge.url(subtitles.optJSONObject(i).optString("url"))),i==0);
                     }
                     if(usesGlVideo()){
                         org.videolan.libvlc.interfaces.IMedia.VideoTrack track=current.getCurrentVideoTrack();
@@ -608,7 +657,7 @@ public final class PlayerActivity extends Activity {
                 updateProgress();
             });
         }catch(Exception exception){stopPlayback(false);error(exception);return;}
-        final int ticket=generation;final long fileId=file.optLong("id");final double initial=resumeMs/1000.0;
+        if(!externalPlayback){final int ticket=generation;final long fileId=file.optLong("id");final double initial=resumeMs/1000.0;
         network.execute(()->{
             try {
                 String id=api.post("/api/playback/start",new JSONObject().put("file_id",fileId)).getString("session_id");
@@ -619,9 +668,13 @@ public final class PlayerActivity extends Activity {
                 });
             } catch(Exception exception){runOnUiThread(()->{if(!isDestroyed())setPlaybackNotice("视频可播放，观看记录暂未连接："+exception.getMessage(),Notice.WARNING);});}
         });
-        if(focus())player.play();handler.removeCallbacks(heartbeat);handler.postDelayed(heartbeat,1000);
+        }
+        if(externalPlayback&&!externalResumed){externalPlayWhenResumed=true;return;}
+        beginDecoderPlayback();
     }
+    private void beginDecoderPlayback(){if(player==null)return;if(focus())player.play();handler.removeCallbacks(heartbeat);handler.postDelayed(heartbeat,1000);}
     private void tick(boolean stop,boolean completed) {
+        if(externalPlayback)return;
         if(player==null||session==null)return;
         if(!stop&&!pendingTick.compareAndSet(false,true))return;
         String id=session;double position=positionMs()/1000.0;
@@ -647,13 +700,14 @@ public final class PlayerActivity extends Activity {
             if(playerGlRendering)player.getVLCVout().detachViews();else player.detachViews();
             player.release();player=null;
         }
+        if(externalMedia!=null){externalMedia.close();externalMedia=null;}
         if(bridge!=null){bridge.close();bridge=null;}
         if(vlc!=null){vlc.release();vlc=null;}
         if(audio!=null)audio.abandonAudioFocusRequest(audioFocus);
     }
     private boolean focus(){return audio.requestAudioFocus(audioFocus)==android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED;}
     private long positionMs(){if(!ready)return resumeMs;long value=player.getTime();return value>=0?value:lastPosition;}
-    private long durationMs(){return player==null?0:Math.max(player.getLength(),(long)(file.optDouble("duration")*1000));}
+    private long durationMs(){return player==null?0:Math.max(player.getLength(),(file==null?0:(long)(file.optDouble("duration")*1000)));}
     private String clock(long ms){long seconds=Math.max(0,ms/1000);return String.format(java.util.Locale.ROOT,"%d:%02d:%02d",seconds/3600,(seconds/60)%60,seconds%60);}
     private void updateProgress(){
         if(player==null)return;
@@ -759,7 +813,7 @@ public final class PlayerActivity extends Activity {
         beautyControl.setContentDescription(on?"实时美颜，已开启":"实时美颜");
     }
     private void beautySettings(){
-        if(file==null){Toast.makeText(this,"请先打开视频",Toast.LENGTH_SHORT).show();return;}
+        if(file==null&&!externalPlayback){Toast.makeText(this,"请先打开视频",Toast.LENGTH_SHORT).show();return;}
         LinearLayout fields=new LinearLayout(this);fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),dp(8),dp(20),dp(8));
         CheckBox enabled=new CheckBox(this);enabled.setText("开启实时美颜");enabled.setChecked(beauty.enabled);fields.addView(enabled);
         TextView smoothLabel=label("",14),brightLabel=label("",14);
@@ -770,7 +824,7 @@ public final class PlayerActivity extends Activity {
         SeekBar.OnSeekBarChangeListener change=new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar b){}public void onProgressChanged(SeekBar b,int n,boolean user){labels.run();}public void onStopTrackingTouch(SeekBar b){}};
         smoothing.setOnSeekBarChangeListener(change);brighten.setOnSeekBarChangeListener(change);
         fields.addView(smoothLabel);fields.addView(smoothing);fields.addView(brightLabel);fields.addView(brighten);
-        fields.addView(label("按当前视频记忆，不修改原视频。基于肤色估计，不含瘦脸、大眼；卡顿或色彩异常时关闭。普通视频首次开关美颜会切换渲染通道并保留播放位置。",13));
+        fields.addView(label((externalPlayback?"仅本次外部播放生效，不修改原视频。":"按当前视频记忆，不修改原视频。")+"基于肤色估计，不含瘦脸、大眼；卡顿或色彩异常时关闭。普通视频首次开关美颜会切换渲染通道并保留播放位置。",13));
         ScrollView scroll=new ScrollView(this);scroll.addView(fields);
         showDialog(new AlertDialog.Builder(this).setTitle("实时美颜").setView(scroll).setPositiveButton("应用",(dialog,which)->{
             try{
@@ -834,10 +888,12 @@ public final class PlayerActivity extends Activity {
         });
     }
     private void changedPreferences(){
+        if(externalPlayback)return;
         if(file==null)return;preferencesDirty=true;getSharedPreferences("media-preferences",0).edit().putString(preferenceKey(file.optLong("id")),filePreferences.toString()).apply();
         handler.removeCallbacks(persistPreferences);handler.postDelayed(persistPreferences,600);
     }
     private void flushPreferences(){
+        if(externalPlayback){handler.removeCallbacks(persistPreferences);preferencesDirty=false;return;}
         handler.removeCallbacks(persistPreferences);if(!preferencesDirty||file==null||api==null)return;preferencesDirty=false;
         long id=file.optLong("id");final String value;
         try{value=VrPreferencePatch.upload(filePreferences).toString();}catch(Exception error){featureError(error);return;}
@@ -845,12 +901,12 @@ public final class PlayerActivity extends Activity {
     }
     private void featureError(Exception error){runOnUiThread(()->{if(!isDestroyed())Toast.makeText(this,error.getMessage(),Toast.LENGTH_LONG).show();});}
     private void subtitleSettings(){
-        if(file==null)return;LinearLayout fields=new LinearLayout(this);fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),0,dp(20),0);
+        if(file==null&&!externalPlayback)return;LinearLayout fields=new LinearLayout(this);fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),0,dp(20),0);
         EditText delay=new EditText(this),size=new EditText(this),position=new EditText(this);
         fields.addView(label("延后秒数（负数提前，±600 秒）",14));delay.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);delay.setText(String.valueOf(filePreferences.optDouble("subtitle_delay",0)));fields.addView(delay);
         fields.addView(label("字号（12–64）",14));size.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);size.setText(String.valueOf(filePreferences.optInt("subtitle_size",22)));fields.addView(size);
         fields.addView(label("垂直位置（5–95%，数值大更靠下）",14));position.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);position.setText(String.valueOf(filePreferences.optInt("subtitle_position",90)));fields.addView(position);
-        fields.addView(label("按视频记忆。字号和位置应用时重建播放内核并保留位置；ASS 自带样式可能优先。",13));
+        fields.addView(label(externalPlayback?"仅本次外部播放生效，重建内核时保留位置；ASS 自带样式可能优先。":"按视频记忆。字号和位置应用时重建播放内核并保留位置；ASS 自带样式可能优先。",13));
         ScrollView scroll=new ScrollView(this);scroll.addView(fields);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("字幕同步与样式").setView(scroll).setPositiveButton("应用",null).setNegativeButton("取消",null).create();dialog.show();MediaStyle.dialogActions(dialog);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{try{
@@ -862,6 +918,7 @@ public final class PlayerActivity extends Activity {
         }catch(Exception error){featureError(error);}});
     }
     private void addBookmark(){
+        if(!requireLibrary("添加书签"))return;
         if(file==null||player==null)return;long id=file.optLong("id"),moment=positionMs();LinearLayout fields=new LinearLayout(this);fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),0,dp(20),0);
         EditText name=new EditText(this);name.setHint("名称（可留空）");name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(120)});fields.addView(name);
         EditText note=new EditText(this);note.setHint("备注（可留空）");note.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2000)});fields.addView(note);
@@ -871,6 +928,7 @@ public final class PlayerActivity extends Activity {
         }).setNegativeButton("取消",null));
     }
     private void showBookmarks(){
+        if(!requireLibrary("书签"))return;
         if(file==null)return;long id=file.optLong("id");network.execute(()->{try{JSONArray items=api.get("/api/files/"+id+"/bookmarks").getJSONArray("items");runOnUiThread(()->{
             if(isDestroyed()||file==null||file.optLong("id")!=id)return;if(items.length()==0){Toast.makeText(this,"还没有书签，可在播放设置中添加当前时间点",Toast.LENGTH_SHORT).show();return;}String[] names=new String[items.length()];for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);names[i]=clock((long)(item.optDouble("position")*1000))+" · "+item.optString("title")+"\n"+item.optString("note");}
             AlertDialog dialog=new AlertDialog.Builder(this).setTitle("书签：点击跳转，长按删除").setItems(names,(d,index)->seekTo((long)(items.optJSONObject(index).optDouble("position")*1000))).setNegativeButton("关闭",null).create();dialog.show();MediaStyle.dialogActions(dialog);
@@ -890,6 +948,7 @@ public final class PlayerActivity extends Activity {
                 long now=android.os.SystemClock.elapsedRealtime();
                 StringBuilder data=new StringBuilder("内核：LibVLC\n解码策略：").append(PlaybackDecoderPolicy.description(software?PlaybackDecoderPolicy.SOFTWARE:decoderMode))
                     .append("（内核未公开实际硬解状态）\n画面输出：").append(playerGlRendering?"OpenGL（VR / 美颜）":"SurfaceView（普通播放）");
+                if(externalPlayback)data.append("\n来源：其他应用 · 独立播放（不连接媒体库）");
                 org.videolan.libvlc.interfaces.IMedia.VideoTrack track=player.getCurrentVideoTrack();
                 if(track!=null)data.append("\n视频：").append(track.codec).append(" · ").append(track.width).append('×').append(track.height).append(String.format(java.util.Locale.ROOT," · %.2f fps",track.frameRateNum/(double)Math.max(1,track.frameRateDen)));
                 org.videolan.libvlc.interfaces.IMedia.Stats stats=null;
@@ -947,6 +1006,7 @@ public final class PlayerActivity extends Activity {
     }
     private void onPlaybackEnded(){
         stopPlayback(true);
+        if(externalPlayback){renderPlaybackState(false);setPlaybackNotice("外部视频播放结束",Notice.WARNING);return;}
         if(work==null||file==null)return;
         String kind=work.optString("kind");
         if((kind.equals("series")||kind.equals("fans"))&&!getSharedPreferences("player",0).getBoolean("auto_next",true)){showControls(true);return;}
@@ -966,9 +1026,10 @@ public final class PlayerActivity extends Activity {
         if(!automatic)Toast.makeText(this,direction<0?"已经是第一个视频":"已经是最后一个视频",Toast.LENGTH_SHORT).show();return false;
     }
     private void setNavigationPending(boolean value){
-        navigationPending=value;if(previousVideo!=null)previousVideo.setEnabled(!value);if(nextVideo!=null)nextVideo.setEnabled(!value);
+        navigationPending=value;if(previousVideo!=null)previousVideo.setEnabled(!value&&!externalPlayback);if(nextVideo!=null)nextVideo.setEnabled(!value&&!externalPlayback);
     }
     private void stepVideo(int direction){
+        if(!requireLibrary("上下部切换"))return;
         if(navigationPending||work==null||file==null)return;
         if(stepEpisode(direction,true))return;
         if(queueMode){stepQueue(direction,false);return;}
@@ -986,6 +1047,7 @@ public final class PlayerActivity extends Activity {
         }catch(Exception error){runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){setNavigationPending(false);setPlaybackNotice("切换失败："+error.getMessage(),Notice.WARNING);Toast.makeText(this,"无法读取相邻视频，请检查连接后重试",Toast.LENGTH_SHORT).show();}});}});
     }
     private void stepQueue(int direction,boolean automatic){
+        if(!requireLibrary("手机播放队列"))return;
         try{
             android.content.SharedPreferences prefs=getSharedPreferences("queue",0);JSONArray ids=new JSONArray(prefs.getString("ids","[]"));int current=-1;
             for(int i=0;i<ids.length();i++)if(ids.optLong(i)==work.optLong("id")){current=i;break;}
@@ -996,14 +1058,16 @@ public final class PlayerActivity extends Activity {
         }catch(Exception exception){error(exception);}
     }
     private void nextWork(boolean automatic) {
+        if(!requireLibrary("媒体库连续播放"))return;
         if(!queueMode) {
             if(automatic)finish();else Toast.makeText(this,"请从媒体库菜单创建随机队列",Toast.LENGTH_SHORT).show();return;
         }
         stepQueue(1,automatic);
     }
-    @Override protected void onStart(){super.onStart();started=true;if(controller!=null)controller.active(true);if(usesGlVideo()&&vrVideo!=null)vrVideo.onResume();if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
-    @Override protected void onPause(){cancelHoldSpeed();if(controller!=null)controller.active(false);if(player!=null){player.pause();tick(false,false);}super.onPause();}
-    @Override protected void onResume(){super.onResume();if(controller!=null)controller.active(true);if(root!=null){setPlayerImmersive(immersive);showControls(true);}}
-    @Override protected void onStop(){flushPreferences();started=false;generation++;setNavigationPending(false);stopPlayback(false);if(usesGlVideo()&&vrVideo!=null)vrVideo.onPause();super.onStop();}
-    @Override protected void onDestroy(){if(controller!=null)controller.release();handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
+    @Override protected void onStart(){super.onStart();started=true;if(controller!=null)controller.active(true);if(usesGlVideo()&&vrVideo!=null)vrVideo.onResume();if(externalPlayback){if(externalSource!=null)startPlayback();else loadExternalSource();}else if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
+    @Override protected void onPause(){if(externalPlayback)externalResumed=false;cancelHoldSpeed();if(controller!=null)controller.active(false);if(player!=null){player.pause();tick(false,false);}super.onPause();}
+    @Override protected void onResume(){super.onResume();if(externalPlayback){externalResumed=true;if(externalPlayWhenResumed&&player!=null){externalPlayWhenResumed=false;beginDecoderPlayback();}}if(controller!=null)controller.active(true);if(root!=null){setPlayerImmersive(immersive);showControls(true);}}
+    @Override protected void onStop(){flushPreferences();started=false;generation++;if(externalPlayback){externalLoading=false;externalPlayWhenResumed=false;}setNavigationPending(false);stopPlayback(false);if(externalPlayback)closeExternalSource();if(usesGlVideo()&&vrVideo!=null)vrVideo.onPause();super.onStop();}
+    @Override protected void onSaveInstanceState(Bundle state){if(externalPlayback)state.putLong("external_position",player==null?resumeMs:positionMs());super.onSaveInstanceState(state);}
+    @Override protected void onDestroy(){if(externalPlayback){generation++;externalLoading=false;if(player!=null)stopPlayback(false);}if(externalPlayback)closeExternalSource();if(controller!=null)controller.release();handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
 }

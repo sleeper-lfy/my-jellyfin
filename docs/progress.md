@@ -737,3 +737,14 @@ Windows 全量 **839 项测试通过，零失败／错误／跳过**，同一安
 [完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42952232966)全部成功，源码 `b906f0a33dc87f5bbccef9aeae7e6383d6dd0c89`，标签 `v0.4.19-preview.1`。Windows **839 项测试通过，零失败／错误／跳过**，同一安装包完成安装、启动、mpv、插件 worker 和卸载验收；Android **226 项测试、lint、持久签名、版本与 ZIP 对齐检查通过**。六个公开附件已完整下载，大小、SHA-256、GitHub 附件摘要与源码绑定一致；下载后的 APK 再次验证原证书、0.4.19／versionCode 36 和 ZIP 对齐，EXE PE 头检查通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.19-preview.1) · [公开验证](validation/preview-0.4.19-1.json)。
 
 README 顶部与下载章节已更新。Android 本轮完成已确认的 Bilibili 风格页面重排、紧凑操作、全局随机入口恢复，以及队列快照、头像身份和可见错误反馈修复，保留海报／续播图片规则、接口、个人状态与播放内核行为；Windows 包同步版本。实际截图、226 项自动测试和安装／签名检查不替代小米 15 的 4K 持续播放及拖动实测。
+
+
+## Android 源码修复，暂不打包发布（2026-11-11）
+
+修复系统为浅色时进入发现页导致界面变白：生产 Compose Host 沿用应用深色主题，初次进入、详情返回和配置变化共用深色系统栏策略，不改变设备主题或独立的浅色组件预览。真实 MainActivity 入口回归覆盖筛选抽屉、原生页面返回和 Activity 重建；实际绘制截图见 [发现页](screenshots/android-fixes-unreleased/app-daymode-discovery-dark.png)、[筛选抽屉](screenshots/android-fixes-unreleased/app-daymode-discovery-sheet-dark.png)、[重建后](screenshots/android-fixes-unreleased/app-daymode-discovery-recreated-dark.png)。截图使用虚构资料。
+
+取消长按临时倍速时的动态文字浮层，保留 400ms 触发、临时 2×、松手恢复原速及取消／暂停／失焦恢复。新增系统“打开方式”视频入口，支持其他应用授予读取权限的 content／file 视频和 HTTP／HTTPS 视频链接；独立播放无需连接媒体库。只转发当前视频的只读 URI，保留提供方文件偏移和长度，后台读取可取消，停止播放后关闭媒体及文件句柄。外部视频继续使用现有播放内核和可用的播放设置，媒体库专属操作禁用，不写入队列、观看记录或个人状态。
+
+最终执行 `python scripts/build-android-cloud.py :app:testDebugUnitTest :app:lintDebug`：**247 项测试全部通过，零失败／错误／跳过；lint 零错误、87 项警告**。新增 21 项覆盖真实主题入口、长按手势、系统 Intent 解析／只读授权／文件句柄，以及外部播放的后台读取与生命周期；保留原有回归。Lint 包括通用视频链接未声明 App Links 验证，以及跨方法句柄所有权无法被静态分析识别的提示，资源关闭另有测试覆盖。[验证记录](validation/android-fixes-unreleased.json)。
+
+遵照用户最新要求，本次只提交和推送源码，提交使用 `[skip ci]`，不生成 APK、不创建标签、不发布 Release；版本保持 **0.4.19／versionCode 36**，下载入口仍指向此前版本。外部应用的实际兼容性和小米 15 的 HEVC 4K 流畅度未作为真机验收通过。

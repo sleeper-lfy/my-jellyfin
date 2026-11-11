@@ -1,0 +1,5 @@
+<resources>
+    <string name="external_video_error_title">无法打开视频</string>
+    <string name="external_video_close">关闭</string>
+    <string name="external_video_title">外部视频</string>
+</resources>

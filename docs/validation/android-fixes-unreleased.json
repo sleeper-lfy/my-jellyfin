@@ -1,0 +1,80 @@
+{
+  "status": "source_changes_verified_unreleased",
+  "verified_at": "2026-11-11T06:43:09.834758+00:00",
+  "base_commit": "31bb5f137f97106bedb609f2558a1aee246dc1ae",
+  "scope": [
+    "Production discovery remains app-dark in system day mode, including system bars and recreated activity",
+    "Remove active long-press speed text overlay; preserve gesture and original-rate restoration",
+    "System Open with entry and independent external video playback with read-only URI grants and descriptor lifecycle"
+  ],
+  "android": {
+    "version": "0.4.19",
+    "version_code": 36,
+    "version_changed": false,
+    "command": "python scripts/build-android-cloud.py :app:testDebugUnitTest :app:lintDebug",
+    "result": "BUILD SUCCESSFUL",
+    "test_suites": 55,
+    "tests": {
+      "tests": 247,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "new_test_suites": {
+      "DiscoveryAppThemeTest": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "ExternalPlayerUiTest": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "ExternalVideoIntentTest": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "HoldGestureUiTest": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 87
+    },
+    "packaged": false,
+    "manual_device_checks": "unverified"
+  },
+  "screenshots": [
+    {
+      "file": "docs/screenshots/android-fixes-unreleased/app-daymode-discovery-dark.png",
+      "bytes": 33697,
+      "sha256": "c426c0595ba0e98dbd37c9f8406fe10aba2b9526f7cbd1e1c7042eb7b6f029ff",
+      "source": "Robolectric native rendering through real MainActivity; synthetic catalog"
+    },
+    {
+      "file": "docs/screenshots/android-fixes-unreleased/app-daymode-discovery-recreated-dark.png",
+      "bytes": 38972,
+      "sha256": "5fffb384b09f7cb342c9457d6870fa703815de12b03000fbe8bbe7bb470337e4",
+      "source": "Robolectric native rendering through real MainActivity; synthetic catalog"
+    },
+    {
+      "file": "docs/screenshots/android-fixes-unreleased/app-daymode-discovery-sheet-dark.png",
+      "bytes": 40022,
+      "sha256": "b00757d189051ede23e2fbbd0ae4de18c47000aafe41c5813013104b6deddffa",
+      "source": "Robolectric native rendering through real MainActivity; synthetic catalog"
+    }
+  ],
+  "tag_created": false,
+  "release_published": false,
+  "source_commit_ci_policy": "[skip ci]",
+  "user_constraint": "This turn: do not package or publish."
+}

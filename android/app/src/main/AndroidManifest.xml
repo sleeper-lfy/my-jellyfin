@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -6,6 +6,39 @@
         android:icon="@mipmap/ic_lumen" android:roundIcon="@mipmap/ic_lumen" android:usesCleartextTraffic="true" android:supportsRtl="true">
         <activity android:name=".PrivateBrowserActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity android:name=".PlayerActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".VideoOpenActivity" android:exported="true" android:excludeFromRecents="true" android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" /><data android:scheme="file" /><data android:scheme="http" /><data android:scheme="https" />
+                <data android:mimeType="video/*" /><data android:mimeType="application/x-matroska" /><data android:mimeType="application/mp4" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" /><data android:scheme="file" /><data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" /><data android:scheme="https" /><data android:host="*" />
+                <data android:pathPattern=".*\\.mp4" /><data android:pathPattern=".*\\..*\\.mp4" /><data android:pathPattern=".*\\..*\\..*\\.mp4" />
+                <data android:pathPattern=".*\\.mkv" /><data android:pathPattern=".*\\..*\\.mkv" /><data android:pathPattern=".*\\..*\\..*\\.mkv" />
+                <data android:pathPattern=".*\\.webm" /><data android:pathPattern=".*\\.mov" /><data android:pathPattern=".*\\.m4v" /><data android:pathPattern=".*\\.avi" />
+                <data android:pathPattern=".*\\.hevc" /><data android:pathPattern=".*\\.h265" /><data android:pathPattern=".*\\.ts" /><data android:pathPattern=".*\\.m3u8" />
+                <data android:pathPattern=".*\\.MP4" /><data android:pathPattern=".*\\.MKV" /><data android:pathPattern=".*\\.HEVC" />
+                <data android:pathSuffix=".mp4" tools:targetApi="s" /><data android:pathSuffix=".mkv" tools:targetApi="s" /><data android:pathSuffix=".webm" tools:targetApi="s" /><data android:pathSuffix=".mov" tools:targetApi="s" />
+                <data android:pathSuffix=".m4v" tools:targetApi="s" /><data android:pathSuffix=".avi" tools:targetApi="s" /><data android:pathSuffix=".hevc" tools:targetApi="s" /><data android:pathSuffix=".h265" tools:targetApi="s" />
+                <data android:pathSuffix=".ts" tools:targetApi="s" /><data android:pathSuffix=".m3u8" tools:targetApi="s" /><data android:pathSuffix=".MP4" tools:targetApi="s" /><data android:pathSuffix=".MKV" tools:targetApi="s" /><data android:pathSuffix=".HEVC" tools:targetApi="s" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" /><data android:scheme="https" /><data android:host="*" /><data android:mimeType="application/octet-stream" />
+                <data android:pathPattern=".*\\.mp4" /><data android:pathPattern=".*\\..*\\.mp4" /><data android:pathPattern=".*\\..*\\..*\\.mp4" />
+                <data android:pathPattern=".*\\.mkv" /><data android:pathPattern=".*\\..*\\.mkv" /><data android:pathPattern=".*\\..*\\..*\\.mkv" />
+                <data android:pathPattern=".*\\.hevc" /><data android:pathPattern=".*\\.h265" /><data android:pathPattern=".*\\.webm" />
+                <data android:pathSuffix=".mp4" tools:targetApi="s" /><data android:pathSuffix=".mkv" tools:targetApi="s" /><data android:pathSuffix=".hevc" tools:targetApi="s" /><data android:pathSuffix=".h265" tools:targetApi="s" /><data android:pathSuffix=".webm" tools:targetApi="s" />
+            </intent-filter>
+        </activity>
         <activity android:name=".RemoteActivity" android:exported="false" />
         <activity android:name=".UpdateActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <provider android:name=".UpdatePackageProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true" />

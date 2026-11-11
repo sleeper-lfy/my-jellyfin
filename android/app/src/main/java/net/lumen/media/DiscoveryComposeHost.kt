@@ -27,7 +27,8 @@ internal class DiscoveryComposeHost(context: Context, api: Api, imageRequests: I
         view.id = R.id.discovery_compose_host
         view.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         view.setContent {
-            DiscoveryTheme {
+            // Native destinations use the application's dark theme even when Android is in day mode.
+            DiscoveryTheme(darkTheme = true) {
                 LaunchedEffect(activeState) { if (activeState) messages.receiveAsFlow().collect { snackbar.showSnackbar(it) } }
                 DiscoveryScreen(snapshot, callbacks, loader, activeState, imageEpoch, snackbar)
             }

@@ -113,7 +113,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         super.onConfigurationChanged(configuration);
         if(api!=null&&discovery&&detailId==0&&discoveryCoordinator!=null){
             // Compose handles configuration in place, preserving modal drafts and grid state.
-            androidx.activity.EdgeToEdge.enable(this);discoveryCoordinator.publish();return;
+            discoveryEdgeToEdge();discoveryCoordinator.publish();return;
         }
         if(api!=null) { try {if(detailId>0 && detail!=null)renderDetail(detail);else {Bundle state=browseState();restoreBrowseState(state);}} catch(Exception e){message(e.getMessage());} }
     }
@@ -323,12 +323,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(discovery&&discoveryOnline&&discoveryResultIds==null){content.addView(text(discoverySearchState.equals("running")||discoverySearchState.equals("queued")?"正在搜索站点，完成后显示本次结果。":"输入影片名称或标签，点击“搜索站点”。",15,MUTED));}else loadPage();
         if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&(discoverySearchState.equals("running")||discoverySearchState.equals("queued")))pollDiscoverySearch(discoverySearchTask,generation);
     }
+    private void discoveryEdgeToEdge(){
+        androidx.activity.SystemBarStyle dark=androidx.activity.SystemBarStyle.dark(Color.TRANSPARENT);
+        androidx.activity.EdgeToEdge.enable(this,dark,dark);
+    }
     /** Only this destination is Compose; existing native pages keep their layout. */
     void showDiscoveryPage(){
         generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;
         offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();browseScroll=null;content=null;
         if(!discoveryRestoreScroll){discoveryGridIndex=0;discoveryGridScroll=0;}base();
-        root.setFitsSystemWindows(false);androidx.activity.EdgeToEdge.enable(this);
+        root.setFitsSystemWindows(false);discoveryEdgeToEdge();
         discoveryCoordinator=new DiscoveryCoordinator(this);root.addView(discoveryCoordinator.getView(),new LinearLayout.LayoutParams(-1,-1));discoveryCoordinator.start();discoveryRestoreScroll=false;
         if(discoveryOnline&&!discoverySearchTask.isEmpty()&&discoverySearchBusy())pollDiscoverySearch(discoverySearchTask,generation);
     }
@@ -795,7 +799,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             }
         }
         detailId=0;renderedDetailId=0;detailScroll=null;generation++;
-        if(browseRoot!=null){root=browseRoot;setContentView(root);if(discovery&&discoveryCoordinator!=null){androidx.activity.EdgeToEdge.enable(this);discoveryCoordinator.setActive(true);}imageRequests.restore(api,root);browseRoot=null;if(browseLoading!=null){content.removeView(browseLoading);browseLoading=null;loadPage();}if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&discoverySearchBusy())pollDiscoverySearch(discoverySearchTask,generation);}else showLibrary();
+        if(browseRoot!=null){root=browseRoot;setContentView(root);if(discovery&&discoveryCoordinator!=null){discoveryEdgeToEdge();discoveryCoordinator.setActive(true);}imageRequests.restore(api,root);browseRoot=null;if(browseLoading!=null){content.removeView(browseLoading);browseLoading=null;loadPage();}if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&discoverySearchBusy())pollDiscoverySearch(discoverySearchTask,generation);}else showLibrary();
     }
     private void sorting(){
         if(discovery){
