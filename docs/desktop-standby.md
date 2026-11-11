@@ -38,3 +38,10 @@ PyInstaller 的标准 PySide6 启动钩子原本会提前加载 QtCore；新增�
 ```
 
 本功能从 0.4.20 测试预发布提供，安装包以对应 Release 的完整构建门禁和公开附件为准。Windows 冻结安装版会对无托盘的自动化后台入口执行功能、DLL 隔离及内存测量，数据保存在 Release 附件 `windows-acceptance.json` 的 `automated.installation.standby` 中；它不能替代真实桌面的登录自启动、托盘菜单和大资料库使用验收。
+
+
+## 0.4.20 Preview 3 安装版自动验收
+
+无托盘自动验收中，安装版后台最高工作集 **37.31 MiB**（39,120,896 字节），专用提交 **21.64 MiB**；工作集低于 50,000,000 字节目标。未使用工作集压缩或硬内存限制；该结果不替代真实桌面托盘、登录启动及大资料库人工验收。
+
+同一 Windows 安装包的真实后台入口完成 IPC、LAN 鉴权与 Range、封面隔离、图片／后台工作进程、重复实例与退出清理检查，七次采样均未加载 Qt 或 mpv DLL。[公开安装验证](validation/preview-0.4.20-3.json) · [Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.20-preview.3)。

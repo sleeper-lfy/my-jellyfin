@@ -783,3 +783,12 @@ Preview 1 的 Android 门禁通过，但 Windows 992 项中 981 项通过、11 �
 Preview 2 的 Android 再次通过，Windows 994 项中 993 项通过、1 项失败，Release 按门禁停止。唯一失败发生在后台已正常退出、运行时文件删除之后：Windows 对闭合本机端口返回超时，而原验收只接受连接被拒绝。Windows 改为直接查询系统 TCP 监听表，要求 LAN 与控制端口均已无监听，API 错误、异常数据和端口仍监听均硬性失败；不通过忽略超时放行。保留进程身份、退出与内存／DLL 验收。
 
 main 的 Windows 源码验证新增短时专项预检，先验证自启动、后台和冻结运行时钩子，再执行原有全量回归；新发布标签仍执行全部安装包门禁。准备 v0.4.20-preview.3、Android versionCode 39，保留前两次失败标签与记录。
+
+
+## 0.4.20 Preview 3 发布与公开下载验证
+
+[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/43047627781)全部成功，源码 `cbc4c825dc092bf0486b3fa232ef4427276673c4`，标签 `v0.4.20-preview.3`。Windows **1012 项测试通过，零失败／错误／跳过**，同一安装包完成安装、界面启动、mpv、插件／图片／后台工作进程与卸载验收；Android **247 项测试、lint、持久签名、版本与 ZIP 对齐校验通过**。六个公开附件已完整下载，大小、SHA-256、GitHub 附件摘要与源码绑定一致；下载后的 APK 保持原证书、0.4.20／versionCode 39 和正确对齐，EXE PE 头检查通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.20-preview.3) · [公开验证](validation/preview-0.4.20-3.json)。
+
+无托盘自动验收中，安装版后台最高工作集 **37.31 MiB**（39,120,896 字节），专用提交 **21.64 MiB**；工作集低于 50,000,000 字节目标。未使用工作集压缩或硬内存限制；该结果不替代真实桌面托盘、登录启动及大资料库人工验收。
+
+README 下载入口与说明已更新。Android 保持 ARM32＋ARM64 通用包，尚未进行仅讨论过的 ARM64 单架构／R8 裁剪；真实第三方来源授权、HEVC 4K 流畅度与音画同步仍待真机确认。Preview 1／2 失败标签保持不变，Preview 3 从修正源码完整重建，没有复用旧安装包。
