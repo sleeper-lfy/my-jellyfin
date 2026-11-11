@@ -86,3 +86,8 @@
 | 320dp／1.5倍字号：更新 | [查看](screenshots/android-actions-0.4.19/bili-update-320-font150.png) |
 | 浅色主题：发现 | [查看](screenshots/android-actions-0.4.19/bilibili-discovery-light-393.png) |
 | 浅色主题：末行安全区 | [查看](screenshots/android-actions-0.4.19/bilibili-discovery-light-393-bottom.png) |
+
+
+## 公开发布验证
+
+[完整构建与发布](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42952232966)全部成功，源码 `b906f0a33dc87f5bbccef9aeae7e6383d6dd0c89`，标签 `v0.4.19-preview.1`。Windows **839 项测试通过，零失败／错误／跳过**，同一安装包完成安装、启动、mpv、插件 worker 和卸载验收；Android **226 项测试、lint、持久签名、版本与 ZIP 对齐检查通过**。六个公开附件已完整下载，大小、SHA-256、GitHub 附件摘要与源码绑定一致；下载后的 APK 再次验证原证书、0.4.19／versionCode 36 和 ZIP 对齐，EXE PE 头检查通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.19-preview.1) · [公开验证](validation/preview-0.4.19-1.json)。

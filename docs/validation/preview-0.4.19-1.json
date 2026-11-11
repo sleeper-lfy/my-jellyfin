@@ -1,0 +1,100 @@
+{
+  "tag": "v0.4.19-preview.1",
+  "source_commit": "b906f0a33dc87f5bbccef9aeae7e6383d6dd0c89",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/42952232966",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.19-preview.1",
+  "prerelease": true,
+  "windows_tests": {
+    "tests": 839,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "520dd3f2582a76b634f7bf0498b63a57573faabc6d959a062b4385cd9e7705d4"
+  },
+  "android": {
+    "version": "0.4.19",
+    "version_code": 36,
+    "source_commit": "b906f0a33dc87f5bbccef9aeae7e6383d6dd0c89",
+    "sha256": "543371c75f8d520ee9a8ffa8d37becdf52621b992fcb40af0f8d0b83f636c688",
+    "bytes": 62439664,
+    "certificate_sha256": "cccf85baf3acf872d28632ad8a9102b94c3958aa67b5c8385435aafebb60d6b9",
+    "tests": {
+      "tests": 226,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "signature_verified": true,
+    "lint": "passed",
+    "manual_device_checks": "unverified"
+  },
+  "assets": [
+    {
+      "name": "Lumen-Setup-x64.exe",
+      "bytes": 97540197,
+      "sha256": "d0ff5928eb649c1425a82c7a6e5b314314a8b11a0cfb8e2c83c8979b25bc48c9",
+      "github_asset_id": 733976984,
+      "github_digest": "sha256:d0ff5928eb649c1425a82c7a6e5b314314a8b11a0cfb8e2c83c8979b25bc48c9",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/Lumen-Setup-x64.exe"
+    },
+    {
+      "name": "Lumen-Setup-x64.exe.sha256",
+      "bytes": 86,
+      "sha256": "90f0220268a2a67bc2629fa317b593ca31d854cd7e2cfacfc705d2c0d1f644e3",
+      "github_asset_id": 733976987,
+      "github_digest": "sha256:90f0220268a2a67bc2629fa317b593ca31d854cd7e2cfacfc705d2c0d1f644e3",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/Lumen-Setup-x64.exe.sha256"
+    },
+    {
+      "name": "Lumen-android-debug.apk",
+      "bytes": 62439664,
+      "sha256": "543371c75f8d520ee9a8ffa8d37becdf52621b992fcb40af0f8d0b83f636c688",
+      "github_asset_id": 733976983,
+      "github_digest": "sha256:543371c75f8d520ee9a8ffa8d37becdf52621b992fcb40af0f8d0b83f636c688",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/Lumen-android-debug.apk"
+    },
+    {
+      "name": "Lumen-android-debug.apk.sha256",
+      "bytes": 90,
+      "sha256": "78dac7ad2317aa465a80a398fc4074c0f14762eb77454584fa6af1e4159bc868",
+      "github_asset_id": 733976986,
+      "github_digest": "sha256:78dac7ad2317aa465a80a398fc4074c0f14762eb77454584fa6af1e4159bc868",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/Lumen-android-debug.apk.sha256"
+    },
+    {
+      "name": "windows-acceptance.json",
+      "bytes": 1870,
+      "sha256": "f9961ce3ebfc9c9f9e0dd6885cabe1d3697eb1f7a771fb2b1ccb24d15630898c",
+      "github_asset_id": 733976985,
+      "github_digest": "sha256:f9961ce3ebfc9c9f9e0dd6885cabe1d3697eb1f7a771fb2b1ccb24d15630898c",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/windows-acceptance.json"
+    },
+    {
+      "name": "android-verification.json",
+      "bytes": 483,
+      "sha256": "c4ce390b4903e2434c1858c91791ce4637736868d1c3defe7edf4b8114de7a1d",
+      "github_asset_id": 733977016,
+      "github_digest": "sha256:c4ce390b4903e2434c1858c91791ce4637736868d1c3defe7edf4b8114de7a1d",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/android-verification.json"
+    }
+  ],
+  "downloaded_apk_signature_verified": true,
+  "downloaded_apk_version_code": 36,
+  "anonymous_full_downloads_verified": true,
+  "manual_device_checks": "unverified",
+  "windows_build": "success",
+  "android_build": "success",
+  "publication": "success",
+  "verified_at": "2026-11-11T03:31:37.884985+00:00",
+  "github_asset_digests_verified": true,
+  "github_source_and_tag_verified": true,
+  "release_id": 441204932,
+  "published_at": "2026-11-11T03:30:55Z",
+  "workflow_run_id": 42952232966,
+  "workflow_run_conclusion": "success",
+  "workflow_jobs": {
+    "android": "success",
+    "windows": "success",
+    "publish": "success"
+  }
+}
