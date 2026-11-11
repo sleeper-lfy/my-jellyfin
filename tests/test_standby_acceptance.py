@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import site
+import socket
+import struct
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -101,6 +103,106 @@ def test_psapi_cannot_silently_pass_incomplete_or_failed_reads(monkeypatch, fail
     with pytest.raises(OSError):
         acceptance.windows_process_memory(1234)
     assert api.closed == ([] if failure == 'open' else [5678])
+
+
+class TcpTableAPI:
+    def __init__(self, rows=(), *, failure=None, data=None, initial_size=4):
+        self.data = data if data is not None else struct.pack('<I', len(rows)) + b''.join(
+            struct.pack('<6I', 2, 0, socket.htons(port) | 0xabcd0000, 0, 0, pid) for port, pid in rows)
+        self.failure, self.initial_size, self.calls = failure, initial_size, 0
+        self.GetExtendedTcpTable = Function(self.read)
+
+    def read(self, buffer, pointer, ordered, family, table_class, reserved):
+        self.calls += 1
+        assert ordered is False and family == 2 and table_class == 3 and reserved == 0
+        size = ctypes.cast(pointer, ctypes.POINTER(ctypes.c_uint32)).contents
+        if buffer is None:
+            size.value = self.initial_size
+            return 5 if self.failure == 'size-api' else 122
+        capacity = size.value
+        if self.failure == 'read-api':
+            return 5
+        if self.failure == 'bad-growth':
+            return 122
+        if self.failure == 'keeps-growing':
+            size.value = capacity + 24
+            return 122
+        if capacity < len(self.data):
+            size.value = len(self.data)
+            return 122
+        ctypes.memmove(buffer, self.data, len(self.data))
+        size.value = 0 if self.failure == 'empty-count' else capacity + 1 if self.failure == 'oversized-count' else len(self.data)
+        return 0
+
+
+def tcp_api(monkeypatch, rows=(), **options):
+    api = TcpTableAPI(rows, **options)
+    monkeypatch.setattr(acceptance, 'sys', SimpleNamespace(platform='win32'))
+    monkeypatch.setattr(acceptance, '_windows_tcp_library', lambda: api)
+    return api
+
+
+def test_windows_empty_listener_snapshot_is_affirmative_shutdown_evidence_without_connect(monkeypatch):
+    api = tcp_api(monkeypatch)
+    monkeypatch.setattr(socket, 'create_connection', lambda *args, **kwargs: pytest.fail('Windows must read its listener table'))
+    assert acceptance.windows_tcp_listeners() == []
+    acceptance.assert_ports_released((43210, 43211))
+    assert api.calls == 4
+    assert api.GetExtendedTcpTable.restype is ctypes.c_uint32
+
+
+def test_windows_listener_snapshot_resizes_and_decodes_network_order_low_16_bits(monkeypatch):
+    api = tcp_api(monkeypatch, [(43210, 1234), (8097, 5678)])
+    assert acceptance.windows_tcp_listeners() == [{'port': 43210, 'pid': 1234}, {'port': 8097, 'pid': 5678}]
+    assert api.calls == 3  # size query, growing table, complete retry
+
+
+@pytest.mark.parametrize('remaining_port', [43210, 43211])
+def test_windows_either_service_port_still_listening_under_any_pid_is_a_hard_failure(monkeypatch, remaining_port):
+    tcp_api(monkeypatch, [(remaining_port, 9876)])
+    with pytest.raises(RuntimeError, match=f"'port': {remaining_port}, 'pid': 9876"):
+        acceptance.assert_ports_released((43210, 43211))
+
+
+def test_windows_other_listener_ports_do_not_imply_this_owner_failed_to_stop(monkeypatch):
+    tcp_api(monkeypatch, [(8097, 9876)])
+    acceptance.assert_ports_released((43210, 43211))
+
+
+@pytest.mark.parametrize('failure', ['size-api', 'read-api', 'bad-growth', 'keeps-growing', 'empty-count', 'oversized-count'])
+def test_windows_tcp_api_failure_or_incomplete_snapshot_cannot_pass_shutdown(monkeypatch, failure):
+    api = tcp_api(monkeypatch, failure=failure)
+    with pytest.raises(OSError):
+        acceptance.assert_ports_released((43210, 43211))
+    assert api.calls <= 5  # allocation retries and OS table size are bounded
+
+
+@pytest.mark.parametrize('size', [0, 3, acceptance.MAX_TCP_TABLE_BYTES + 1])
+def test_windows_tcp_invalid_initial_size_is_rejected_before_allocation(monkeypatch, size):
+    api = tcp_api(monkeypatch, initial_size=size)
+    with pytest.raises(OSError, match='size'):
+        acceptance.windows_tcp_listeners()
+    assert api.calls == 1
+
+
+@pytest.mark.parametrize('data', [
+    struct.pack('<I', 1),  # header claims a missing row
+    struct.pack('<I', 0xffffffff),  # impossible row count, no iteration/allocation
+    struct.pack('<I6I', 1, 5, 0, 1234, 0, 0, 999),  # ESTABLISHED is not a listener row
+])
+def test_windows_tcp_truncated_or_wrong_state_rows_cannot_pass_shutdown(monkeypatch, data):
+    tcp_api(monkeypatch, data=data)
+    with pytest.raises(OSError):
+        acceptance.assert_ports_released((43210, 43211))
+
+
+def test_posix_connect_timeout_is_still_a_failure_instead_of_closed_port_evidence(monkeypatch):
+    monkeypatch.setattr(acceptance, 'sys', SimpleNamespace(platform='linux'))
+    def timeout(*args, **kwargs):
+        raise TimeoutError('no RST received')
+    monkeypatch.setattr(socket, 'create_connection', timeout)
+    with pytest.raises(TimeoutError, match='no RST received'):
+        acceptance.assert_ports_released((43210, 43211))
 
 
 @pytest.mark.parametrize('name,expected', [

@@ -19,6 +19,7 @@ import zlib
 
 
 TARGET_BYTES = 50_000_000
+MAX_TCP_TABLE_BYTES = 16 * 1024 * 1024
 
 
 class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
@@ -31,6 +32,72 @@ class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
 
 def _windows_libraries():
     return ctypes.WinDLL('kernel32', use_last_error=True), ctypes.WinDLL('psapi', use_last_error=True)
+
+
+def _windows_tcp_library():
+    return ctypes.WinDLL('iphlpapi', use_last_error=True)
+
+
+def windows_tcp_listeners():
+    """Read a bounded IPv4 listener snapshot, without making test connections."""
+    if sys.platform != 'win32':
+        raise OSError('Windows TCP listener measurement requires Windows')
+    query = _windows_tcp_library().GetExtendedTcpTable
+    dword = ctypes.c_uint32
+    query.argtypes = [ctypes.c_void_p, ctypes.POINTER(dword), ctypes.c_int32, dword, ctypes.c_int32, dword]
+    query.restype = dword
+    size = dword()
+    # AF_INET=2, TCP_TABLE_OWNER_PID_LISTENER=3. Windows can silently drop an
+    # attempted connection to a closed port; its listener table is affirmative
+    # evidence and does not depend on firewall/RST timeout behavior.
+    status = query(None, ctypes.byref(size), False, 2, 3, 0)
+    if status not in (0, 122):  # NO_ERROR / ERROR_INSUFFICIENT_BUFFER
+        raise OSError('Cannot size Windows TCP listener table: ' + str(status))
+    for _ in range(4):
+        capacity = size.value
+        if not 4 <= capacity <= MAX_TCP_TABLE_BYTES:
+            raise OSError('Windows TCP listener table size is invalid or exceeds acceptance limit')
+        buffer = ctypes.create_string_buffer(capacity)
+        size = dword(capacity)
+        status = query(buffer, ctypes.byref(size), False, 2, 3, 0)
+        if status == 122:
+            if size.value <= capacity:
+                raise OSError('Windows TCP listener table returned an invalid growth size')
+            continue
+        if status != 0:
+            raise OSError('Cannot read Windows TCP listener table: ' + str(status))
+        if not 4 <= size.value <= capacity:
+            raise OSError('Windows TCP listener table returned an invalid byte count')
+        data = buffer.raw[:size.value]
+        count, = struct.unpack_from('<I', data)
+        # MIB_TCPROW_OWNER_PID is six fixed-width DWORDs (24 bytes), even x64.
+        if count > (len(data) - 4) // 24:
+            raise OSError('Windows TCP listener table is truncated')
+        listeners = []
+        for index in range(count):
+            state, _, local_port, _, _, pid = struct.unpack_from('<6I', data, 4 + index * 24)
+            if state != 2:  # MIB_TCP_STATE_LISTEN
+                raise OSError('Windows listener-only TCP table contains a non-listening row')
+            # The high 16 bits of dwLocalPort can be uninitialized per WinAPI.
+            listeners.append({'port': socket.ntohs(local_port & 0xffff), 'pid': pid})
+        return listeners
+    raise OSError('Windows TCP listener table kept growing during acceptance')
+
+
+def assert_ports_released(ports):
+    if sys.platform == 'win32':
+        remaining = [row for row in windows_tcp_listeners() if row['port'] in ports]
+        if remaining:
+            raise RuntimeError('Standby LAN/control listener remained active after exit: ' + str(remaining))
+        return
+    for port in ports:
+        try:
+            connection = socket.create_connection(('127.0.0.1', port), timeout=2)
+        except ConnectionRefusedError:
+            pass
+        else:
+            connection.close()
+            raise RuntimeError('Standby LAN/control listener remained active after exit')
 
 
 def _gui_module(name):
@@ -273,14 +340,7 @@ def verify_standby(executable, *, timeout=30):
             process.wait(timeout=timeout)
             if process.returncode or (directory / 'desktop-runtime.json').exists():
                 raise RuntimeError('Standby exit failed or left stale runtime metadata')
-            for closed_port in (port, client.port):
-                try:
-                    connection = socket.create_connection(('127.0.0.1', closed_port), timeout=2)
-                except ConnectionRefusedError:
-                    pass
-                else:
-                    connection.close()
-                    raise RuntimeError('Standby LAN/control listener remained active after exit')
+            assert_ports_released((port, client.port))
             proof['checks']['clean_exit'] = True
         finally:
             _stop(process, client)

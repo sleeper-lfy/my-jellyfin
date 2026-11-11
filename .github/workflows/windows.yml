@@ -33,7 +33,7 @@ jobs:
       - name: Validate explicit packaging request
         if: inputs.publish && !inputs.package
         run: throw 'Publishing requires an explicit packaging request'
-      - name: Verify source without packaging
+      - name: Prepare source verification dependencies
         if: ${{ !inputs.package }}
         shell: pwsh
         run: |
@@ -43,6 +43,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
           python -m pip install --no-deps -e .
           if ($LASTEXITCODE -ne 0) { throw 'Project installation failed' }
+      - name: Verify Windows startup and standby preflight
+        if: ${{ !inputs.package }}
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_startup.py tests/test_standby_acceptance.py tests/test_desktop_runtime.py tests/test_desktop_runtime_hook.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows startup and standby preflight failed' }
+      - name: Verify source without packaging
+        if: ${{ !inputs.package }}
+        shell: pwsh
+        run: |
           python -m pytest -q
           if ($LASTEXITCODE -ne 0) { throw 'Source verification failed' }
       - name: Install FFmpeg using verified package-manager download
