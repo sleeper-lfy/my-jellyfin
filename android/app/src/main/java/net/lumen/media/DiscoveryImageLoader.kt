@@ -3,7 +3,7 @@ package net.lumen.media
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
-import android.widget.ImageView
+import androidx.appcompat.widget.AppCompatImageView
 
 /** Reuses the existing authenticated image queue and cache without rendering View cards. */
 internal class DiscoveryImageLoader(
@@ -12,7 +12,7 @@ internal class DiscoveryImageLoader(
     private val requests: ImageRequests,
 ) {
     fun load(path: String, onState: (PosterLoadState) -> Unit): AutoCloseable {
-        val target = object : ImageView(context), ImageRequests.TargetState {
+        val target = object : AppCompatImageView(context), ImageRequests.TargetState {
             override fun onImageLoading() = onState(PosterLoadState.Loading)
             override fun onImageLoaded() {
                 val bitmap = (drawable as? BitmapDrawable)?.bitmap

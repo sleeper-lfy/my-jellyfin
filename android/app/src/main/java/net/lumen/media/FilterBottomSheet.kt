@@ -13,10 +13,18 @@ import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import java.util.Locale
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import net.lumen.media.ui.components.AppIcons
+import net.lumen.media.ui.theme.AppDimensions
+import net.lumen.media.ui.theme.LocalAppSpacing
 
 /** The only filter surface for discovery. Draft changes never mutate the coordinator. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,8 +38,11 @@ fun DiscoveryFilterBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = MaterialTheme.shapes.extraLarge,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        dragHandle = { Surface(Modifier.padding(vertical = LocalAppSpacing.current.sm)
+            .size(AppDimensions.SheetHandleWidth, AppDimensions.SheetHandleHeight),
+            shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.onSurfaceVariant, content = {}) },
         contentWindowInsets = { WindowInsets.safeDrawing },
     ) {
         DiscoveryFilterContent(state, callbacks, onDismiss)
@@ -48,9 +59,10 @@ internal fun DiscoveryFilterContent(
 ) {
     var draft by rememberSaveable(stateSaver = DiscoveryDraftSaver) { mutableStateOf(state.filters.copy()) }
     var tagQuery by rememberSaveable { mutableStateOf("") }
-    var tagLimit by rememberSaveable { mutableIntStateOf(24) }
+    var tagLimit by rememberSaveable { mutableIntStateOf(12) }
     var advanced by rememberSaveable { mutableStateOf(hasAdvancedFilters(state.filters)) }
     var errors by remember { mutableStateOf(emptyMap<String, Int>()) }
+    val spacing = LocalAppSpacing.current
     fun change(update: (DiscoveryFilters) -> Unit) { draft = draft.copy().also(update) }
     val selected = filterTokens(draft.tagsAll)
     val availableTags = remember(state.facets, selected, tagQuery) {
@@ -58,103 +70,101 @@ internal fun DiscoveryFilterContent(
         val all = (selected + (0 until (values?.length() ?: 0)).map { values!!.optString(it) }).distinct()
         all.filter { it.isNotBlank() && it.lowercase(Locale.ROOT).contains(tagQuery.trim().lowercase(Locale.ROOT)) }
     }
-    Column(modifier.fillMaxWidth().imePadding().fillMaxHeight(.92f)) {
-        Text(
-            stringResource(R.string.discovery_filter_title),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+    Column(modifier.fillMaxWidth().navigationBarsPadding().imePadding().fillMaxHeight(AppDimensions.SheetMaxHeightFraction)) {
+        Text(stringResource(R.string.discovery_filter_title),
+            modifier = Modifier.padding(horizontal = spacing.page, vertical = spacing.sm),
+            style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth().testTag("filterForm"),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = spacing.page, vertical = spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            item {
-                FilterSectionTitle(R.string.discovery_filter_scope)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    listOf(R.string.discovery_filter_local, R.string.discovery_filter_online).forEachIndexed { index, label ->
-                        SegmentedButton(
-                            selected = draft.online == (index == 1),
-                            onClick = { change { it.online = index == 1 } },
-                            shape = SegmentedButtonDefaults.itemShape(index, 2),
-                            modifier = Modifier.heightIn(min = 48.dp).testTag("filterScope:$index"),
-                            colors = SegmentedButtonDefaults.colors(
-                                activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                activeBorderColor = MaterialTheme.colorScheme.primary,
-                                inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                inactiveContentColor = MaterialTheme.colorScheme.onSurface,
-                                inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                            ),
-                        ) { Text(stringResource(label), style = MaterialTheme.typography.labelLarge) }
-                    }
-                }
-            }
             if (draft.online) item {
                 ProviderField(state, draft.provider, { value -> change { it.provider = value } }, callbacks::onRefreshProviders)
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(spacing.sm))
                 FilterTextField(draft.searchTag, { value -> change { it.searchTag = value } }, R.string.discovery_filter_search_tag, "filterSearchTag", error = errors["searchTag"])
-                Text(stringResource(R.string.discovery_filter_search_note), modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.discovery_filter_search_note), modifier = Modifier.padding(top = spacing.xs),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
-                FilterTextField(tagQuery, { tagQuery = it; tagLimit = 24 }, R.string.discovery_filter_tag_search, "filterTagSearch", placeholder = R.string.discovery_filter_tag_search_hint)
-                Text(
-                    if (availableTags.isEmpty()) stringResource(R.string.discovery_filter_tag_empty) else stringResource(R.string.discovery_filter_tag_selection, selected.size),
-                    modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FlowRow(modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("filterTags"), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    availableTags.take(tagLimit).forEach { tag ->
-                        FilterChip(
-                            selected = tag in selected,
-                            onClick = { change { value -> value.tagsAll = (if (tag in selected) selected - tag else selected + tag).joinToString(",") } },
-                            label = { Text(tag, style = MaterialTheme.typography.labelLarge) },
-                            modifier = Modifier.heightIn(min = 48.dp).testTag("filterTagChoice:$tag"),
-                            shape = MaterialTheme.shapes.extraLarge,
-                            colors = filterChipColors(),
-                        )
+                FilterSectionTitle(R.string.discovery_filter_watch)
+                FlowRow(Modifier.fillMaxWidth().testTag("filterWatch"),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    listOf("" to R.string.discovery_watch_all_short, "unwatched" to R.string.discovery_watch_unwatched_short,
+                        "progress" to R.string.discovery_filter_watch_progress, "completed" to R.string.discovery_watch_completed_short).forEach { (value, label) ->
+                        DiscoveryChoiceChip(stringResource(label), draft.watch == value, "filterWatch:${value.ifEmpty { "all" }}",
+                            { change { it.watch = value } })
                     }
                 }
-                if (availableTags.size > tagLimit) TextButton(onClick = { tagLimit += 24 }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.discovery_filter_more_tags)) }
-            }
-            item {
-                FilterChoiceField(
-                    label = R.string.discovery_filter_watch,
-                    value = draft.watch,
-                    choices = listOf("" to stringResource(R.string.discovery_filter_watch_all), "unwatched" to stringResource(R.string.discovery_filter_watch_unwatched), "progress" to stringResource(R.string.discovery_filter_watch_progress), "completed" to stringResource(R.string.discovery_filter_watch_completed)),
-                    onSelect = { value -> change { it.watch = value } },
-                    tag = "filterWatch",
-                )
             }
             item {
                 FilterSectionTitle(R.string.discovery_filter_preferences)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    PreferenceChip(R.string.discovery_filter_favorite, draft.favorite, "filterFavorite") { change { it.favorite = !it.favorite; if (it.favorite) it.disliked = false } }
-                    PreferenceChip(R.string.discovery_filter_wanted, draft.wanted, "filterWanted") { change { it.wanted = !it.wanted } }
-                    PreferenceChip(R.string.discovery_filter_disliked, draft.disliked, "filterDisliked") { change { it.disliked = !it.disliked; if (it.disliked) it.favorite = false } }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.sm), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    DiscoveryChoiceChip(stringResource(R.string.discovery_filter_favorite), draft.favorite, "filterFavorite",
+                        { change { it.favorite = !it.favorite; if (it.favorite) it.disliked = false } }, AppIcons.Favorite)
+                    DiscoveryChoiceChip(stringResource(R.string.discovery_filter_wanted), draft.wanted, "filterWanted",
+                        { change { it.wanted = !it.wanted } }, AppIcons.Watchlist)
+                    DiscoveryChoiceChip(stringResource(R.string.discovery_filter_disliked), draft.disliked, "filterDisliked",
+                        { change { it.disliked = !it.disliked; if (it.disliked) it.favorite = false } })
                 }
             }
-            item { FilterTextField(draft.tag, { value -> change { it.tag = value } }, R.string.discovery_filter_tag_keyword, "filterTag", error = errors["tag"]) }
-            item { TextButton(onClick = { advanced = !advanced }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("filterAdvanced")) { Text(stringResource(R.string.discovery_filter_advanced)) } }
+            item {
+                FilterSectionTitle(R.string.discovery_tags_section)
+                FilterTextField(tagQuery, { tagQuery = it; tagLimit = 12 }, R.string.discovery_filter_tag_search,
+                    "filterTagSearch", placeholder = R.string.discovery_tags_search_placeholder, showLabel = false)
+                if (selected.isNotEmpty()) Text(stringResource(R.string.discovery_tags_selected_count, selected.size),
+                    modifier = Modifier.padding(top = spacing.xs), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (availableTags.isEmpty()) Text(stringResource(R.string.discovery_filter_tag_empty),
+                    modifier = Modifier.padding(top = spacing.sm), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(modifier = Modifier.fillMaxWidth().testTag("filterTags"),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm), verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    availableTags.take(tagLimit).forEach { tag ->
+                        DiscoveryChoiceChip(tag, tag in selected, "filterTagChoice:$tag", {
+                            change { value -> value.tagsAll = (if (tag in selected) selected - tag else selected + tag).joinToString(",") }
+                        })
+                    }
+                }
+                if (availableTags.size > tagLimit) TextButton(onClick = { tagLimit += 12 },
+                    modifier = Modifier.heightIn(min = AppDimensions.TouchTarget)) { Text(stringResource(R.string.discovery_filter_more_tags)) }
+            }
+            item {
+                FilterSectionTitle(R.string.discovery_filter_actor)
+                FilterTextField(draft.actor, { value -> change { it.actor = value } }, R.string.discovery_filter_actor,
+                    "filterActor", error = errors["actor"], placeholder = R.string.discovery_actor_search_placeholder, showLabel = false)
+            }
+            item {
+                FilterSectionTitle(R.string.discovery_year_section)
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.md)) {
+                    FilterTextField(draft.yearMin, { value -> change { it.yearMin = value } }, R.string.discovery_filter_year_from,
+                        "filterYearFrom", error = errors["yearMin"], numeric = true, modifier = Modifier.weight(1f), placeholder = R.string.discovery_year_from_placeholder, showLabel = false)
+                    FilterTextField(draft.yearMax, { value -> change { it.yearMax = value } }, R.string.discovery_filter_year_to,
+                        "filterYearTo", error = errors["yearMax"], numeric = true, modifier = Modifier.weight(1f), placeholder = R.string.discovery_year_to_placeholder, showLabel = false)
+                }
+            }
+            item {
+                TextButton(onClick = { advanced = !advanced }, modifier = Modifier.fillMaxWidth()
+                    .heightIn(min = AppDimensions.TouchTarget).testTag("filterAdvanced")) {
+                    Text(stringResource(R.string.discovery_advanced_short), style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.weight(1f))
+                    Icon(if (advanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null)
+                }
+            }
             if (advanced) {
-                item { FilterTextField(draft.actor, { value -> change { it.actor = value } }, R.string.discovery_filter_actor, "filterActor", error = errors["actor"]) }
+                item { FilterTextField(draft.tag, { value -> change { it.tag = value } }, R.string.discovery_filter_tag_keyword, "filterTag", error = errors["tag"]) }
                 item { FilterTextField(draft.tagsAll, { value -> change { it.tagsAll = value } }, R.string.discovery_filter_tags_all, "filterTagsAll", error = errors["tagsAll"], placeholder = R.string.discovery_filter_tags_hint) }
                 item { FilterTextField(draft.tagsAny, { value -> change { it.tagsAny = value } }, R.string.discovery_filter_tags_any, "filterTagsAny", error = errors["tagsAny"], placeholder = R.string.discovery_filter_tags_hint) }
                 item { FilterTextField(draft.tagsNot, { value -> change { it.tagsNot = value } }, R.string.discovery_filter_tags_not, "filterTagsNot", error = errors["tagsNot"], placeholder = R.string.discovery_filter_tags_hint) }
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FilterTextField(draft.yearMin, { value -> change { it.yearMin = value } }, R.string.discovery_filter_year_from, "filterYearFrom", error = errors["yearMin"], numeric = true, modifier = Modifier.weight(1f))
-                        FilterTextField(draft.yearMax, { value -> change { it.yearMax = value } }, R.string.discovery_filter_year_to, "filterYearTo", error = errors["yearMax"], numeric = true, modifier = Modifier.weight(1f))
-                    }
-                }
                 item { FilterTextField(draft.ratingMin, { value -> change { it.ratingMin = value } }, R.string.discovery_filter_rating, "filterRating", error = errors["ratingMin"], numeric = true) }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("filterFooter"), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = spacing.page, vertical = spacing.md).testTag("filterFooter"),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md), verticalAlignment = Alignment.CenterVertically) {
             TextButton(
                 onClick = { draft = DiscoveryFilters().also { it.online = draft.online; it.provider = draft.provider; it.searchTag = draft.searchTag; it.hasResults = draft.hasResults }; tagQuery = ""; errors = emptyMap(); advanced = false },
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("filterReset"),
+                modifier = Modifier.weight(1f).heightIn(min = AppDimensions.TouchTarget).testTag("filterReset"),
             ) { Text(stringResource(R.string.discovery_filter_reset)) }
             Button(
                 onClick = {
@@ -162,20 +172,42 @@ internal fun DiscoveryFilterContent(
                     errors = validateDiscoveryFilters(result)
                     if (errors.isEmpty()) { callbacks.onApplyFilters(result); onDismiss() }
                 },
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("filterApply"),
+                modifier = Modifier.weight(1f).heightIn(min = AppDimensions.TouchTarget).testTag("filterApply"),
                 shape = MaterialTheme.shapes.medium,
             ) { Text(stringResource(R.string.discovery_filter_apply)) }
         }
     }
 }
 
+/** Compact Material visual in an independent 48dp touch slot; selected semantics stay on the chip. */
+@Composable
+private fun DiscoveryChoiceChip(label: String, selected: Boolean, tag: String, action: () -> Unit, icon: ImageVector? = null) {
+    Box(Modifier.heightIn(min = AppDimensions.TouchTarget).testTag("$tag:touch"), contentAlignment = Alignment.Center) {
+        FilterChip(selected, action, label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+            modifier = Modifier.heightIn(min = AppDimensions.ChipHeight, max = AppDimensions.ChipHeight).testTag(tag),
+            leadingIcon = (icon ?: if (selected) Icons.Default.Check else null)?.let { glyph ->
+                { Icon(glyph, contentDescription = null, modifier = Modifier.size(AppDimensions.ChipIcon)) }
+            },
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = filterChipColors(),
+            border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected,
+                borderColor = MaterialTheme.colorScheme.outlineVariant, selectedBorderColor = MaterialTheme.colorScheme.secondaryContainer))
+    }
+}
+
 @Composable private fun FilterSectionTitle(label: Int) { Text(stringResource(label), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) }
-@Composable private fun filterChipColors() = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primaryContainer, selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer, selectedLeadingIconColor = MaterialTheme.colorScheme.primary)
-@Composable private fun PreferenceChip(label: Int, selected: Boolean, tag: String, action: () -> Unit) { FilterChip(selected, action, label = { Text(stringResource(label), style = MaterialTheme.typography.labelLarge) }, modifier = Modifier.heightIn(min = 48.dp).testTag(tag), shape = MaterialTheme.shapes.extraLarge, colors = filterChipColors()) }
+@Composable private fun filterChipColors() = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer, selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer, selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer)
 
 @Composable
-private fun FilterTextField(value: String, changed: (String) -> Unit, label: Int, tag: String, modifier: Modifier = Modifier, error: Int? = null, placeholder: Int? = null, numeric: Boolean = false) {
-    OutlinedTextField(value, changed, modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag), label = { Text(stringResource(label)) }, placeholder = placeholder?.let { { Text(stringResource(it)) } }, singleLine = true, isError = error != null, supportingText = error?.let { { Text(stringResource(it)) } }, textStyle = MaterialTheme.typography.bodyMedium, shape = MaterialTheme.shapes.medium, keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text))
+private fun FilterTextField(value: String, changed: (String) -> Unit, label: Int, tag: String, modifier: Modifier = Modifier, error: Int? = null, placeholder: Int? = null, numeric: Boolean = false, showLabel: Boolean = true) {
+    val fieldLabel = stringResource(label)
+    OutlinedTextField(value, changed, modifier.fillMaxWidth().heightIn(min = AppDimensions.TouchTarget).testTag(tag)
+        .then(if (showLabel) Modifier else Modifier.semantics { contentDescription = fieldLabel }),
+        label = if (showLabel) ({ Text(fieldLabel) }) else null,
+        placeholder = placeholder?.let { { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium) } },
+        singleLine = true, isError = error != null, supportingText = error?.let { { Text(stringResource(it)) } },
+        textStyle = MaterialTheme.typography.bodyMedium, shape = MaterialTheme.shapes.medium,
+        keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -183,8 +215,8 @@ private fun FilterTextField(value: String, changed: (String) -> Unit, label: Int
 private fun FilterChoiceField(label: Int, value: String, choices: List<Pair<String, String>>, onSelect: (String) -> Unit, tag: String, enabled: Boolean = true) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded, onExpandedChange = { if (enabled) expanded = it }) {
-        OutlinedTextField(choices.firstOrNull { it.first == value }?.second.orEmpty(), {}, Modifier.menuAnchor().fillMaxWidth().heightIn(min = 48.dp).testTag(tag), enabled = enabled, readOnly = true, label = { Text(stringResource(label)) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }, textStyle = MaterialTheme.typography.bodyMedium, shape = MaterialTheme.shapes.medium)
-        ExposedDropdownMenu(expanded, onDismissRequest = { expanded = false }) { choices.forEach { (key, title) -> DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.bodyMedium) }, onClick = { onSelect(key); expanded = false }, modifier = Modifier.heightIn(min = 48.dp)) } }
+        OutlinedTextField(choices.firstOrNull { it.first == value }?.second.orEmpty(), {}, Modifier.menuAnchor().fillMaxWidth().heightIn(min = AppDimensions.TouchTarget).testTag(tag), enabled = enabled, readOnly = true, label = { Text(stringResource(label)) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }, textStyle = MaterialTheme.typography.bodyMedium, shape = MaterialTheme.shapes.medium)
+        ExposedDropdownMenu(expanded, onDismissRequest = { expanded = false }) { choices.forEach { (key, title) -> DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.bodyMedium) }, onClick = { onSelect(key); expanded = false }, modifier = Modifier.heightIn(min = AppDimensions.TouchTarget)) } }
     }
 }
 
@@ -204,8 +236,8 @@ private fun ProviderField(state: DiscoveryUiState, selected: String, onSelect: (
         source != null && !source.optBoolean("supports_tags") -> stringResource(R.string.discovery_filter_provider_title_only)
         else -> null
     }
-    if (message != null) Text(message, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    TextButton(onClick = refresh, enabled = !state.providerLoading, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.discovery_filter_provider_refresh)) }
+    if (message != null) Text(message, modifier = Modifier.padding(top = LocalAppSpacing.current.sm), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    TextButton(onClick = refresh, enabled = !state.providerLoading, modifier = Modifier.heightIn(min = AppDimensions.TouchTarget)) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(LocalAppSpacing.current.sm)); Text(stringResource(R.string.discovery_filter_provider_refresh)) }
 }
 
 private fun filterTokens(value: String) = value.replace('，', ',').split(',').map(String::trim).filter(String::isNotEmpty).distinct()
@@ -238,9 +270,9 @@ internal fun validateDiscoveryFilters(value: DiscoveryFilters): Map<String, Int>
 }
 
 @Preview(name = "FilterBottomSheet light", locale = "zh", widthDp = 393, heightDp = 760, showBackground = true)
-@Composable private fun FilterBottomSheetLightPreview() { DiscoveryTheme(darkTheme = false) { Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) { DiscoveryFilterContent(DiscoveryUiState.empty(), PreviewFilterCallbacks, {}) } } }
+@Composable private fun FilterBottomSheetLightPreview() { DiscoveryTheme(darkTheme = false) { Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) { DiscoveryFilterContent(DiscoveryUiState.empty(), PreviewFilterCallbacks, {}) } } }
 @Preview(name = "FilterBottomSheet dark", locale = "zh", widthDp = 393, heightDp = 760, showBackground = true)
-@Composable private fun FilterBottomSheetDarkPreview() { DiscoveryTheme(darkTheme = true) { Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) { DiscoveryFilterContent(DiscoveryUiState.empty(), PreviewFilterCallbacks, {}) } } }
+@Composable private fun FilterBottomSheetDarkPreview() { DiscoveryTheme(darkTheme = true) { Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) { DiscoveryFilterContent(DiscoveryUiState.empty(), PreviewFilterCallbacks, {}) } } }
 
 private object PreviewFilterCallbacks : DiscoveryCallbacks {
     override fun onQueryChanged(value: String) = Unit

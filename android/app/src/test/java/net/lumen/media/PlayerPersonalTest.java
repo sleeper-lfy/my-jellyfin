@@ -30,6 +30,7 @@ public class PlayerPersonalTest {
         JSONObject work=new JSONObject("{\"id\":7,\"title\":\"Playing work\",\"kind\":\"series\",\"favorite\":0,\"liked\":0,\"disliked\":0,\"rating\":null}");
         put(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));put(activity,"work",work);put(activity,"file",new JSONObject().put("id",70));put(activity,"session","keep-session");put(activity,"resumeMs",45000L);call(activity,"refreshPersonal");return work;
     }
+    private Button findButton(android.view.View root,String label){if(root instanceof Button&&label.contentEquals(((Button)root).getText()))return (Button)root;if(root instanceof android.view.ViewGroup)for(int i=0;i<((android.view.ViewGroup)root).getChildCount();i++){Button result=findButton(((android.view.ViewGroup)root).getChildAt(i),label);if(result!=null)return result;}return null;}
     @Test public void allPersonalActionsPersistWithoutChangingVideoOrSession()throws Exception{
         JSONObject canonical=new JSONObject("{\"favorite\":0,\"liked\":0,\"disliked\":0,\"rating\":null,\"watchlist\":0}");
         try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
@@ -38,7 +39,7 @@ public class PlayerPersonalTest {
                 return new MockResponse().setBody(new JSONObject().put("ok",true).put("personal",canonical).toString());
             }catch(Exception e){return new MockResponse().setResponseCode(500);}}});server.start();PlayerActivity activity=lifecycle.get();JSONObject work=build(activity,server);Object file=get(activity,"file");
             ((Button)get(activity,"personalFavorite")).performClick();waitFor(()->work.optInt("favorite")==1);
-            ((Button)get(activity,"personalDisliked")).performClick();waitFor(()->work.optInt("disliked")==1);assertEquals(0,work.optInt("liked"));assertEquals(0,work.optInt("favorite"));
+            call(activity,"playbackSettings");AlertDialog tools=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();findButton(tools.getWindow().getDecorView(),"我的评价").performClick();AlertDialog evaluation=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();Button disliked=findButton(evaluation.getWindow().getDecorView(),"不喜欢");assertNotNull(disliked);assertSame(disliked,get(activity,"personalDisliked"));disliked.performClick();waitFor(()->work.optInt("disliked")==1);assertEquals(0,work.optInt("liked"));assertEquals(0,work.optInt("favorite"));
             ((Button)get(activity,"personalRating")).performClick();AlertDialog score=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();score.getListView().performItemClick(null,9,9);waitFor(()->work.optInt("rating")==9);
             ((Button)get(activity,"personalRating")).performClick();score=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();score.getListView().performItemClick(null,0,0);waitFor(()->work.isNull("rating"));
             assertSame(file,get(activity,"file"));assertEquals("keep-session",get(activity,"session"));assertEquals(45000L,get(activity,"resumeMs"));assertNull(get(activity,"player"));

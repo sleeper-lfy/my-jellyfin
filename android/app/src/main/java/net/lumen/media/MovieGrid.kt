@@ -28,6 +28,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
+import net.lumen.media.ui.theme.AppDimensions
+import net.lumen.media.ui.theme.LocalAppSpacing
 
 @Composable
 internal fun DiscoveryMovieGrid(
@@ -42,9 +44,10 @@ internal fun DiscoveryMovieGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2), state = gridState, modifier = modifier.fillMaxSize().testTag("discoveryGrid"),
-        contentPadding = PaddingValues(DiscoveryDimensions.Page),
-        horizontalArrangement = Arrangement.spacedBy(DiscoveryDimensions.GridGap),
-        verticalArrangement = Arrangement.spacedBy(DiscoveryDimensions.GridGap),
+        contentPadding = PaddingValues(start = LocalAppSpacing.current.page, end = LocalAppSpacing.current.page,
+            top = LocalAppSpacing.current.xs, bottom = LocalAppSpacing.current.page),
+        horizontalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.md),
+        verticalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.md),
     ) {
         if (state.loading && state.items.isEmpty()) {
             items(6, key = { "loading:$it" }) { DiscoveryMovieSkeleton() }
@@ -55,9 +58,9 @@ internal fun DiscoveryMovieGrid(
             }
             if (state.items.isEmpty()) {
                 item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                    Column(Modifier.fillMaxWidth().padding(vertical = DiscoveryDimensions.TouchTarget),
+                    Column(Modifier.fillMaxWidth().padding(vertical = AppDimensions.TouchTarget),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(DiscoveryDimensions.GridGap)) {
+                        verticalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.md)) {
                         Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(stringResource(if (state.error.isBlank()) R.string.discovery_empty_title else R.string.discovery_load_error),
                             style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -69,7 +72,7 @@ internal fun DiscoveryMovieGrid(
                 }
             } else if (state.loadingMore) {
                 item(key = "loadingMore", span = { GridItemSpan(maxLineSpan) }) {
-                    Column(Modifier.fillMaxWidth().padding(DiscoveryDimensions.Page), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.fillMaxWidth().padding(LocalAppSpacing.current.page), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                     }
                 }

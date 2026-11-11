@@ -51,14 +51,17 @@ public class PlayerUiTest {
                 :WindowInsets.class.getConstructor(Rect.class).newInstance(new Rect(left,topInset,0,nav));
             root.dispatchApplyWindowInsets(safe);
             for(int[] size:new int[][]{{360,800},{800,360},{640,280}}){
-                for(boolean vrMode:new boolean[]{false,true}){
-                    vr.setVisibility(vrMode?View.VISIBLE:View.GONE);
+                for(boolean vrMode:new boolean[]{false,true,false}){
+                    Field vrEnabled=PlayerActivity.class.getDeclaredField("vrEnabled");vrEnabled.setAccessible(true);vrEnabled.setBoolean(activity,vrMode);Method renderMode=PlayerActivity.class.getDeclaredMethod("updateRenderMode");renderMode.setAccessible(true);renderMode.invoke(activity);
                     int width=Math.round(size[0]*density),height=Math.round(size[1]*density);
                     for(int pass=0;pass<3;pass++){
                         root.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
                         root.layout(0,0,width,height);
                     }
-                    assertEquals("Controls must float above a full-size video",height,root.getChildAt(0).getHeight());
+                    boolean portrait=size[1]>size[0]&&!vrMode;
+                    View surface=(View)field(activity,vrMode?"vrVideo":"video");assertEquals(View.VISIBLE,surface.getVisibility());
+                    assertEquals("Portrait keeps a complete 16:9 viewport; cinema and VR use the active full-window surface",portrait?Math.round(width*9f/16):height,surface.getHeight());
+                    assertEquals(width,surface.getWidth());assertEquals(vrMode?View.GONE:View.VISIBLE,((View)field(activity,"video")).getVisibility());
                     assertTrue("layout "+size[0]+"x"+size[1]+" vr="+vrMode+" top="+top.getBottom()+" bottom="+bottom.getTop()+" bottomHeight="+bottom.getHeight(),top.getBottom()<=bottom.getTop());
                     for(View row:new View[]{top,bottom}){
                         Rect rect=new Rect(0,0,row.getWidth(),row.getHeight());root.offsetDescendantRectToMyCoords(row,rect);
@@ -147,13 +150,15 @@ public class PlayerUiTest {
             AlertDialog menu=ShadowAlertDialog.getLatestAlertDialog();
             assertEquals("播放选项",shadowOf(menu).getTitle());
             assertNotNull(findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"音轨"));
-            assertNull("上下集已归到播放控制行",findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"下个视频"));
-            Button picture=findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"画面设置");assertNotNull(picture);
+            Button previous=findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"上个视频"),next=findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"下个视频");assertNotNull(previous);assertNotNull(next);assertFalse("No media is selected, so navigation remains disabled",previous.isEnabled());assertFalse(next.isEnabled());
+            LinearLayout tabs=menu.getWindow().getDecorView().findViewWithTag("playerSettingTabs");assertEquals(3,tabs.getChildCount());for(int i=0;i<tabs.getChildCount();i++)assertTrue(tabs.getChildAt(i) instanceof FrameLayout);
+            LinearLayout groups=menu.getWindow().getDecorView().findViewWithTag("playerSettingActions");assertEquals("Audio/speed, media tools, and navigation form three divided groups",3,groups.getChildCount());
+            Button picture=findButton((android.view.ViewGroup)menu.getWindow().getDecorView(),"画面");assertNotNull(picture);
             picture.performClick();AlertDialog settingsMenu=ShadowAlertDialog.getLatestAlertDialog();assertEquals("播放选项",shadowOf(settingsMenu).getTitle());
             Button beauty=(Button)field(activity,"beautyControl");assertNotNull(beauty);assertEquals("实时美颜",beauty.getText().toString());
             Field settings=PlayerActivity.class.getDeclaredField("beauty");settings.setAccessible(true);settings.set(activity,new BeautySettings(new org.json.JSONObject().put("enabled",true)));
             Method refresh=PlayerActivity.class.getDeclaredMethod("refreshBeauty");refresh.setAccessible(true);refresh.invoke(activity);
-            assertEquals(MediaStyle.ACCENT,beauty.getTextColors().getDefaultColor());assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
+            assertEquals(net.lumen.media.ui.theme.NativeActionTokens.primary(true),beauty.getTextColors().getDefaultColor());assertEquals("实时美颜，已开启",beauty.getContentDescription().toString());
             Field file=PlayerActivity.class.getDeclaredField("file");file.setAccessible(true);file.set(activity,new org.json.JSONObject().put("id",1L));
             beauty.performClick();AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();assertEquals("实时美颜",shadowOf(dialog).getTitle());dialog.dismiss();
         }
@@ -164,28 +169,30 @@ public class PlayerUiTest {
             PlayerActivity activity=lifecycle.get();
             call(activity,"buildPlayerUi",android.content.SharedPreferences.class,activity.getSharedPreferences("playback",0));
             FrameLayout root=(FrameLayout)field(activity,"root");
-            for(int[] size:new int[][]{{360,800},{320,640}}){
+            for(int[] size:new int[][]{{360,800},{320,640},{800,360},{640,280}}){
                 int width=Math.round(size[0]*activity.getResources().getDisplayMetrics().density);
                 int height=Math.round(size[1]*activity.getResources().getDisplayMetrics().density);
                 for(int pass=0;pass<3;pass++){
                     root.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
                     root.layout(0,0,width,height);
                 }
-                Button play=(Button)field(activity,"pause");
-                assertRowFitsShare((LinearLayout)play.getParent());
-                Button favorite=(Button)field(activity,"personalFavorite");
-                assertRowFitsShare((LinearLayout)favorite.getParent());
+                for(String name:new String[]{"playbackRow","quickRow","personalRow","transportControls"}){
+                    LinearLayout row=(LinearLayout)field(activity,name);if(row.getVisibility()==View.VISIBLE)assertRowFitsShare(row);
+                }
             }
         }
     }
 
     private void assertRowFitsShare(LinearLayout row){
         assertNotNull(row);
+        View previous=null;
         for(int i=0;i<row.getChildCount();i++){
             View child=row.getChildAt(i);if(child.getVisibility()!=View.VISIBLE)continue;
-            assertEquals("主题最小宽度不得挤压控件",0,child.getMinimumWidth());
+            assertTrue("主题最小宽度不得挤压分配的空间",child.getMinimumWidth()<=child.getMeasuredWidth());
             assertTrue("控件越过容器右侧",child.getRight()<=row.getWidth());assertTrue("控件越过容器左侧",child.getLeft()>=0);
-            assertTrue("保留48dp触控宽度",child.getMeasuredWidth()>=Math.round(48*row.getResources().getDisplayMetrics().density));
+            assertTrue("保留48dp触控宽度",child.getMeasuredWidth()>=Math.round(48*row.getResources().getDisplayMetrics().density));assertTrue("保留48dp触控高度",child.getMeasuredHeight()>=Math.round(48*row.getResources().getDisplayMetrics().density));
+            if(previous!=null)assertTrue("相邻触控区域不得重叠",row.getOrientation()==LinearLayout.HORIZONTAL?child.getLeft()>=previous.getRight():child.getTop()>=previous.getBottom());
+            previous=child;
         }
     }
 }

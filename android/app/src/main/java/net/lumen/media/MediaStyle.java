@@ -1,6 +1,15 @@
 package net.lumen.media;
 
 import android.content.Context;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.graphics.drawable.InsetDrawable;
+import androidx.core.content.ContextCompat;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.shape.MaterialShapeDrawable;
+import com.google.android.material.shape.ShapeAppearanceModel;
+import net.lumen.media.ui.theme.NativeActionTokens;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -20,13 +29,51 @@ final class MediaStyle {
     static int dp(Context context,float value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
     /** Horizontal controls share one gap; weights leave narrow-window inputs room to shrink. */
     static LinearRow row(Context context){return new LinearRow(context);}
-    static final class LinearRow extends android.widget.LinearLayout {
+    static class LinearRow extends android.widget.LinearLayout {
         LinearRow(Context context){super(context);setOrientation(HORIZONTAL);setGravity(android.view.Gravity.CENTER_VERTICAL);}
         @Override public void addView(android.view.View child,int index,android.view.ViewGroup.LayoutParams params){
             LayoutParams cell=params instanceof LayoutParams?(LayoutParams)params:new LayoutParams(params);
             cell.setMarginStart(getChildCount()==0?0:dp(getContext(),SPACE));cell.setMarginEnd(0);
             super.addView(child,index,cell);
         }
+    }
+    /** Separate action spacing from form fields and navigation spacing. */
+    static LinearRow actionRow(Context context){return new ActionLine(context,false);}
+    static LinearRow actionColumn(Context context){return new ActionLine(context,true);}
+    static ChipLayout actionFlow(Context context){return new ChipLayout(context,Math.round(NativeActionTokens.actionGapDp()));}
+    static final class ActionLine extends LinearRow {
+        ActionLine(Context context,boolean vertical){super(context);setOrientation(vertical?VERTICAL:HORIZONTAL);setGravity(vertical?Gravity.START:Gravity.CENTER_VERTICAL);}
+        @Override protected void onMeasure(int widthSpec,int heightSpec){
+            boolean first=true;int gap=dp(getContext(),NativeActionTokens.actionGapDp());
+            for(int i=0;i<getChildCount();i++){View child=getChildAt(i);boolean visible=child.getVisibility()!=GONE;LayoutParams cell=(LayoutParams)child.getLayoutParams();
+                actionMargins(cell,getOrientation()==VERTICAL,visible&&!first?gap:0,getLayoutDirection());if(visible)first=false;
+            }
+            super.onMeasure(widthSpec,heightSpec);
+        }
+    }
+    /** Relative margins alone can leave a previously resolved physical 8dp margin behind. */
+    private static void actionMargins(ViewGroup.MarginLayoutParams cell,boolean vertical,int gap,int direction){
+        cell.setMarginStart(vertical?0:gap);cell.setMarginEnd(0);
+        if(vertical){cell.topMargin=gap;cell.bottomMargin=0;}
+        cell.resolveLayoutDirection(direction);
+        cell.leftMargin=!vertical&&direction!=View.LAYOUT_DIRECTION_RTL?gap:0;
+        cell.rightMargin=!vertical&&direction==View.LAYOUT_DIRECTION_RTL?gap:0;
+    }
+    static Button action(Context context){return action(context,true);}
+    static Button action(Context context,boolean dark){Button view=new NativeActionButton(context,dark);button(view,false,false,false);return view;}
+    /** Poster actions retain a 48dp Material touch target around a compact circular scrim. */
+    static Button cardIcon(Context context){return new NativeActionButton(context,true,true);}
+    static void cardMark(Button view,String symbol,boolean selected){
+        styleAction(view,3,selected);icon(view,symbol,selected);view.setText("");
+        MaterialButton material=(MaterialButton)view;Context context=view.getContext();
+        int scrim=(NativeActionTokens.scrim(true)&0x00ffffff)|0x99000000;
+        material.setBackgroundTintList(ColorStateList.valueOf(scrim));
+        material.setCornerRadius(dp(context,NativeActionTokens.visualDp()/2));
+        int color=NativeActionTokens.onPhotoScrim(selected);
+        ColorStateList tint=new ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{(color&0x00ffffff)|0x99000000,color});
+        material.setIconTint(tint);material.setTextColor(tint);
+        material.setIconSize(dp(context,NativeActionTokens.posterIconDp()));material.setIconPadding(0);
+        int inset=dp(context,NativeActionTokens.insetDp());material.setPaddingRelative(inset,inset,inset,inset);
     }
     /** Resume cards follow the actual viewport rather than the physical display. */
     static final class ResumeStrip extends android.widget.HorizontalScrollView {
@@ -56,26 +103,83 @@ final class MediaStyle {
         GradientDrawable drawable=new GradientDrawable();drawable.setColor(color);drawable.setCornerRadius(dp(context,radius));
         if(stroke!=0)drawable.setStroke(dp(context,1),stroke);return drawable;
     }
-    static void button(Button view,boolean primary,boolean selected,boolean heart){
-        Context context=view.getContext();int color=primary?ACCENT:selected?0xff203e4b:SURFACE;
-        if(selected&&heart)color=0xff3b2b30;
-        int border=selected?(heart?0xff81575e:0xff427082):BORDER;
-        view.setBackgroundTintList(null);view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x25ffffff),surface(context,color,primary?0:border,12),null));
-        view.setSelected(selected);view.setTextColor(selected?(heart?0xffffb5cc:0xffa5e5f5):primary?0xff102a35:TEXT);
-        view.setPadding(dp(context,12),dp(context,6),dp(context,12),dp(context,6));view.setMinWidth(0);view.setMinimumWidth(0);view.setMinimumHeight(dp(context,48));view.setMinHeight(dp(context,48));view.setAllCaps(false);view.setMaxLines(2);view.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    static void button(Button view,boolean primary,boolean selected,boolean heart){styleAction(view,primary?1:0,selected);}
+    static void danger(Button view){styleAction(view,2,view.isSelected());}
+    private static boolean dark(Button view){return !(view instanceof NativeActionButton)||((NativeActionButton)view).isDarkTheme();}
+    private static ColorStateList actionColors(boolean dark,int role,boolean foreground){
+        int disabled=foreground?NativeActionTokens.disabledContent(dark):NativeActionTokens.disabledContainer(dark,role);
+        int selected=foreground?NativeActionTokens.content(dark,role,true):NativeActionTokens.container(dark,role,true);
+        int normal=foreground?NativeActionTokens.content(dark,role,false):NativeActionTokens.container(dark,role,false);
+        return new ColorStateList(new int[][]{{-android.R.attr.state_enabled},{android.R.attr.state_selected},{}},new int[]{disabled,selected,normal});
+    }
+    private static ColorStateList rippleColors(boolean dark,int role){
+        int base=NativeActionTokens.content(dark,role,false);return new ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{Color.TRANSPARENT,(base&0x00ffffff)|0x1f000000});
+    }
+    private static void styleAction(Button view,int role,boolean selected){
+        Context context=view.getContext();boolean dark=dark(view);int inset=dp(context,NativeActionTokens.insetDp());
+        ColorStateList fill=actionColors(dark,role,false),foreground=actionColors(dark,role,true),ripple=rippleColors(dark,role);
+        if(view instanceof MaterialButton){
+            MaterialButton material=(MaterialButton)view;material.setInsetTop(inset);material.setInsetBottom(inset);material.setCornerRadius(dp(context,NativeActionTokens.cornerDp()));material.setStrokeWidth(0);
+            material.setBackgroundTintList(fill);material.setRippleColor(ripple);material.setIconTint(foreground);material.setIconSize(dp(context,NativeActionTokens.iconDp()));material.setIconPadding(dp(context,NativeActionTokens.iconGapDp()));material.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+        }else{
+            MaterialShapeDrawable shape=new MaterialShapeDrawable(ShapeAppearanceModel.builder().setAllCornerSizes(dp(context,NativeActionTokens.cornerDp())).build());shape.setFillColor(fill);
+            view.setBackgroundTintList(null);view.setBackground(new InsetDrawable(new RippleDrawable(ripple,shape,null),0,inset,0,inset));
+        }
+        view.setSelected(selected);view.setTextColor(foreground);view.setTextSize(NativeActionTokens.labelSp());view.setAllCaps(false);view.setIncludeFontPadding(false);view.setGravity(Gravity.CENTER);
+        int horizontal=dp(context,NativeActionTokens.horizontalPaddingDp()),vertical=inset+dp(context,NativeActionTokens.verticalPaddingDp());view.setPaddingRelative(horizontal,vertical,horizontal,vertical);
+        int touch=dp(context,NativeActionTokens.touchDp());view.setMinWidth(touch);view.setMinimumWidth(touch);view.setMinHeight(touch);view.setMinimumHeight(touch);view.setMaxLines(2);view.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if(!(view instanceof MaterialButton))syncActionState(view.getBackground(),view.getDrawableState());
+    }
+    /** A newly installed nested shape must not keep its initial empty (disabled) state. */
+    private static void syncActionState(Drawable background,int[] state){
+        if(background==null)return;
+        background.setState(state);
+        if(background instanceof InsetDrawable)syncActionState(((InsetDrawable)background).getDrawable(),state);
+        if(background instanceof android.graphics.drawable.LayerDrawable){
+            android.graphics.drawable.LayerDrawable layers=(android.graphics.drawable.LayerDrawable)background;
+            for(int i=0;i<layers.getNumberOfLayers();i++)syncActionState(layers.getDrawable(i),state);
+        }
+    }
+    private static Drawable actionIcon(Context context,String name,boolean selected,int color){
+        int asset;
+        switch(name){
+            case "home":asset=selected?R.drawable.design_system_home_filled:R.drawable.design_system_home;break;
+            case "library":asset=selected?R.drawable.design_system_library_filled:R.drawable.design_system_library;break;
+            case "discover":asset=selected?R.drawable.design_system_discover_filled:R.drawable.design_system_discover;break;
+            case "user":asset=selected?R.drawable.design_system_mine_filled:R.drawable.design_system_mine;break;
+            case "heart":asset=selected?R.drawable.design_system_favorite_filled:R.drawable.design_system_favorite;break;
+            case "bookmark":asset=selected?R.drawable.design_system_watchlist_filled:R.drawable.design_system_watchlist;break;
+            case "search":asset=R.drawable.design_system_search;break;
+            case "filter":asset=R.drawable.design_system_filter;break;
+            case "sort":asset=R.drawable.design_system_sort;break;
+            case "more":asset=R.drawable.design_system_more;break;
+            case "server":asset=R.drawable.design_system_connections;break;
+            case "smart_playlist":asset=R.drawable.design_system_smart_playlist;break;
+            case "statistics":asset=R.drawable.design_system_statistics;break;
+            case "phone_queue":asset=R.drawable.design_system_phone_queue;break;
+            case "remote":asset=R.drawable.design_system_remote;break;
+            case "tasks":asset=R.drawable.design_system_tasks;break;
+            case "shuffle":asset=R.drawable.design_system_shuffle;break;
+            default:asset=0;
+        }
+        Drawable drawable=asset==0?new Symbol(name,color,selected):ContextCompat.getDrawable(context,asset).mutate();drawable.setBounds(0,0,dp(context,NativeActionTokens.iconDp()),dp(context,NativeActionTokens.iconDp()));return drawable;
     }
     static void icon(Button button,String name,boolean selected){
-        Symbol icon=new Symbol(name,name.equals("play")?0xff102a35:selected?(name.equals("heart")?HEART:name.equals("star")?0xffe7c567:name.equals("ban")?0xffef8b87:ACCENT):0xffddddE5,selected);
-        icon.setBounds(0,0,dp(button.getContext(),20),dp(button.getContext(),20));
-        button.setCompoundDrawables(icon,null,null,null);button.setCompoundDrawablePadding(dp(button.getContext(),7));
+        boolean dark=dark(button);Drawable drawable=actionIcon(button.getContext(),name,selected,NativeActionTokens.content(dark,0,selected));
+        if(button instanceof MaterialButton){MaterialButton material=(MaterialButton)button;material.setIcon(drawable);material.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);material.setIconSize(dp(button.getContext(),NativeActionTokens.iconDp()));material.setIconPadding(dp(button.getContext(),NativeActionTokens.iconGapDp()));}
+        else {drawable.setTintList(button.getTextColors());button.setCompoundDrawables(drawable,null,null,null);button.setCompoundDrawablePadding(dp(button.getContext(),NativeActionTokens.iconGapDp()));}
     }
     static void field(android.widget.EditText view){
         Context context=view.getContext();view.setTextColor(TEXT);view.setHintTextColor(MUTED);view.setTextSize(14);
         view.setBackground(surface(context,0xff0d1821,BORDER,10));view.setPadding(dp(context,12),dp(context,8),dp(context,12),dp(context,8));view.setMinimumHeight(dp(context,48));
     }
     static void quiet(Button view,String symbol,String description){
-        view.setText("");button(view,false,false,false);view.setBackground(surface(view.getContext(),Color.TRANSPARENT,0,10));
-        icon(view,symbol,false);Drawable drawable=view.getCompoundDrawables()[0];view.setCompoundDrawables(null,null,null,null);view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x2579d8ec),new android.graphics.drawable.LayerDrawable(new Drawable[]{surface(view.getContext(),Color.TRANSPARENT,0,10),new CenterSymbol(drawable)}),null));view.setContentDescription(description);
+        view.setText("");styleAction(view,3,false);icon(view,symbol,false);view.setContentDescription(description);
+        if(!(view instanceof MaterialButton)){
+            Drawable drawable=view.getCompoundDrawables()[0];view.setCompoundDrawables(null,null,null,null);
+            int inset=dp(view.getContext(),NativeActionTokens.insetDp());MaterialShapeDrawable shape=new MaterialShapeDrawable(ShapeAppearanceModel.builder().setAllCornerSizes(dp(view.getContext(),NativeActionTokens.cornerDp())).build());shape.setFillColor(ColorStateList.valueOf(Color.TRANSPARENT));
+            view.setBackground(new InsetDrawable(new RippleDrawable(rippleColors(dark(view),3),new android.graphics.drawable.LayerDrawable(new Drawable[]{shape,new CenterSymbol(drawable)}),null),0,inset,0,inset));
+        }
     }
     static final class CenterSymbol extends Drawable {
         private final Drawable drawable;CenterSymbol(Drawable value){drawable=value;}
@@ -83,15 +187,30 @@ final class MediaStyle {
         private int dpSize(){return Math.min(Math.min(getBounds().width(),getBounds().height()),Math.max(20,drawable.getIntrinsicWidth()>0?drawable.getIntrinsicWidth():drawable.getBounds().width()));}
         public void setAlpha(int value){drawable.setAlpha(value);}public void setColorFilter(ColorFilter filter){drawable.setColorFilter(filter);}public int getOpacity(){return PixelFormat.TRANSLUCENT;}
     }
-    static Button navigation(Context context,String title,String symbol,boolean selected){
-        Button view=new Button(context);button(view,false,selected,false);view.setText(title);view.setTextSize(11);view.setMaxLines(1);view.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        Symbol icon=new Symbol(symbol,selected?ACCENT:MUTED,false);icon.setBounds(0,0,dp(context,22),dp(context,22));view.setCompoundDrawables(null,icon,null,null);view.setCompoundDrawablePadding(dp(context,5));view.setPadding(dp(context,2),dp(context,8),dp(context,2),dp(context,8));view.setBackground(surface(context,selected?0xff183542:Color.TRANSPARENT,0,14));view.setMinHeight(dp(context,60));return view;
+    /** Style platform dialog actions without changing dialog position or callbacks. */
+    static void dialogActions(android.app.AlertDialog dialog){
+        java.util.Set<ViewGroup> parents=new java.util.HashSet<>();
+        for(int which:new int[]{-1,-2,-3}){Button button=dialog.getButton(which);if(button!=null){button(button,which==-1,false,false);if(button.getParent() instanceof ViewGroup)parents.add((ViewGroup)button.getParent());}}
+        int gap=dp(dialog.getContext(),NativeActionTokens.actionGapDp());
+        for(ViewGroup parent:parents){boolean first=true;boolean vertical=parent instanceof android.widget.LinearLayout&&((android.widget.LinearLayout)parent).getOrientation()==android.widget.LinearLayout.VERTICAL;
+            for(int i=0;i<parent.getChildCount();i++){View child=parent.getChildAt(i);if(!(child instanceof Button)||child.getVisibility()==View.GONE)continue;ViewGroup.LayoutParams params=child.getLayoutParams();if(params instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams margin=(ViewGroup.MarginLayoutParams)params;actionMargins(margin,vertical,first?0:gap,parent.getLayoutDirection());child.setLayoutParams(margin);}first=false;}
+        }
     }
     static void sheet(android.app.AlertDialog dialog){
-        if(dialog.getWindow()==null)return;android.view.Window window=dialog.getWindow();window.setBackgroundDrawable(surface(dialog.getContext(),PANEL,BORDER,20));
-        window.setGravity(android.view.Gravity.BOTTOM);window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        for(int which:new int[]{-1,-2,-3}){Button b=dialog.getButton(which);if(b!=null)button(b,which==-1,false,false);}
+        if(dialog.getWindow()==null)return;android.view.Window window=dialog.getWindow();
+        MaterialShapeDrawable background=new MaterialShapeDrawable(ShapeAppearanceModel.builder().setAllCornerSizes(dp(dialog.getContext(),NativeActionTokens.sheetCornerDp())).build());background.setFillColor(ColorStateList.valueOf(NativeActionTokens.surfaceContainer(true)));window.setBackgroundDrawable(background);
+        window.setGravity(Gravity.BOTTOM);window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);dialogActions(dialog);
+        View decor=window.getDecorView();final int[] previous={-1};final boolean[] capped={false};
+        Runnable cap=()->{
+            if(!dialog.isShowing())return;android.graphics.Rect visible=new android.graphics.Rect();decor.getWindowVisibleDisplayFrame(visible);int available=visible.height();
+            if(available<=0)available=decor.getResources().getDisplayMetrics().heightPixels;
+            if(available<=0)return;
+            if(previous[0]!=available&&capped[0]){window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);capped[0]=false;}
+            previous[0]=available;
+            if(decor.getHeight()>available&&window.getAttributes().height!=available){window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,available);capped[0]=true;}
+        };
+        android.view.ViewTreeObserver.OnGlobalLayoutListener listener=cap::run;decor.getViewTreeObserver().addOnGlobalLayoutListener(listener);
+        decor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View view){}public void onViewDetachedFromWindow(View view){view.getViewTreeObserver().removeOnGlobalLayoutListener(listener);view.removeOnAttachStateChangeListener(this);}});decor.post(cap);
     }
     static final class ArtworkPlaceholder extends Drawable {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);

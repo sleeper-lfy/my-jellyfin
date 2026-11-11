@@ -59,6 +59,9 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
+import net.lumen.media.ui.theme.AppDimensions
+import net.lumen.media.ui.theme.AppPosterColors
+import net.lumen.media.ui.theme.LocalAppPosterColors
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], qualifiers = "w393dp-h852dp-mdpi")
@@ -290,10 +293,11 @@ class DiscoveryComposeUiTest {
     }
 
     private fun verifyScreen(dark: Boolean) {
-        val data = state(); var colors: ColorScheme? = null
+        val data = state(); var colors: ColorScheme? = null; var posterColors: AppPosterColors? = null
         compose.setContent {
             DiscoveryTheme(dark) {
                 colors = MaterialTheme.colorScheme
+                posterColors = LocalAppPosterColors.current
                 DiscoveryScreen(data, PreviewDiscoveryCallbacks,
                     previewPainter = painterResource(R.drawable.discovery_preview_coast))
             }
@@ -309,7 +313,7 @@ class DiscoveryComposeUiTest {
         // GridCells.Fixed distributes an odd physical pixel between its two columns.
         assertEquals(firstWidth, secondWidth, 1f)
         assertEquals(12f, second.left.value - first.right.value, .1f)
-        compose.runOnIdle { verifyContrast(requireNotNull(colors)) }
+        compose.runOnIdle { verifyContrast(requireNotNull(colors), requireNotNull(posterColors)) }
         screenshot(if (dark) "discovery-compose-dark.png" else "discovery-compose-light.png")
         compose.onNodeWithTag("discoveryGrid").performScrollToIndex(19)
         val title = data.items.last().title
@@ -320,7 +324,7 @@ class DiscoveryComposeUiTest {
         screenshot(if (dark) "discovery-compose-dark-bottom.png" else "discovery-compose-light-bottom.png")
     }
 
-    private fun verifyContrast(colors: ColorScheme) {
+    private fun verifyContrast(colors: ColorScheme, posterColors: AppPosterColors) {
         fun ratio(first: Color, second: Color): Float {
             val one = first.luminance(); val two = second.luminance()
             return (max(one, two) + .05f) / (min(one, two) + .05f)
@@ -329,9 +333,9 @@ class DiscoveryComposeUiTest {
         assertTrue("small supporting copy must meet AA", ratio(colors.onSurfaceVariant, colors.surface) >= 4.5f)
         assertTrue("primary button text must meet AA", ratio(colors.onPrimary, colors.primary) >= 4.5f)
         for (photo in listOf(Color.Black, Color.White)) {
-            val button = colors.surface.copy(alpha = .6f).compositeOver(photo)
-            assertTrue("selected favorite must contrast against either photo extreme", ratio(colors.primary, button) >= 3f)
-            assertTrue("unselected favorite must contrast against either photo extreme", ratio(colors.onSurface, button) >= 3f)
+            val button = colors.scrim.copy(alpha = AppDimensions.FavoriteScrimAlpha).compositeOver(photo)
+            assertTrue("selected favorite must contrast against either photo extreme", ratio(posterColors.onScrim, button) >= 3f)
+            assertTrue("unselected favorite must contrast against either photo extreme", ratio(posterColors.onScrimUnselected, button) >= 3f)
         }
     }
 

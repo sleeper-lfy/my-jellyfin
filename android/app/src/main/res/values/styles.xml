@@ -1,5 +1,12 @@
 <resources>
-    <style name="AppThemeBase" parent="android:style/Theme.Material.NoActionBar">
+    <style name="AppThemeBase" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">?android:attr/colorAccent</item>
+        <item name="colorSecondary">?android:attr/colorAccent</item>
+        <item name="colorOnPrimary">?android:attr/windowBackground</item>
+        <item name="colorOnSecondary">?android:attr/windowBackground</item>
+        <item name="colorSurface">?android:attr/windowBackground</item>
+        <item name="colorOnSurface">?android:attr/textColorPrimary</item>
+        <item name="colorOnSurfaceVariant">?android:attr/textColorSecondary</item>
         <item name="android:alertDialogTheme">@style/LumenDialog</item>
         <item name="android:editTextStyle">@style/LumenInput</item>
         <item name="android:fontFamily">sans</item>
@@ -26,6 +33,22 @@
         <item name="android:paddingLeft">12dp</item><item name="android:paddingRight">12dp</item>
         <item name="android:paddingTop">8dp</item><item name="android:paddingBottom">8dp</item>
         <item name="android:textSize">14sp</item><item name="android:textColorHint">#91A9B8</item>
+    </style>
+    <style name="LumenNativeActionsDark" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
+    </style>
+    <style name="LumenNativeActionsLight" parent="Theme.Material3.Light.NoActionBar">
+        <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
+    </style>
+    <style name="LumenNativeCardIconsDark" parent="LumenNativeActionsDark">
+        <item name="materialButtonStyle">@style/LumenCardIconButton</item>
+    </style>
+    <style name="LumenNativeCardIconsLight" parent="LumenNativeActionsLight">
+        <item name="materialButtonStyle">@style/LumenCardIconButton</item>
+    </style>
+    <style name="LumenCardIconButton" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:insetLeft">8dp</item>
+        <item name="android:insetRight">8dp</item>
     </style>
     <style name="AppTheme" parent="AppThemeBase" />
 </resources>

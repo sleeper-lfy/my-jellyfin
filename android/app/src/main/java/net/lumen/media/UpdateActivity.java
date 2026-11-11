@@ -11,7 +11,14 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.View;
+import android.view.Gravity;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.widget.*;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
+import net.lumen.media.ui.theme.NativeActionTokens;
 import java.io.File;
 import java.security.MessageDigest;
 import java.util.HashSet;
@@ -26,10 +33,10 @@ public final class UpdateActivity extends Activity {
     GitHubUpdates.Fetcher fetcher=GitHubUpdates::fetch;
     private volatile boolean cancelled=false;private boolean busy=false,pendingInstall=false;
     private TextView status,notes;private ProgressBar progress;private Button check,download,install,cancel;
+    private TextView downloadState;private View releaseNotes;
     private GitHubUpdates.Candidate candidate;private File downloaded;private PackageInfo installed;
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
-    private TextView label(String value,int size){TextView view=new TextView(this);view.setText(value);view.setTextSize(size);view.setTextColor(Color.WHITE);view.setPadding(0,dp(10),0,dp(10));return view;}
-    private Button button(String value,Runnable action){Button button=new Button(this);button.setText(value);MediaStyle.button(button,false,false,false);button.setOnClickListener(view->action.run());return button;}
+    private Button button(String value,Runnable action){Button button=MediaStyle.action(this);button.setText(value);MediaStyle.button(button,false,false,false);button.setOnClickListener(view->action.run());return button;}
     @SuppressWarnings("deprecation") static int signatureFlags(){return Build.VERSION.SDK_INT>=28?PackageManager.GET_SIGNING_CERTIFICATES:PackageManager.GET_SIGNATURES;}
     @SuppressWarnings("deprecation") static long versionCode(PackageInfo info){return Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;}
     @SuppressWarnings("deprecation") static Set<String> certificates(PackageInfo info)throws Exception{
@@ -45,17 +52,28 @@ public final class UpdateActivity extends Activity {
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         try{installed=getPackageManager().getPackageInfo(getPackageName(),signatureFlags());}catch(Exception error){finish();return;}
-        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(24),dp(20),dp(24),dp(20));page.setBackgroundColor(MediaStyle.BG);page.setFitsSystemWindows(true);page.setFitsSystemWindows(true);
-        Button back=button("",this::finish);MediaStyle.quiet(back,"back","返回");page.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(label("检查更新",26));page.addView(label("当前版本 "+installed.versionName+" · "+versionCode(installed),15));
-        status=label("从 GitHub Releases 和仓库 target 检查新版，不需要连接媒体服务器。",15);status.setMinHeight(dp(76));page.addView(status);
-        progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(1000);page.addView(progress,new LinearLayout.LayoutParams(-1,dp(8)));
-        notes=label("",14);page.addView(notes);
+        LinearLayout page=BiliAuxiliaryUi.column(this);page.setTag("updatePage");page.setPadding(dp(16),dp(8),dp(16),dp(16));page.setBackgroundColor(NativeActionTokens.background(true));page.setFitsSystemWindows(true);
+        page.addView(BiliAuxiliaryUi.header(this,getString(R.string.bili_aux_update_title),this::finish));
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);LinearLayout content=BiliAuxiliaryUi.column(this);scroll.addView(content);page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout identity=BiliAuxiliaryUi.column(this);identity.setGravity(Gravity.CENTER_HORIZONTAL);identity.setPadding(0,dp(24),0,dp(24));identity.setTag("updateIdentity");ImageView logo=new ImageView(this);logo.setImageResource(R.drawable.lumen_icon);logo.setContentDescription("Lumen");identity.addView(logo,new LinearLayout.LayoutParams(dp(80),dp(80)));TextView app=BiliAuxiliaryUi.text(this,"Lumen",NativeActionTokens.titleSp(),NativeActionTokens.onSurface(true));app.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);BiliAuxiliaryUi.add(identity,app,12);app.setGravity(Gravity.CENTER);TextView version=BiliAuxiliaryUi.supporting(this,installed.versionName);version.setGravity(Gravity.CENTER);BiliAuxiliaryUi.add(identity,version,8);content.addView(identity);
+        status=BiliAuxiliaryUi.body(this,"从 GitHub Releases 和仓库 target 检查新版，不需要连接媒体服务器。");status.setTag("updateStatus");status.setGravity(Gravity.CENTER);status.setPadding(dp(8),0,dp(8),dp(16));content.addView(status);
+        LinearProgressIndicator indicator=new LinearProgressIndicator(BiliAuxiliaryUi.themed(this));indicator.setIndicatorColor(NativeActionTokens.primary(true));indicator.setTrackColor(NativeActionTokens.outlineVariant(true));indicator.setMax(1000);progress=indicator;BiliAuxiliaryUi.add(content,progress,0);
+        MaterialCardView information=BiliAuxiliaryUi.card(this,"updateInformation");LinearLayout info=BiliAuxiliaryUi.cardContent(information,0);BiliAuxiliaryUi.infoRow(info,R.drawable.design_system_library,getString(R.string.bili_aux_update_channel),"GitHub");BiliAuxiliaryUi.divider(info);BiliAuxiliaryUi.infoRow(info,R.drawable.design_system_more,getString(R.string.bili_aux_update_version),installed.versionName+" · "+versionCode(installed));BiliAuxiliaryUi.divider(info);downloadState=BiliAuxiliaryUi.infoRow(info,R.drawable.design_system_tasks,getString(R.string.bili_aux_update_download_state),getString(R.string.bili_aux_update_no_download));BiliAuxiliaryUi.add(content,information,16);
+        LinearLayout release=BiliAuxiliaryUi.column(this);releaseNotes=release;release.setTag("updateReleaseNotes");release.addView(BiliAuxiliaryUi.section(this,getString(R.string.bili_aux_update_notes)));MaterialCardView notesCard=BiliAuxiliaryUi.card(this,"updateNotesCard");LinearLayout notesBody=BiliAuxiliaryUi.cardContent(notesCard,12);notes=BiliAuxiliaryUi.body(this,"");notesBody.addView(notes);release.addView(notesCard);release.setVisibility(View.GONE);content.addView(release);notes.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence text,int start,int count,int after){}public void onTextChanged(CharSequence text,int start,int before,int count){releaseNotes.setVisibility(text.length()==0?View.GONE:View.VISIBLE);}public void afterTextChanged(Editable text){}});
         check=button("检查更新",this::check);download=button("下载新版 APK",this::download);install=button("安装已校验的更新",this::install);cancel=button("取消下载",()->{cancelled=true;cancel.setEnabled(false);status.setText("正在取消下载…");});
-        for(Button button:new Button[]{check,download,install,cancel})page.addView(button);
-        MediaStyle.button(check,true,false,false);download.setEnabled(false);install.setEnabled(false);cancel.setEnabled(false);
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(page);setContentView(scroll);check();
+        LinearLayout actions=MediaStyle.actionColumn(this);actions.setTag("updateActions");LinearLayout.LayoutParams actionGroup=new LinearLayout.LayoutParams(-1,-2);actionGroup.setMargins(0,dp(16),0,dp(16));page.addView(actions,actionGroup);
+        for(Button button:new Button[]{check,download,install,cancel})actions.addView(button);
+        MediaStyle.button(check,true,false,false);MediaStyle.button(download,true,false,false);MediaStyle.button(install,true,false,false);BiliAuxiliaryUi.textAction(cancel,false);download.setEnabled(false);install.setEnabled(false);cancel.setEnabled(false);
+        for(Button action:new Button[]{check,download,install,cancel})action.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));
+        setContentView(page);check();
     }
-    private void state(boolean working){busy=working;check.setEnabled(!working);download.setEnabled(!working&&candidate!=null);install.setEnabled(!working&&downloaded!=null);cancel.setEnabled(working&&candidate!=null);}
+    private void state(boolean working){busy=working;check.setEnabled(!working);download.setEnabled(!working&&candidate!=null);install.setEnabled(!working&&downloaded!=null);cancel.setEnabled(working&&candidate!=null);updatePresentation();}
+    private void updatePresentation(){
+        check.setVisibility(!busy||candidate==null?View.VISIBLE:View.GONE);download.setVisibility(!busy&&candidate!=null&&downloaded==null?View.VISIBLE:View.GONE);install.setVisibility(!busy&&downloaded!=null?View.VISIBLE:View.GONE);cancel.setVisibility(busy&&candidate!=null?View.VISIBLE:View.GONE);
+        if(candidate==null&&downloaded==null)MediaStyle.button(check,true,false,false);else BiliAuxiliaryUi.textAction(check,false);
+        progress.setVisibility(busy?View.VISIBLE:View.GONE);
+        downloadState.setText(getString(downloaded!=null?R.string.bili_aux_update_download_verified:busy&&candidate!=null?R.string.bili_aux_update_downloading:cancelled?R.string.bili_aux_update_cancelled:candidate!=null?R.string.bili_aux_update_available:R.string.bili_aux_update_no_download));
+    }
     private void ui(Runnable action){runOnUiThread(()->{if(!isDestroyed()&&!isFinishing())action.run();});}
     private void check(){
         if(busy)return;cancelled=false;candidate=null;downloaded=null;state(true);progress.setIndeterminate(true);status.setText("正在检查 GitHub 更新…");

@@ -8,18 +8,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -27,15 +21,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -50,7 +39,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
@@ -58,6 +46,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import net.lumen.media.ui.components.AppTopBar
+import net.lumen.media.ui.components.AppScreenScaffold
+import net.lumen.media.ui.components.AppBottomNavigation
+import net.lumen.media.ui.components.AppDestination
+import net.lumen.media.ui.components.AppIcons
+import net.lumen.media.ui.theme.LocalAppSpacing
 
 /** Official Material components, with all business state hoisted into the Java coordinator. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,13 +93,13 @@ internal fun DiscoveryScreen(
         }
     }
     LaunchedEffect(active) { if (!active) { filtersVisible = false; moreExpanded = false; sourceDetailsVisible = false } }
-    Scaffold(
-        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+    AppScreenScaffold(
+        modifier = Modifier.fillMaxSize(), scrollBehavior = scrollBehavior,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.discovery_title), style = MaterialTheme.typography.titleLarge) },
+            AppTopBar(
+                title = stringResource(R.string.discovery_title),
                 actions = {
-                    IconButton(onClick = { moreExpanded = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.discovery_more_action)) }
+                    IconButton(onClick = { moreExpanded = true }) { Icon(AppIcons.More, stringResource(R.string.discovery_more_action)) }
                     DropdownMenu(moreExpanded, onDismissRequest = { moreExpanded = false }) {
                         listOf("save" to R.string.discovery_more_save_list, "shuffle" to R.string.discovery_more_shuffle,
                             "queue" to R.string.discovery_more_phone_queue).forEach { (action, label) ->
@@ -118,29 +114,31 @@ internal fun DiscoveryScreen(
         },
         bottomBar = { DiscoveryNavigation(callbacks::onNavigatePrimary) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { contentPadding ->
-        Column(Modifier.fillMaxSize().padding(contentPadding).consumeWindowInsets(contentPadding)) {
+    ) {
+        Column(Modifier.fillMaxSize()) {
             AnimatedVisibility(searchVisible, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 DiscoveryComposeSearchBar(state, callbacks, active,
                     onFilters = { callbacks.onOpenFilters(); filtersVisible = true },
-                    modifier = Modifier.padding(horizontal = DiscoveryDimensions.Page),
+                    modifier = Modifier.padding(horizontal = LocalAppSpacing.current.page),
                     onSearchActiveChanged = { searchActive = it })
             }
+            DiscoverySourceTabs(state, callbacks, active)
             DiscoveryFilterChipRow(state.chips, callbacks::onRemoveChip, callbacks::onClearFilters,
-                Modifier.padding(horizontal = DiscoveryDimensions.Page))
-            Row(Modifier.fillMaxWidth().padding(horizontal = DiscoveryDimensions.Page),
+                Modifier.padding(horizontal = LocalAppSpacing.current.page))
+            Row(Modifier.fillMaxWidth().padding(horizontal = LocalAppSpacing.current.page),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.discovery_results_count, state.total),
-                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 DiscoverySortMenu(state.sortField, state.descending, callbacks::onSelectSort)
             }
             if (state.statusMessage.isNotBlank()) Text(state.statusMessage,
-                Modifier.padding(horizontal = DiscoveryDimensions.Page),
+                Modifier.padding(horizontal = LocalAppSpacing.current.page),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (state.statusError.isNotBlank()) TextButton(
-                onClick = { sourceDetailsVisible = true }, modifier = Modifier.padding(horizontal = DiscoveryDimensions.Gap)) {
+                onClick = { sourceDetailsVisible = true }, modifier = Modifier.padding(horizontal = LocalAppSpacing.current.sm)) {
                 Text(stringResource(R.string.discovery_source_error_details), style = MaterialTheme.typography.labelLarge)
             }
             PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = callbacks::onRefresh,
@@ -154,7 +152,7 @@ internal fun DiscoveryScreen(
     if (sourceDetailsVisible && active) AlertDialog(
         onDismissRequest = { sourceDetailsVisible = false },
         title = { Text(stringResource(R.string.discovery_source_details_title)) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(DiscoveryDimensions.Gap)) {
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.sm)) {
             if (state.statusMessage.isNotBlank()) Text(state.statusMessage)
             Text(state.statusError)
         } },
@@ -168,22 +166,26 @@ internal fun DiscoveryScreen(
 
 @Composable
 private fun DiscoveryNavigation(onNavigate: (String) -> Unit) {
-    val colors = NavigationBarItemDefaults.colors(
-        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        selectedTextColor = MaterialTheme.colorScheme.primary,
-        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    NavigationBar(modifier = Modifier.testTag("discoveryNavigation")) {
-        NavigationBarItem(selected = false, onClick = { onNavigate("home") },
-            icon = { Icon(Icons.Default.Home, null) }, label = { Text(stringResource(R.string.discovery_nav_home)) }, colors = colors)
-        NavigationBarItem(selected = false, onClick = { onNavigate("library") },
-            icon = { Icon(Icons.AutoMirrored.Filled.List, null) }, label = { Text(stringResource(R.string.discovery_nav_library)) }, colors = colors)
-        NavigationBarItem(selected = true, onClick = { onNavigate("discover") },
-            icon = { Icon(painterResource(R.drawable.discovery_explore), null) }, label = { Text(stringResource(R.string.discovery_nav_discover)) }, colors = colors)
-        NavigationBarItem(selected = false, onClick = { onNavigate("mine") },
-            icon = { Icon(Icons.Default.Person, null) }, label = { Text(stringResource(R.string.discovery_nav_mine)) }, colors = colors)
+    AppBottomNavigation(AppDestination.Discover, { onNavigate(it.id) },
+        modifier = Modifier.testTag("discoveryNavigation"))
+}
+
+/** Source selection is a page-level destination choice, separate from the filter draft. */
+@Composable
+private fun DiscoverySourceTabs(state: DiscoveryUiState, callbacks: DiscoveryCallbacks, active: Boolean) {
+    val selected = if (state.online) 1 else 0
+    TabRow(selectedTabIndex = selected, containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = LocalAppSpacing.current.page),
+        divider = { androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }) {
+        listOf(R.string.discovery_filter_local, R.string.discovery_filter_online).forEachIndexed { index, label ->
+            Tab(selected = index == selected, enabled = active,
+                onClick = { if (index != selected) callbacks.onApplyFilters(state.filters.copy().also { it.online = index == 1 }) },
+                text = { Text(stringResource(label), style = if (index == selected) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium) },
+                selectedContentColor = MaterialTheme.colorScheme.onSurface,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("discoveryScope:$index"))
+        }
     }
 }
 

@@ -25,6 +25,7 @@ import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,6 +49,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import net.lumen.media.ui.theme.AppDimensions
+import net.lumen.media.ui.theme.LocalAppSpacing
+import net.lumen.media.ui.theme.LocalAppPosterColors
 
 @Composable
 internal fun DiscoveryMovieCard(
@@ -70,11 +74,11 @@ internal fun DiscoveryMovieCard(
         onClick = onOpen,
         modifier = modifier.fillMaxWidth().testTag("discoveryMovie:${work.id}"),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        colors = CardDefaults.cardColors(containerColor = colors.surface.copy(alpha = 0f)),
     ) {
         Column {
             Box(
-                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                modifier = Modifier.fillMaxWidth().aspectRatio(AppDimensions.PosterRatio)
                     .clip(MaterialTheme.shapes.medium).background(colors.surfaceContainerHighest)
                     .testTag("discoveryPoster:${work.id}"),
             ) {
@@ -91,30 +95,35 @@ internal fun DiscoveryMovieCard(
                     checked = work.favorite,
                     onCheckedChange = { onFavorite() },
                     enabled = !work.pending,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(DiscoveryDimensions.Gap).size(DiscoveryDimensions.TouchTarget)
+                    modifier = Modifier.align(Alignment.TopEnd).padding(LocalAppSpacing.current.sm).size(AppDimensions.TouchTarget)
                         .testTag("discoveryFavorite:${work.id}"),
                     shape = MaterialTheme.shapes.extraLarge,
                     colors = IconButtonDefaults.filledIconToggleButtonColors(
-                        containerColor = colors.surface.copy(alpha = .6f),
-                        contentColor = colors.onSurface,
-                        checkedContainerColor = colors.surface.copy(alpha = .6f),
-                        checkedContentColor = colors.primary,
+                        containerColor = colors.surface.copy(alpha = 0f),
+                        contentColor = LocalAppPosterColors.current.onScrimUnselected,
+                        checkedContainerColor = colors.surface.copy(alpha = 0f),
+                        checkedContentColor = LocalAppPosterColors.current.onScrim,
+                        disabledContainerColor = colors.surface.copy(alpha = 0f),
                     ),
                 ) {
-                    Icon(
-                        if (work.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        stringResource(if (work.favorite) R.string.discovery_remove_favorite else R.string.discovery_add_favorite, work.title),
-                    )
+                    Surface(Modifier.size(AppDimensions.ButtonVisualHeight), shape = MaterialTheme.shapes.extraLarge,
+                        color = colors.scrim.copy(alpha = AppDimensions.FavoriteScrimAlpha)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(if (work.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                stringResource(if (work.favorite) R.string.discovery_remove_favorite else R.string.discovery_add_favorite, work.title),
+                                Modifier.size(AppDimensions.SmallIcon))
+                        }
+                    }
                 }
             }
-            Column(Modifier.padding(DiscoveryDimensions.Gap), verticalArrangement = Arrangement.spacedBy(DiscoveryDimensions.Gap)) {
+            Column(Modifier.padding(top = LocalAppSpacing.current.sm), verticalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.xs)) {
                 Text(work.title, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface,
                     maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(discoveryMetadata(work), style = MaterialTheme.typography.labelSmall,
+                Text(discoveryMetadata(work), style = MaterialTheme.typography.labelMedium,
                     color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 work.rating?.let { rating ->
                     Text(stringResource(R.string.discovery_personal_rating, rating),
-                        style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                        style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
                 }
             }
         }
@@ -140,11 +149,11 @@ private fun discoveryMetadata(work: DiscoveryUiState.Work): String {
 private fun DiscoveryPosterPlaceholder(title: String, loading: Boolean) {
     val description = if (loading) stringResource(R.string.discovery_poster_loading, title)
         else stringResource(R.string.discovery_poster_failed)
-    Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+    Box(Modifier.fillMaxWidth().aspectRatio(AppDimensions.PosterRatio)
         .then(if (loading) Modifier.discoveryShimmer() else Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         if (!loading) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(DiscoveryDimensions.Gap)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.sm)) {
                 Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(stringResource(R.string.discovery_poster_failed), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -155,11 +164,11 @@ private fun DiscoveryPosterPlaceholder(title: String, loading: Boolean) {
 
 @Composable
 internal fun DiscoveryMovieSkeleton(modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().testTag("discoveryLoadingCard"), verticalArrangement = Arrangement.spacedBy(DiscoveryDimensions.Gap)) {
+    Column(modifier.fillMaxWidth().testTag("discoveryLoadingCard"), verticalArrangement = Arrangement.spacedBy(LocalAppSpacing.current.sm)) {
         DiscoveryPosterPlaceholder("", loading = true)
-        Box(Modifier.fillMaxWidth().size(DiscoveryDimensions.TouchTarget).clip(MaterialTheme.shapes.small)
+        Box(Modifier.fillMaxWidth().size(AppDimensions.TouchTarget).clip(MaterialTheme.shapes.small)
             .discoveryShimmer())
-        Box(Modifier.fillMaxWidth(.6f).size(DiscoveryDimensions.Icon).clip(MaterialTheme.shapes.small)
+        Box(Modifier.fillMaxWidth(.6f).size(AppDimensions.Icon).clip(MaterialTheme.shapes.small)
             .discoveryShimmer())
     }
 }
@@ -168,7 +177,7 @@ internal fun DiscoveryMovieSkeleton(modifier: Modifier = Modifier) {
 private fun Modifier.discoveryShimmer(): Modifier {
     val progress = rememberInfiniteTransition(label = "posterLoading").animateFloat(
         initialValue = -1f, targetValue = 2f,
-        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
+        animationSpec = infiniteRepeatable(tween(AppDimensions.ShimmerDurationMillis, easing = LinearEasing), RepeatMode.Restart),
         label = "posterHighlight",
     )
     val base = MaterialTheme.colorScheme.surfaceContainerHigh

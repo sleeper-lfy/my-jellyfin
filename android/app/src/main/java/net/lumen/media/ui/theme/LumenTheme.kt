@@ -1,7 +1,6 @@
 package net.lumen.media.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -17,8 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Kept separate from DiscoveryTheme until each page's approved migration stage.
-private val DarkColors = darkColorScheme(
+// Shared by the Compose screens and the native Material component token bridge.
+internal val DarkColors = darkColorScheme(
     primary = Color(0xff79d8ec), onPrimary = Color(0xff00363d),
     inversePrimary = Color(0xff00505e),
     primaryContainer = Color(0xff174b55), onPrimaryContainer = Color(0xffb5eff7),
@@ -36,7 +35,7 @@ private val DarkColors = darkColorScheme(
     surfaceContainerHighest = Color(0xff2d3740),
 )
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Color(0xff00505e), onPrimary = Color.White,
     inversePrimary = Color(0xff79d8ec),
     primaryContainer = Color(0xffa8ecfa), onPrimaryContainer = Color(0xff001f27),
@@ -54,7 +53,7 @@ private val LightColors = lightColorScheme(
     surfaceContainerHighest = Color(0xffdce2e6),
 )
 
-private val AppTypography = Typography().let { base ->
+internal val AppTypography = Typography().let { base ->
     base.copy(
         titleLarge = base.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Normal),
         titleMedium = base.titleMedium.copy(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
@@ -64,10 +63,10 @@ private val AppTypography = Typography().let { base ->
     )
 }
 
-private val AppShapes = Shapes(
+internal val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(12.dp), large = RoundedCornerShape(16.dp),
-    extraLarge = CircleShape,
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 /** Shared design foundation; callers explicitly opt in at their approved migration stage. */
@@ -75,7 +74,8 @@ private val AppShapes = Shapes(
 fun LumenTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val scheme = if (darkTheme) DarkColors else LightColors
     CompositionLocalProvider(LocalAppSpacing provides AppSpacing(),
-        LocalAppPosterColors provides AppPosterColors(if (darkTheme) scheme.primary else scheme.inversePrimary)) {
+        LocalAppPosterColors provides AppPosterColors(if (darkTheme) scheme.primary else scheme.inversePrimary,
+            DarkColors.onSurface)) {
         MaterialTheme(colorScheme = scheme,
             typography = AppTypography, shapes = AppShapes, content = content)
     }
@@ -83,6 +83,6 @@ fun LumenTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable 
 
 /** A semantic alias for an icon over a dark photo scrim, sourced from the M3 scheme. */
 @Immutable
-data class AppPosterColors(val onScrim: Color)
+data class AppPosterColors(val onScrim: Color, val onScrimUnselected: Color = DarkColors.onSurface)
 
 val LocalAppPosterColors = staticCompositionLocalOf { AppPosterColors(DarkColors.primary) }

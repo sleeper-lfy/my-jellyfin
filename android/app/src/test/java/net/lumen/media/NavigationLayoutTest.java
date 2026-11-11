@@ -39,10 +39,11 @@ public class NavigationLayoutTest {
     private void set(Object target,String name,Object value)throws Exception{Field field=target.getClass().getDeclaredField(name);field.setAccessible(true);field.set(target,value);}
     private Object call(Object target,String name)throws Exception{Method method=target.getClass().getDeclaredMethod(name);method.setAccessible(true);return method.invoke(target);}
     private View find(View root,String label){if(root instanceof TextView&&label.equals(((TextView)root).getText().toString()))return root;if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++){View found=find(((ViewGroup)root).getChildAt(i),label);if(found!=null)return found;}return null;}
+    private android.widget.Button action(View view,String label){if(view instanceof android.widget.Button&&label.equals(((android.widget.Button)view).getText().toString()))return (android.widget.Button)view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){android.widget.Button found=action(((ViewGroup)view).getChildAt(i),label);if(found!=null)return found;}return null;}
     private MockWebServer server()throws Exception{
         MockWebServer server=new MockWebServer();server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setBody("{\"items\":[],\"total\":0,\"tags\":[],\"actors\":[],\"years\":[]}");}});server.start();return server;
     }
-    private void connect(MainActivity activity,MockWebServer server)throws Exception{set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));}
+    private void connect(MainActivity activity,MockWebServer server)throws Exception{set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));set(activity,"utilityPage","");}
     private void layout(View root,int width,int height){for(int i=0;i<3;i++){root.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));root.layout(0,0,width,height);}}
     private void fits(TextView view){assertNotNull(view);assertNotNull(view.getLayout());assertTrue(view.getText()+" text="+view.getLayout().getHeight()+" box="+view.getHeight(),view.getLayout().getHeight()<=view.getHeight()-view.getCompoundPaddingTop()-view.getCompoundPaddingBottom()+1);}
     private void snapshot(View root,String filename)throws Exception{
@@ -52,9 +53,9 @@ public class NavigationLayoutTest {
         try(MockWebServer server=server();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             MainActivity activity=lifecycle.get();connect(activity,server);call(activity,"showLibrary");View root=(View)read(activity,"root");layout(root,360,800);
             assertNull(root.findViewWithTag("homeCategories"));assertNull(find(root,"我的媒体"));snapshot(root,"ui-android-home-single-navigation.png");
-            LinearLayout nav=root.findViewWithTag("primaryNavigation");assertEquals(4,nav.getChildCount());assertNotNull(root.findViewWithTag("nav:library"));
+            com.google.android.material.bottomnavigation.BottomNavigationView nav=root.findViewWithTag("primaryNavigation");assertEquals(4,nav.getMenu().size());assertNotNull(root.findViewWithTag("nav:library"));
             root.findViewWithTag("nav:mine").performClick();root=(View)read(activity,"root");layout(root,360,800);snapshot(root,"ui-android-mine.png");assertNotNull(find(root,"想看"));assertNotNull(find(root,"电脑任务中心"));assertNotNull(find(root,"手机播放队列"));
-            find(root,"想看").performClick();assertTrue(((String)call(activity,"listPath")).contains("watchlist=true"));assertEquals("mine",read(activity,"mainPage"));
+            action(root,"想看").performClick();assertTrue(((String)call(activity,"listPath")).contains("watchlist=true"));assertEquals("mine",read(activity,"mainPage"));
             Bundle saved=(Bundle)call(activity,"browseState");Method restore=MainActivity.class.getDeclaredMethod("restoreBrowseState",Bundle.class);restore.setAccessible(true);restore.invoke(activity,saved);assertEquals(true,read(activity,"watchlistOnly"));
             root=(View)read(activity,"root");root.findViewWithTag("nav:library").performClick();assertTrue(((String)call(activity,"listPath")).contains("watchlist=false"));assertNotNull(((View)read(activity,"root")).findViewWithTag("libraryCategory"));
         }

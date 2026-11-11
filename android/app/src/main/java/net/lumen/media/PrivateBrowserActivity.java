@@ -31,8 +31,8 @@ public final class PrivateBrowserActivity extends Activity {
         super.onCreate(state);
         Uri uri=getIntent().getData();if(!website(uri)){finish();return;}
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setBackgroundColor(MediaStyle.BG);layout.setFitsSystemWindows(true);
-        LinearLayout bar=new LinearLayout(this);
-        Button close=new Button(this);MediaStyle.quiet(close,"back","关闭网页");close.setOnClickListener(v->finish());bar.addView(close);
+        LinearLayout bar=MediaStyle.actionRow(this);
+        Button close=MediaStyle.action(this);MediaStyle.quiet(close,"back","关闭网页");close.setOnClickListener(v->finish());bar.addView(close,new LinearLayout.LayoutParams(MediaStyle.dp(this,48),MediaStyle.dp(this,48)));
         TextView location=new TextView(this);location.setTextColor(MediaStyle.TEXT);location.setTextSize(14);bar.setPadding(MediaStyle.dp(this,8),MediaStyle.dp(this,8),MediaStyle.dp(this,12),MediaStyle.dp(this,8));bar.setGravity(android.view.Gravity.CENTER_VERTICAL);location.setText("无痕浏览 · "+uri.getHost());location.setMaxLines(2);
         bar.addView(location,new LinearLayout.LayoutParams(0,-2,1));layout.addView(bar);
         web=new WebView(this);layout.addView(web,new LinearLayout.LayoutParams(-1,0,1));

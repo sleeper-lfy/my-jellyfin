@@ -5,10 +5,10 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.widget.Button;
+import androidx.appcompat.widget.AppCompatButton;
 
 /** Playback symbols keep their touch target independent from the user's text size. */
-final class PlaybackIconButton extends Button {
+final class PlaybackIconButton extends AppCompatButton {
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private String symbol;
     PlaybackIconButton(Context context,String symbol,String description){

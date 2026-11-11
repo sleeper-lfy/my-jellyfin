@@ -37,6 +37,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     boolean favorites=false,recommended=false,discovery=false,watchlistOnly=false,dislikedOnly=false;
     private String mainPage="home";
     private boolean mineLanding=false;
+    private String utilityPage="",actorPhoto="",actorPhotoName="";
+    private boolean creatingSmartList;
+    private Api connectionReturn;
+    private android.view.ViewGroup peopleGrid;
+    private static final String[] GLOBAL_SHUFFLE_KINDS={"","movie","series","vr","fans","other"};
+    private int shuffleRequest;
     int offset=0,generation=0;
     long detailId=0,renderedDetailId=0;
     private boolean returned=false;
@@ -80,7 +86,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final class NavigationState {
         String kind,query,tag,actor,year,yearMin,yearMax,ratingMin,tagsAll,tagsAny,tagsNot,sort,watch,list,discoverySort,discoveryProvider,searchTask,searchState,searchMessage,searchErrors,resultIds,resultTag;
         boolean favorites,recommended,discovery,actresses,descending,discoveryDescending,discoveryOnline,watchlistOnly,dislikedOnly,nextSearchFilters;
-        String mainPage;
+        String mainPage,actorPhoto,actorPhotoName;
         int offset,scroll,detailScroll,gridIndex,gridScroll;
         JSONObject detail;
     }
@@ -88,7 +94,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         navigationBack=new androidx.activity.OnBackPressedCallback(true){@Override public void handleOnBackPressed(){
-            if(detailId>0)returnLibrary();else if(!navigationHistory.isEmpty())restoreNavigation();else if(!mainPage.equals("home"))navigatePrimary("home");else{setEnabled(false);try{getOnBackPressedDispatcher().onBackPressed();}finally{setEnabled(true);}}
+            if(detailId>0)returnLibrary();else if(!utilityPage.isEmpty())returnUtility();else if(!navigationHistory.isEmpty())restoreNavigation();else if(!mainPage.equals("home"))navigatePrimary("home");else{setEnabled(false);try{getOnBackPressedDispatcher().onBackPressed();}finally{setEnabled(true);}}
         }};getOnBackPressedDispatcher().addCallback(navigationBack);
         sortField=getSharedPreferences("catalog",0).getString("sort","added");sortDescending=getSharedPreferences("catalog",0).getBoolean("descending",true);
         discoverySort=getSharedPreferences("discovery",0).getString("sort","discovered");discoveryDescending=getSharedPreferences("discovery",0).getBoolean("descending",true);
@@ -119,7 +125,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String[] keys={"kind","query","tag","actor","yearMin","yearMax","ratingMin","tagsAll","tagsAny","tagsNot","sort","watch","list","discoverySort","provider","task","searchState","searchMessage","searchErrors","resultTag"};
         String[] values={kind,query,tagFilter,actorFilter,yearMinFilter,yearMaxFilter,ratingMinFilter,tagsAllFilter,tagsAnyFilter,tagsNotFilter,sortField,watchFilter,savedList,discoverySort,discoveryProvider,discoverySearchTask,discoverySearchState,discoverySearchMessage,discoverySearchErrors,discoveryResultTag};
         for(int i=0;i<keys.length;i++)state.putString(keys[i],values[i]);
-        state.putString("mainPage",mainPage);state.putBoolean("mineLanding",mineLanding);state.putBoolean("watchlistOnly",watchlistOnly);state.putBoolean("dislikedOnly",dislikedOnly);
+        state.putString("utilityPage",utilityPage);state.putString("actorPhoto",actorPhoto);state.putString("actorPhotoName",actorPhotoName);state.putString("mainPage",mainPage);state.putBoolean("mineLanding",mineLanding);state.putBoolean("watchlistOnly",watchlistOnly);state.putBoolean("dislikedOnly",dislikedOnly);
         state.putBoolean("favorites",favorites);state.putBoolean("recommended",recommended);state.putBoolean("discovery",discovery);state.putBoolean("actresses",actresses);
         state.putBoolean("descending",sortDescending);state.putBoolean("discoveryDescending",discoveryDescending);state.putBoolean("online",discoveryOnline);
         state.putString("results",discoveryResultIds==null?null:discoveryResultIds.toString());state.putBoolean("nextSearchFilters",discoveryNextSearchFilters!=null);state.putInt("discoveryGridIndex",discoveryGridIndex);state.putInt("discoveryGridScroll",discoveryGridScroll);
@@ -138,6 +144,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         try{String results=state.getString("results");discoveryResultIds=results==null?null:new JSONArray(results);}catch(Exception ignored){discoveryResultIds=null;}
         discoveryGridIndex=state.getInt("discoveryGridIndex",0);discoveryGridScroll=state.getInt("discoveryGridScroll",0);discoveryRestoreScroll=discovery;
         discoveryNextSearchFilters=state.getBoolean("nextSearchFilters")?discoveryFilterState():null;
+        actorPhoto=state.getString("actorPhoto","");actorPhotoName=state.getString("actorPhotoName","");String utility=state.getString("utilityPage","");if(utility.equals("stats")){showStats();return;}if(utility.equals("lists")){smartLists();return;}if(utility.equals("connection")){showConnection();return;}
         if(state.getBoolean("mineLanding")){showMine();return;}
         showLibrary();restoreOffset=Math.max(1,state.getInt("offset"));restoreScroll=state.getInt("scroll");
     }
@@ -147,8 +154,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         TextView view=new TextView(this);view.setText(value);view.setTextSize(size);if(size>=20)view.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);view.setTextColor(color);view.setFontFeatureSettings("kern");view.setPadding(0,dp(5),0,dp(5));return view;
     }
     private Button button(String title,Runnable action) {
-        Button button=new Button(this);button.setText(title);button.setTextColor(Color.WHITE);button.setAllCaps(false);button.setTextSize(14);
-        MediaStyle.button(button,false,false,false);button.setOnClickListener(v->action.run());return button;
+        Button button=MediaStyle.action(this);button.setText(title);
+        button.setOnClickListener(v->action.run());return button;
+    }
+    private AlertDialog showDialog(AlertDialog.Builder builder){
+        AlertDialog dialog=builder.show();MediaStyle.dialogActions(dialog);return dialog;
     }
     private void base() {
         if(discoveryCoordinator!=null){discoveryCoordinator.setActive(false);if(detailId==0&&browseRoot==null){discoveryCoordinator.dispose();discoveryCoordinator=null;}}
@@ -172,55 +182,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
     private void showConnection() {
-        generation++;detailId=0;api=null;navigationHistory.clear();discovery=false;discoveryProvidersLoaded=false;discoveryProviders=new JSONArray();clearDiscoverySearch();base();
-        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(26),dp(40),dp(26),dp(20));ScrollView connectionScroll=new ScrollView(this);connectionScroll.setFillViewport(true);connectionScroll.addView(panel);root.addView(connectionScroll,new LinearLayout.LayoutParams(-1,-1));
-        panel.addView(text("Lumen",36,Color.WHITE));panel.addView(text("连接你的家庭媒体库",22,Color.WHITE));
-        panel.addView(text("在电脑端设置 → 局域网 / Android 中启动服务。手机与电脑应连接同一 Wi-Fi。",15,MUTED));
-        AutoCompleteTextView address=new SearchDropdown(this);address.setSingleLine(true);address.setTextColor(Color.WHITE);address.setHintTextColor(MUTED);address.setHint("http://192.168.1.10:8097");address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-        address.setText(getSharedPreferences("connection",0).getString("base",""));
-        ArrayAdapter<ServerDiscovery.Server> servers=new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line);
-        address.setAdapter(servers);
-        address.setOnItemClickListener((parent,view,position,id)->address.setText(servers.getItem(position).address,false));
-        LinearLayout addressRow=MediaStyle.row(this);addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
-        addressRow.addView(button("⌄",()->{address.requestFocus();address.showDropDown();}),new LinearLayout.LayoutParams(dp(48),dp(48)));panel.addView(addressRow);MediaStyle.field(address);
-        TextView discoveryStatus=text("正在发现同一局域网内的服务端…",13,MUTED);panel.addView(discoveryStatus);
-        Button discover=button("重新发现服务端",()->{});panel.addView(discover);
-        Runnable scan=()->{
-            final int ticket=generation;discover.setEnabled(false);servers.clear();discoveryStatus.setText("正在发现同一局域网内的服务端…");
-            network.execute(()->{
-                String error="";
-                try{ServerDiscovery.scan(server->runOnUiThread(()->{
-                    if(!isDestroyed()&&ticket==generation){servers.add(server);servers.notifyDataSetChanged();discoveryStatus.setText("发现 "+servers.getCount()+" 个服务端，可下拉选择");}
-                }));}catch(Exception failure){error="发现失败，可手动输入地址";}
-                final String failure=error;
-                runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){discover.setEnabled(true);discoveryStatus.setText(!failure.isEmpty()?failure:servers.isEmpty()?"未发现服务端。可重试或手动输入；请检查电脑服务和防火墙 UDP 8098。":"发现 "+servers.getCount()+" 个服务端，点击地址旁的 ⌄ 选择");}});
-            });
-        };
-        discover.setOnClickListener(view->scan.run());scan.run();
-        EditText token=new EditText(this);token.setSingleLine(true);token.setTextColor(Color.WHITE);token.setHintTextColor(MUTED);token.setHint("电脑端访问密钥");token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Connection saved=Connection.load(this);if(saved!=null)token.setText(saved.token);panel.addView(token);
-        TextView status=text("",14,MUTED);panel.addView(status);
-        Button connect=button("连接服务器",()->{
-            try {
-                Connection candidate=new Connection(address.getText().toString(),token.getText().toString());Api client=new Api(candidate);
-                status.setText("正在连接…");
-                request(()->client.get("/api/info"),info->{
-                    if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");
-                    candidate.save(this);api=client;pictures.evictAll();resetBrowseFilters();mainPage="home";showLibrary();
-                },error->status.setText("连接失败："+error+"\n请检查电脑服务、地址和访问密钥，然后重试。"));
-            }catch(Exception e){status.setText(e.getMessage());}
-        });MediaStyle.button(connect,true,false,false);panel.addView(connect);
-        panel.addView(text("地址使用电脑的局域网 IPv4，不能填手机自己的 localhost。服务关闭或电脑休眠时，客户端无法播放。",13,MUTED));
-        panel.addView(button("检查客户端更新",()->startActivity(new Intent(this,UpdateActivity.class))));
+        if(api!=null)connectionReturn=api;generation++;utilityPage="connection";mineLanding=false;detailId=0;api=null;navigationHistory.clear();discovery=false;discoveryProvidersLoaded=false;discoveryProviders=new JSONArray();clearDiscoverySearch();base();header("连接管理",connectionReturn!=null);
+        LinearLayout panel=BiliMainUi.vertical(this);panel.setPadding(dp(16),dp(8),dp(16),dp(24));ScrollView connectionScroll=new ScrollView(this);connectionScroll.setFillViewport(true);connectionScroll.addView(panel);root.addView(connectionScroll,new LinearLayout.LayoutParams(-1,0,1));
+        Connection saved=Connection.load(this);LinearLayout identity=BiliMainUi.group(this);Button current=BiliMainUi.settingsRow(this,saved==null?"连接你的家庭媒体库":"当前保存的媒体库","server",()->message("手机与电脑连接同一局域网后，填写电脑地址和访问密钥"));identity.addView(current);if(saved!=null)identity.addView(text(saved.base,13,MUTED));panel.addView(BiliMainUi.groupCard(this,identity));
+        panel.addView(BiliMainUi.section(this,"服务器地址"));AutoCompleteTextView address=new SearchDropdown(this);address.setSingleLine(true);address.setHint("http://192.168.1.10:8097");address.setContentDescription("服务器地址");address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);address.setText(getSharedPreferences("connection",0).getString("base",""));MediaStyle.field(address);
+        ArrayAdapter<ServerDiscovery.Server> servers=new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line);address.setAdapter(servers);address.setOnItemClickListener((parent,view,position,id)->address.setText(servers.getItem(position).address,false));LinearLayout addressRow=MediaStyle.row(this);addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));Button choose=button("⌄",()->{address.requestFocus();address.showDropDown();});BiliMainUi.lightAction(choose,"",false);addressRow.addView(choose,new LinearLayout.LayoutParams(dp(48),dp(48)));panel.addView(addressRow);
+        panel.addView(BiliMainUi.section(this,"访问密钥"));EditText token=new EditText(this);token.setSingleLine(true);token.setHint("电脑端访问密钥");token.setContentDescription("访问密钥");token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);if(saved!=null)token.setText(saved.token);MediaStyle.field(token);panel.addView(token,new LinearLayout.LayoutParams(-1,dp(48)));
+        TextView status=text("",13,MUTED);panel.addView(status);Button connect=button("连接服务器",()->{
+            try{Connection candidate=new Connection(address.getText().toString(),token.getText().toString());Api client=new Api(candidate);status.setText("正在连接…");request(()->client.get("/api/info"),info->{if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");candidate.save(this);api=client;connectionReturn=null;utilityPage="";pictures.evictAll();resetBrowseFilters();mainPage="home";showLibrary();},error->status.setText("连接失败："+error+"\n请检查电脑服务、地址和访问密钥，然后重试。"));}catch(Exception error){status.setText(error.getMessage());}
+        });MediaStyle.button(connect,true,false,false);panel.addView(connect,new LinearLayout.LayoutParams(-1,-2));
+        TextView discoveryStatus=text("正在发现同一局域网内的服务端…",13,MUTED);Button discover=button("发现服务器",()->{});BiliMainUi.lightAction(discover,"server",false);panel.addView(discover);panel.addView(BiliMainUi.section(this,"已发现服务器"));panel.addView(discoveryStatus);LinearLayout found=BiliMainUi.group(this);panel.addView(BiliMainUi.groupCard(this,found));
+        Runnable scan=()->{final int ticket=generation;discover.setEnabled(false);servers.clear();found.removeAllViews();discoveryStatus.setText("正在发现同一局域网内的服务端…");network.execute(()->{String failure="";try{ServerDiscovery.scan(server->runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){servers.add(server);servers.notifyDataSetChanged();found.addView(BiliMainUi.settingsRow(this,server.name+"\n"+server.address,"remote",()->{address.setText(server.address,false);discoveryStatus.setText("已选择 "+server.name);}));discoveryStatus.setText("发现 "+servers.getCount()+" 个服务端");}}));}catch(Exception error){failure="发现失败，可手动输入地址";}final String problem=failure;runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){discover.setEnabled(true);discoveryStatus.setText(!problem.isEmpty()?problem:servers.isEmpty()?"未发现服务端。可重试或手动输入；请检查电脑服务和防火墙 UDP 8098。":"发现 "+servers.getCount()+" 个服务端，点击选择");}});});};discover.setOnClickListener(v->scan.run());scan.run();
+        panel.addView(text("地址使用电脑的局域网 IPv4。电脑休眠或服务关闭时无法播放。",12,MUTED));panel.addView(BiliMainUi.settingsRow(this,"检查客户端更新","check",()->startActivity(new Intent(this,UpdateActivity.class))));
     }
     private void header(String title, boolean back) {
-        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(6),dp(12),dp(6));
-        if(back||!navigationHistory.isEmpty()){Button previous=button("",this::onBackPressed);MediaStyle.icon(previous,"back",false);previous.setContentDescription("返回上一页");row.addView(previous,new LinearLayout.LayoutParams(dp(48),dp(48)));}
+        LinearLayout row=MediaStyle.actionRow(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(16),dp(6),dp(16),dp(6));
+        if(back||!navigationHistory.isEmpty()){Button previous=button("",this::onBackPressed);MediaStyle.quiet(previous,"back","返回上一页");row.addView(previous,new LinearLayout.LayoutParams(dp(48),dp(48)));}
         TextView brand=text(title,24,Color.WHITE);brand.setSingleLine(true);brand.setEllipsize(android.text.TextUtils.TruncateAt.END);brand.setMinHeight(dp(52));row.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
         if(detailId>0&&detail!=null){
-            Button more=button("",()->{});more.setTag("detailMore");MediaStyle.icon(more,"more",false);more.setContentDescription("当前影片操作");more.setOnClickListener(this::showDetailActions);row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        }else{
-            Button tasks=button("",this::showTasks);MediaStyle.quiet(tasks,"server","电脑任务中心");row.addView(tasks,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            Button more=button("",()->{});more.setTag("detailMore");MediaStyle.quiet(more,"more","当前影片操作");more.setOnClickListener(this::showDetailActions);row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        }else if(!utilityPage.equals("connection")){
+            Button tasks=button("",mineLanding?this::showConnection:this::showTasks);MediaStyle.quiet(tasks,mineLanding?"server":"more",mineLanding?"连接管理":"电脑任务中心");row.addView(tasks,new LinearLayout.LayoutParams(dp(48),dp(48)));
         }
         root.addView(row);
     }
@@ -235,7 +217,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void showDetailActions(View anchor){
         if(detail==null)return;
         final JSONObject work=detail;final long workId=work.optLong("id"),fileId=work.optLong("resume_file_id");
-        LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.VERTICAL);actions.setPadding(dp(20),dp(8),dp(20),dp(12));
+        LinearLayout actions=MediaStyle.actionColumn(this);actions.setPadding(dp(16),dp(8),dp(16),dp(12));
         ScrollView scroll=new ScrollView(this);scroll.addView(actions);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("当前影片操作").setView(scroll).setNegativeButton("关闭",null).create();
         actions.addView(text("播放",16,MUTED));
@@ -243,41 +225,58 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Button remote=button("在电脑上播放",()->{dialog.dismiss();Intent intent=new Intent(this,RemoteActivity.class);intent.putExtra("work_id",workId);intent.putExtra("file_id",fileId);startActivity(intent);});remote.setEnabled(fileId>0);actions.addView(remote);
         actions.addView(button("加入手机播放队列",()->{addToPhoneQueue(workId);dialog.dismiss();}));
         actions.addView(text("观看记录",16,MUTED));actions.addView(button("修改观看状态",()->{dialog.dismiss();watchAction(workId,null);}));
-        actions.addView(text("电脑端任务",16,MUTED));actions.addView(button("此影片的电脑任务",()->{dialog.dismiss();TaskCenter.show(this,api,workId);}));dialog.show();
+        actions.addView(text("电脑端任务",16,MUTED));actions.addView(button("此影片的电脑任务",()->{dialog.dismiss();TaskCenter.show(this,api,workId);}));dialog.show();MediaStyle.sheet(dialog);
     }
     private void resetBrowseFilters(){
         kind="";query="";tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";watchFilter="";savedList="";
         favorites=false;watchlistOnly=false;dislikedOnly=false;recommended=false;discovery=false;actresses=false;navigationHistory.clear();clearDiscoverySearch();
     }
     void navigatePrimary(String page){
-        resetBrowseFilters();mainPage=page;
+        utilityPage="";resetBrowseFilters();mainPage=page;
         if(page.equals("mine")){showMine();return;}
         discovery=page.equals("discover");showLibrary();
     }
     private void bottomNavigation(){
-        LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);nav.setTag("primaryNavigation");nav.setGravity(Gravity.CENTER_VERTICAL);nav.setPadding(dp(8),dp(5),dp(8),dp(6));nav.setBackgroundColor(MediaStyle.PANEL);
-        String[] labels={"首页","媒体库","发现","我的"},pages={"home","library","discover","mine"},icons={"home","library","discover","user"};
-        String active=discovery?"discover":favorites||watchlistOnly||!savedList.isEmpty()?"mine":!kind.isEmpty()||actresses?"library":mainPage;
-        for(int i=0;i<pages.length;i++){final String page=pages[i];Button tab=MediaStyle.navigation(this,labels[i],icons[i],page.equals(active));tab.setTag("nav:"+page);if(discovery){tab.setBackgroundColor(Color.TRANSPARENT);tab.setTextColor(page.equals(active)?MediaStyle.ACCENT:MediaStyle.MUTED);}tab.setOnClickListener(v->navigatePrimary(page));LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);cell.setMargins(dp(3),0,dp(3),0);nav.addView(tab,cell);}
-        root.addView(nav,new LinearLayout.LayoutParams(-1,-2));
+        String active=mineLanding||!utilityPage.isEmpty()?"mine":discovery?"discover":favorites||watchlistOnly||!savedList.isEmpty()?"mine":!kind.isEmpty()||actresses?"library":mainPage;
+        root.addView(NativeBottomNavigation.create(this,active,this::navigatePrimary),new LinearLayout.LayoutParams(-1,-2));
+    }
+    private void returnUtility(){
+        if(utilityPage.equals("connection")&&connectionReturn!=null){api=connectionReturn;connectionReturn=null;}utilityPage="";if(api!=null)showMine();else finish();
+    }
+    private LinearLayout utility(String id,String title){
+        generation++;utilityPage=id;mineLanding=false;mainPage="mine";detailId=0;renderedDetailId=0;browseRoot=null;continuePanel=null;detailScroll=null;browseLoading=null;base();header(title,true);
+        ScrollView scroll=new ScrollView(this);LinearLayout page=BiliMainUi.vertical(this);page.setPadding(dp(16),dp(4),dp(16),dp(24));scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));browseScroll=scroll;bottomNavigation();return page;
     }
     private void showMine(){
-        generation++;mineLanding=true;mainPage="mine";detailId=0;renderedDetailId=0;browseRoot=null;continuePanel=null;detailScroll=null;browseLoading=null;base();header("我的",false);
-        ScrollView scroll=new ScrollView(this);LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(20),dp(8),dp(20),dp(20));scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));browseScroll=scroll;
-        page.addView(text("我的影片",20,Color.WHITE));
-        page.addView(button("收藏",()->openCollection(false)));page.addView(button("想看",()->openCollection(true)));page.addView(button("智能片单",this::smartLists));page.addView(button("观影统计",this::showStats));
-        page.addView(text("播放与设备",20,Color.WHITE));page.addView(button("手机播放队列",this::queueEditor));page.addView(button("电脑遥控",()->startActivity(new Intent(this,RemoteActivity.class))));page.addView(button("电脑任务中心",this::showTasks));
-        page.addView(text("应用设置",20,Color.WHITE));page.addView(button("连接管理",this::showConnection));page.addView(button("检查客户端更新",()->startActivity(new Intent(this,UpdateActivity.class))));for(int i=0;i<page.getChildCount();i++){View child=page.getChildAt(i);if(child instanceof TextView&&!(child instanceof Button))child.setPadding(0,dp(18),0,dp(8));if(child instanceof Button){Button row=(Button)child;String label=row.getText().toString();String symbol=label.equals("收藏")?"heart":label.equals("想看")?"bookmark":label.contains("更新")?"check":label.contains("连接")?"server":label.contains("统计")?"discover":"library";MediaStyle.icon(row,symbol,false);android.graphics.drawable.Drawable leading=row.getCompoundDrawables()[0];MediaStyle.Symbol trailing=new MediaStyle.Symbol("chevron",MediaStyle.MUTED,false);trailing.setBounds(0,0,dp(16),dp(16));row.setCompoundDrawables(leading,null,trailing,null);row.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);row.setPadding(dp(16),dp(12),dp(12),dp(12));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(4),0,dp(4));row.setLayoutParams(lp);}}
-        bottomNavigation();
+        generation++;utilityPage="";mineLanding=true;mainPage="mine";detailId=0;renderedDetailId=0;browseRoot=null;continuePanel=null;detailScroll=null;browseLoading=null;base();header("我的",false);
+        ScrollView scroll=new ScrollView(this);LinearLayout page=BiliMainUi.vertical(this);page.setTag("mineActions");page.setPadding(dp(16),0,dp(16),dp(24));scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));browseScroll=scroll;
+        View profile=BiliMainUi.profile(this);page.addView(profile);String[] keys={"all","favorite","watchlist"};String[] paths={"/api/works?offset=0&limit=1","/api/works?offset=0&limit=1&favorite=true","/api/works?offset=0&limit=1&watchlist=true"};
+        for(int i=0;i<keys.length;i++){final String key=keys[i],path=paths[i];TextView total=profile.findViewWithTag("mineTotal:"+key);request(()->api.get(path),reply->{total.setText(reply.has("total")?Integer.toString(reply.optInt("total")):"—");},error->{total.setText("—");total.setContentDescription("暂未取得数量，点击重新读取");total.setOnClickListener(v->showMine());});}
+        page.addView(BiliMainUi.section(this,"我的影片"));
+        Button favorite=button("收藏",()->openCollection(false)),wanted=button("想看",()->openCollection(true)),lists=button("智能片单",this::smartLists),stats=button("观影统计",this::showStats);
+        Button[] shortcuts={favorite,wanted,lists,stats};String[] icons={"heart","bookmark","smart_playlist","statistics"};for(int i=0;i<shortcuts.length;i++)BiliMainUi.lightAction(shortcuts[i],icons[i],false);page.addView(BiliMainUi.quickGrid(this,shortcuts));
+        LinearLayout devicesHeader=MediaStyle.row(this);devicesHeader.addView(BiliMainUi.section(this,"播放与设备"),new LinearLayout.LayoutParams(0,-2,1));devicesHeader.addView(globalShuffleButton());page.addView(devicesHeader);
+        LinearLayout devices=BiliMainUi.group(this);devices.addView(BiliMainUi.settingsRow(this,"手机播放队列","phone_queue",this::queueEditor));devices.addView(BiliMainUi.settingsRow(this,"电脑遥控","remote",()->startActivity(new Intent(this,RemoteActivity.class))));devices.addView(BiliMainUi.settingsRow(this,"电脑任务中心","tasks",this::showTasks));page.addView(BiliMainUi.groupCard(this,devices));
+        page.addView(BiliMainUi.section(this,"应用设置"));LinearLayout settings=BiliMainUi.group(this);settings.addView(BiliMainUi.settingsRow(this,"连接管理","server",this::showConnection));settings.addView(BiliMainUi.settingsRow(this,"检查客户端更新","check",()->startActivity(new Intent(this,UpdateActivity.class))));page.addView(BiliMainUi.groupCard(this,settings));bottomNavigation();
+    }
+    private String mineIcon(String label){
+        switch(label){
+            case "收藏":return "heart";
+            case "想看":return "bookmark";
+            case "智能片单":return "smart_playlist";
+            case "观影统计":return "statistics";
+            case "手机播放队列":return "phone_queue";
+            case "电脑遥控":return "remote";
+            case "电脑任务中心":return "tasks";
+            case "连接管理":return "server";
+            default:return "check";
+        }
     }
     private void openCollection(boolean watchlist){resetBrowseFilters();mainPage="mine";watchlistOnly=watchlist;favorites=!watchlist;showLibrary();}
     private void browseCategories(){
-        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(16),dp(4),dp(16),dp(4));
-        Spinner categories=new Spinner(this);categories.setTag("libraryCategory");categories.setContentDescription("媒体分类");
-        String[] labels={"全部媒体","电影","电视剧","VR电影","Fans视频","其他","女演员"},types={"","movie","series","vr","fans","other","actresses"};
-        categories.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));int selected=actresses?6:java.util.Arrays.asList(types).indexOf(kind);categories.setSelection(Math.max(0,selected));
-        categories.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int index,long id){String current=actresses?"actresses":kind;if(types[index].equals(current))return;resetBrowseFilters();mainPage="library";actresses=index==6;kind=actresses?"":types[index];showLibrary();}});
-        row.addView(categories,new LinearLayout.LayoutParams(0,dp(48),1));catalogCount=text("",12,MUTED);row.addView(catalogCount);Button sort=button("",this::sorting);MediaStyle.quiet(sort,"sort","排序");sort.setVisibility(actresses?View.GONE:View.VISIBLE);row.addView(sort,new LinearLayout.LayoutParams(dp(48),dp(48)));Button more=button("",()->{});MediaStyle.quiet(more,"more","当前列表操作");more.setOnClickListener(this::showListActions);row.addView(more,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(row);
+        String[] labels={"全部","电影","剧集","VR","Fans","其他","女演员"},types={"","movie","series","vr","fans","other","actresses"};
+        int selected=actresses?6:Math.max(0,java.util.Arrays.asList(types).indexOf(kind));
+        View tabs=BiliMainUi.tabs(this,labels,selected,index->{String current=actresses?"actresses":kind;if(types[index].equals(current))return;resetBrowseFilters();mainPage="library";actresses=index==6;kind=actresses?"":types[index];showLibrary();});tabs.setTag("libraryCategory");tabs.setContentDescription("媒体分类，包含Fans与女演员");root.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showListActions(View anchor){
         PopupMenu menu=new PopupMenu(this,anchor);if(savedList.isEmpty())menu.getMenu().add("保存当前筛选为片单");menu.getMenu().add("随机播放当前列表");menu.getMenu().add("手机播放队列");
@@ -285,20 +284,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     void showLibrary() {
         if(discovery){showDiscoveryPage();return;}
-        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();header(mainPage.equals("home")?"Lumen":discovery?"发现":"媒体库",false);
+        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();utilityPage="";if(!mainPage.equals("home"))header(actresses?"女演员":!actorFilter.isEmpty()?"演员作品":favorites?"收藏":watchlistOnly?"想看":!savedList.isEmpty()?savedList:"媒体库",false);
         boolean home=mainPage.equals("home")&&kind.isEmpty()&&!favorites&&!watchlistOnly&&!dislikedOnly&&!recommended&&!discovery&&!actresses&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearMinFilter.isEmpty()&&yearMaxFilter.isEmpty()&&ratingMinFilter.isEmpty()&&tagsAllFilter.isEmpty()&&tagsAnyFilter.isEmpty()&&tagsNotFilter.isEmpty()&&watchFilter.isEmpty()&&savedList.isEmpty();
-        LinearLayout searchRow=MediaStyle.row(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);searchRow.setPadding(dp(16),0,dp(16),dp(8));
+        LinearLayout searchRow=MediaStyle.row(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);searchRow.setPadding(dp(16),0,dp(16),dp(8));if(mainPage.equals("home")){TextView brand=text("Lumen",22,BLUE);brand.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);searchRow.addView(brand);}
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint(discovery?"按影片名称搜索":actresses?"搜索女演员":"搜索媒体库");search.setContentDescription(discovery?"发现影片名称搜索":actresses?"女演员搜索":"媒体库搜索");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         Runnable applySearch=()->{if(discovery&&discoveryOnline){startDiscoverySearch(search);return;}query=search.getText().toString().trim();showLibrary();};
         search.setOnEditorActionListener((view,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH){applySearch.run();return true;}return false;});
         search.setBackground(MediaStyle.surface(this,0xff15212c,0xff2c414f,8));search.setPadding(dp(12),0,dp(8),0);
-        searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(48),1));Button searchButton=button("",applySearch);MediaStyle.quiet(searchButton,"search","搜索");searchButton.setContentDescription("搜索");LinearLayout.LayoutParams searchParams=new LinearLayout.LayoutParams(dp(48),dp(48));searchRow.addView(searchButton,searchParams);
+        android.graphics.drawable.Drawable glass=getDrawable(R.drawable.design_system_search).mutate();glass.setTint(MUTED);glass.setBounds(0,0,dp(18),dp(18));search.setCompoundDrawables(glass,null,null,null);search.setCompoundDrawablePadding(dp(8));search.setContentDescription(actresses?"女演员搜索":"媒体库搜索");searchRow.addView(search,new LinearLayout.LayoutParams(0,dp(48),1));
         String activeTag=discovery&&discoveryOnline?discoveryResultTag:tagFilter;
         int count=(watchFilter.isEmpty()?0:1)+(savedList.isEmpty()?0:1)+(activeTag.isEmpty()?0:1)+(actorFilter.isEmpty()?0:1)+(yearMinFilter.isEmpty()?0:1)+(yearMaxFilter.isEmpty()?0:1)+(ratingMinFilter.isEmpty()?0:1)+(tagsAllFilter.isEmpty()?0:1)+(tagsAnyFilter.isEmpty()?0:1)+(tagsNotFilter.isEmpty()?0:1)+(favorites?1:0)+(watchlistOnly?1:0)+(dislikedOnly?1:0);
         Button filters=button("筛选"+(count>0?" · "+count:""),this::showFilters);filters.setContentDescription("筛选媒体库");MediaStyle.quiet(filters,"filter","筛选媒体库"+(count>0?"，已选 "+count+" 项":""));searchRow.addView(filters,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(searchRow);
-        if(!home&&!discovery&&!favorites&&!watchlistOnly&&!recommended&&savedList.isEmpty())browseCategories();
+        if(mainPage.equals("home")){LinearLayout feed=MediaStyle.row(this);feed.setPadding(dp(16),0,dp(16),0);feed.addView(BiliMainUi.tabs(this,new String[]{"推荐","最近"},recommended?0:1,index->{boolean next=index==0;if(next==recommended)return;resetBrowseFilters();mainPage="home";recommended=next;showLibrary();}),new LinearLayout.LayoutParams(0,-2,1));feed.addView(globalShuffleButton());root.addView(feed);}
+        if(!mainPage.equals("home")&&!discovery&&!favorites&&!watchlistOnly&&savedList.isEmpty()&&actorFilter.isEmpty())browseCategories();
         ScrollView scroll=new ScrollView(this);browseScroll=scroll;scroll.setOnScrollChangeListener((View.OnScrollChangeListener)(v,x,y,oldX,oldY)->imageRequests.prioritizeVisible());content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(8),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        ChipLayout selectedFilters=new ChipLayout(this);selectedFilters.setTag("activeFilters");selectedFilters.setPadding(0,dp(4),0,dp(8));
+        ChipLayout selectedFilters=MediaStyle.actionFlow(this);selectedFilters.setTag("activeFilters");selectedFilters.setPadding(0,dp(4),0,dp(8));
         if(!activeTag.isEmpty())selectedFilters.addView(filterChip(activeTag,()->{if(discovery&&discoveryOnline)discoveryResultTag="";else tagFilter="";showLibrary();}));
         if(!actorFilter.isEmpty())selectedFilters.addView(filterChip(actorFilter,()->{actorFilter="";showLibrary();}));
         if(!yearMinFilter.isEmpty()||!yearMaxFilter.isEmpty())selectedFilters.addView(filterChip("年份 "+yearMinFilter+"–"+yearMaxFilter,()->{yearMinFilter="";yearMaxFilter="";showLibrary();}));
@@ -312,16 +312,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(watchlistOnly)selectedFilters.addView(filterChip("想看",()->{watchlistOnly=false;showLibrary();}));
         if(dislikedOnly)selectedFilters.addView(filterChip("不喜欢",()->{dislikedOnly=false;showLibrary();}));
         if(count>0)content.addView(selectedFilters);
-        if(home){
-            continuePanel=new LinearLayout(this);continuePanel.setOrientation(LinearLayout.VERTICAL);content.addView(continuePanel);loadContinue();
-            content.addView(button("为我推荐",()->{resetBrowseFilters();mainPage="home";recommended=true;showLibrary();}));
-        }
-        LinearLayout listHeading=MediaStyle.row(this);listHeading.setGravity(Gravity.CENTER_VERTICAL);listHeading.setPadding(0,dp(16),0,dp(8));listHeading.setTag("listHeading");
+        if(mainPage.equals("home")&&query.isEmpty()&&kind.isEmpty()){continuePanel=new LinearLayout(this);continuePanel.setOrientation(LinearLayout.VERTICAL);content.addView(continuePanel);loadContinue();}
+        if(!actorFilter.isEmpty()){LinearLayout actorHeader=MediaStyle.row(this);actorHeader.setTag("actorIdentity");ImageView face=BiliMainUi.avatar(this,72);loadImage(face,actorFilter.equals(actorPhotoName)?actorPhoto:"");actorHeader.addView(face,new LinearLayout.LayoutParams(dp(72),dp(72)));LinearLayout identity=BiliMainUi.vertical(this);identity.addView(text(actorFilter,24,MediaStyle.TEXT));identity.addView(text("本地演员作品",13,MUTED));actorHeader.addView(identity,new LinearLayout.LayoutParams(0,-2,1));content.addView(actorHeader);}
+        LinearLayout listHeading=MediaStyle.actionRow(this);listHeading.setGravity(Gravity.CENTER_VERTICAL);listHeading.setPadding(0,dp(16),0,dp(8));listHeading.setTag("listHeading");
         String title=recommended?"为我推荐":discovery?"影片发现":actresses?"女演员墙":favorites?"收藏":watchlistOnly?"想看":!savedList.isEmpty()?savedList:query.isEmpty()?(home?"最近入库":"媒体库"):"搜索结果";
-        listHeading.addView(text(title,22,Color.WHITE),new LinearLayout.LayoutParams(0,-2,1));
-        if(!actresses){Button listMore=button("",()->{});listMore.setContentDescription("当前列表操作");MediaStyle.quiet(listMore,"more","当前列表操作");listMore.setOnClickListener(this::showListActions);listHeading.addView(listMore,new LinearLayout.LayoutParams(dp(48),dp(48)));if(home||favorites||watchlistOnly||recommended||!savedList.isEmpty()){Button sort=button("排序",this::sorting);listHeading.addView(sort,new LinearLayout.LayoutParams(dp(64),dp(48)));}}
-        if(home||discovery||actresses||favorites||watchlistOnly||recommended||!savedList.isEmpty())content.addView(listHeading);
-        posters=new PosterGrid(this);content.addView(posters);bottomNavigation();
+        catalogCount=text(mainPage.equals("home")?title:actresses?"本地演员":"正在读取数量…",mainPage.equals("home")?19:14,MediaStyle.TEXT);catalogCount.setTag("catalogCount");listHeading.addView(catalogCount,new LinearLayout.LayoutParams(0,-2,1));
+        if(!actresses){Button sort=button("排序 ↓",this::sorting);BiliMainUi.lightAction(sort,"sort",false);listHeading.addView(sort);Button listMore=button("",()->{});listMore.setContentDescription("当前列表操作");MediaStyle.quiet(listMore,"more","当前列表操作");listMore.setOnClickListener(this::showListActions);listHeading.addView(listMore,new LinearLayout.LayoutParams(dp(48),dp(48)));}content.addView(listHeading);
+        posters=new PosterGrid(this);if(actresses){peopleGrid=BiliMainUi.actorGrid(this);content.addView(peopleGrid);}else content.addView(posters);bottomNavigation();
         if(actresses){loadActresses();return;}
         if(discovery&&discoveryOnline&&discoveryResultIds==null){content.addView(text(discoverySearchState.equals("running")||discoverySearchState.equals("queued")?"正在搜索站点，完成后显示本次结果。":"输入影片名称或标签，点击“搜索站点”。",15,MUTED));}else loadPage();
         if(discovery&&discoveryOnline&&!discoverySearchTask.isEmpty()&&(discoverySearchState.equals("running")||discoverySearchState.equals("queued")))pollDiscoverySearch(discoverySearchTask,generation);
@@ -349,25 +346,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void loadContinue() {
         final LinearLayout panel=continuePanel;if(panel==null)return;
         request(()->api.get("/api/continue?limit=24"),result->{
-            if(panel!=continuePanel)return;panel.removeAllViews();
-            JSONArray items=result.optJSONArray("items");if(items==null||items.length()==0){panel.setVisibility(View.GONE);return;}
-            panel.setVisibility(View.VISIBLE);panel.addView(text("继续观看",22,Color.WHITE));
-            HorizontalScrollView scroll=new MediaStyle.ResumeStrip(this);LinearLayout row=new LinearLayout(this);scroll.addView(row);panel.addView(scroll);
+            if(panel!=continuePanel)return;panel.removeAllViews();JSONArray items=result.optJSONArray("items");if(items==null||items.length()==0){panel.setVisibility(View.GONE);return;}panel.setVisibility(View.VISIBLE);
+            panel.addView(BiliMainUi.section(this,"继续观看"));HorizontalScrollView scroll=BiliMainUi.resumeStrip(this);LinearLayout row=MediaStyle.row(this);scroll.addView(row);panel.addView(scroll);
             for(int i=0;i<items.length();i++){
-                JSONObject work=items.getJSONObject(i),resume=work.optJSONObject("resume");if(resume==null)continue;
-                long workId=work.optLong("id"),fileId=resume.optLong("file_id");
-                LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(0,0,0,dp(8));card.setBackground(MediaStyle.surface(this,MediaStyle.SURFACE,MediaStyle.BORDER,16));card.setClipToOutline(true);
-                LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(336),-2);size.setMargins(0,0,dp(16),dp(16));row.addView(card,size);
-                FrameLayout artwork=new FrameLayout(this);artwork.setTag("continueArtwork:"+fileId);ImageView cover=new ImageView(this);MediaStyle.artwork(cover);artwork.addView(cover,new FrameLayout.LayoutParams(-1,-1));card.addView(artwork,new LinearLayout.LayoutParams(-1,Math.round(size.width*9f/16)));String thumbnail=resume.optString("thumbnail","");cover.setContentDescription("视频缩略图："+work.optString("title"));loadImage(cover,thumbnail);if(thumbnail.isEmpty()){TextView missing=text("暂无视频缩略图",14,MUTED);missing.setGravity(Gravity.CENTER);missing.setTag("continueThumbnailMissing:"+fileId);artwork.addView(missing,new FrameLayout.LayoutParams(-1,-1));}
-                LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(16),dp(8),dp(16),dp(8));card.addView(body);
-                TextView title=text(work.optString("title"),17,Color.WHITE);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);LinearLayout titleRow=MediaStyle.row(this);titleRow.addView(title,new LinearLayout.LayoutParams(0,-2,1));body.addView(titleRow);
-                String filename=resume.optString("name",resume.optString("file_name",resume.optString("label")));
-                TextView description=text(filename,12,MUTED);description.setTag("continueIdentity:"+fileId);description.setMaxLines(2);description.setEllipsize(android.text.TextUtils.TruncateAt.END);description.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(work.optString("title")).setMessage(resume.optString("label",filename)).setPositiveButton("关闭",null).show());body.addView(description);
-                double duration=resume.optDouble("duration",0),position=resume.optDouble("position",0);
-                TextView times=text("已看 "+continueTime(position)+(duration>0?" / "+continueTime(duration)+"  ·  剩余 "+continueTime(Math.max(0,duration-position)):" · 时长未知"),12,0xffbfe8ee);times.setTag("continueTime:"+fileId);body.addView(times);
-                if(duration>0){ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(1000);progress.setProgress((int)Math.max(0,Math.min(1000,position/duration*1000)));progress.setContentDescription("观看进度");body.addView(progress,new LinearLayout.LayoutParams(-1,dp(4)));}
-                PlaybackIconButton play=new PlaybackIconButton(this,"play",position>0?"继续播放":"播放下一集");play.setOnClickListener(view->{Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",workId);intent.putExtra("file_id",fileId);intent.putExtra("queue",false);startActivity(intent);});
-                play.setTag("continuePlay:"+fileId);play.setContentDescription("续播："+work.optString("title")+" · "+resume.optString("label"));play.setBackground(MediaStyle.surface(this,MediaStyle.ACCENT,0,24));play.setTextColor(0xff102a35);titleRow.addView(play,new LinearLayout.LayoutParams(dp(48),dp(48)));cover.setOnClickListener(view->openDetail(workId));title.setOnClickListener(view->openDetail(workId));
+                JSONObject work=items.getJSONObject(i),resume=work.optJSONObject("resume");if(resume==null)continue;long workId=work.optLong("id"),fileId=resume.optLong("file_id");
+                LinearLayout card=MediaStyle.row(this);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(8),dp(8),dp(12),dp(8));card.setTag("continueCard:"+fileId);
+                int cardWidth=dp(Math.min(384,Math.max(260,getResources().getConfiguration().screenWidthDp-32)));View surface=BiliMainUi.groupCard(this,card);row.addView(surface,new LinearLayout.LayoutParams(cardWidth,-2));
+                FrameLayout artwork=new FrameLayout(this);artwork.setTag("continueArtwork:"+fileId);ImageView cover=new ImageView(this);MediaStyle.artwork(cover);artwork.setClipToOutline(true);artwork.setBackground(MediaStyle.surface(this,MediaStyle.BG,0,8));artwork.addView(cover,new FrameLayout.LayoutParams(-1,-1));card.addView(artwork,new LinearLayout.LayoutParams(dp(132),dp(92)));
+                String thumbnail=resume.optString("thumbnail","");cover.setContentDescription("视频缩略图："+work.optString("title"));loadImage(cover,thumbnail);if(thumbnail.isEmpty()){TextView missing=text("暂无视频缩略图",11,MUTED);missing.setGravity(Gravity.CENTER);missing.setTag("continueThumbnailMissing:"+fileId);artwork.addView(missing,new FrameLayout.LayoutParams(-1,-1));}
+                LinearLayout body=BiliMainUi.vertical(this);card.addView(body,new LinearLayout.LayoutParams(0,-2,1));TextView title=text(work.optString("title"),15,MediaStyle.TEXT);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);LinearLayout titleRow=MediaStyle.row(this);titleRow.addView(title,new LinearLayout.LayoutParams(0,-2,1));body.addView(titleRow);
+                String filename=resume.optString("name",resume.optString("file_name",resume.optString("label")));TextView description=text(filename,11,MUTED);description.setTag("continueIdentity:"+fileId);description.setMaxLines(1);description.setEllipsize(android.text.TextUtils.TruncateAt.END);description.setOnClickListener(v->showDialog(new AlertDialog.Builder(this).setTitle(work.optString("title")).setMessage(resume.optString("label",filename)).setPositiveButton("关闭",null)));body.addView(description);
+                double duration=resume.optDouble("duration",0),position=resume.optDouble("position",0);TextView times=text("已看 "+continueTime(position)+(duration>0?" / "+continueTime(duration)+"\n剩余 "+continueTime(Math.max(0,duration-position)):" · 时长未知"),11,MUTED);times.setTag("continueTime:"+fileId);body.addView(times);
+                if(duration>0){ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(BLUE));progress.setMax(1000);progress.setProgress((int)Math.max(0,Math.min(1000,position/duration*1000)));progress.setContentDescription("观看进度");body.addView(progress,new LinearLayout.LayoutParams(-1,dp(3)));}
+                PlaybackIconButton play=new PlaybackIconButton(this,"play",position>0?"继续播放":"播放下一集");play.setTag("continuePlay:"+fileId);play.setOnClickListener(view->{Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",workId);intent.putExtra("file_id",fileId);intent.putExtra("queue",false);startActivity(intent);});play.setContentDescription("续播："+work.optString("title")+" · "+resume.optString("label"));
+                // Keep the hit target independent from the thumbnail so no part of its subject is covered.
+                titleRow.addView(play,new LinearLayout.LayoutParams(dp(48),dp(48)));cover.setOnClickListener(view->openDetail(workId));title.setOnClickListener(view->openDetail(workId));
             }
         },error->{if(panel!=continuePanel)return;panel.removeAllViews();panel.setVisibility(View.VISIBLE);panel.addView(button("续播读取失败，点击重试",this::loadContinue));});
     }
@@ -447,19 +440,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private Button filterChip(String text,Runnable remove){
         Button chip=button(text,remove);chip.setTextSize(13);chip.setMaxWidth(dp(230));chip.setMaxLines(1);chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        chip.setBackground(MediaStyle.surface(this,0xff18313a,0xff315563,20));chip.setTextColor(0xffbfe8f6);MediaStyle.icon(chip,"close",false);chip.setContentDescription("移除筛选："+text);return chip;
+        MediaStyle.button(chip,false,true,false);MediaStyle.icon(chip,"close",false);chip.setContentDescription("移除筛选："+text);return chip;
     }
     private AutoCompleteTextView filterInput(LinearLayout form,String label,String value){
         form.addView(text(label,13,MUTED));
         AutoCompleteTextView input=new SearchDropdown(this);input.setSingleLine(true);input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);
-        input.setHint("输入搜索或下拉选择");input.setText(value);MediaStyle.field(input);
+        input.setHint(label.contains("演员")?"搜索演员":label.startsWith("年份")?"输入年份":label.contains("标签")?"搜索标签":"输入条件");input.setText(value);MediaStyle.field(input);
         LinearLayout row=MediaStyle.row(this);row.addView(input,new LinearLayout.LayoutParams(0,dp(48),1));
         row.addView(button("⌄",()->{input.requestFocus();input.showDropDown();}),new LinearLayout.LayoutParams(dp(48),dp(48)));form.addView(row);
         return input;
     }
     private void showFilters(){
         if(discovery){if(discoveryCoordinator!=null)discoveryCoordinator.onOpenFilters();return;}
-        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(12),dp(20),dp(12));
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(16),dp(12),dp(16),dp(12));
         final boolean[] onlyFavorites={favorites},onlyDisliked={dislikedOnly};
         Button collection=button("已收藏",()->{});
         Button disliked=button("不喜欢",()->{});disliked.setTag("filterDisliked");
@@ -474,23 +467,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if(onlyDisliked[0]){onlyFavorites[0]=false;collection.setText("已收藏");MediaStyle.icon(collection,"heart",false);MediaStyle.button(collection,false,false,true);}
         });
         form.addView(text("我的偏好",14,MediaStyle.TEXT));
-        LinearLayout preferences=MediaStyle.row(this);preferences.setOrientation(LinearLayout.HORIZONTAL);
+        ChipLayout preferences=MediaStyle.actionFlow(this);preferences.setTag("filterPreferences");
         Button wanted=button("想看",()->{});final boolean[] onlyWanted={watchlistOnly};MediaStyle.icon(wanted,"bookmark",onlyWanted[0]);MediaStyle.button(wanted,false,onlyWanted[0],false);
         wanted.setOnClickListener(v->{onlyWanted[0]=!onlyWanted[0];MediaStyle.button(wanted,false,onlyWanted[0],false);MediaStyle.icon(wanted,"bookmark",onlyWanted[0]);});
-        for(Button option:new Button[]{collection,wanted,disliked}){option.setTextSize(12);option.setPadding(dp(4),dp(6),dp(4),dp(6));LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);cell.setMargins(0,0,0,dp(8));preferences.addView(option,cell);}form.addView(preferences);
+        for(Button option:new Button[]{collection,wanted,disliked}){option.setTextSize(12);preferences.addView(option);}form.addView(preferences);
         AutoCompleteTextView tag=filterInput(form,"标签",discovery&&discoveryOnline?discoveryResultTag:tagFilter),actor=filterInput(form,"演员",actorFilter),multiTag=filterInput(form,"多个标签（逗号分隔，需全部包含）",tagsAllFilter);
         AutoCompleteTextView anyTags=filterInput(form,"包含任一标签",tagsAnyFilter),notTags=filterInput(form,"排除标签／不想看的类型",tagsNotFilter);
         AutoCompleteTextView yearFrom=filterInput(form,"年份从",yearMinFilter),yearTo=filterInput(form,"年份到",yearMaxFilter);
         yearFrom.setTag("filterYearFrom");yearTo.setTag("filterYearTo");
         yearFrom.setInputType(InputType.TYPE_CLASS_NUMBER);yearTo.setInputType(InputType.TYPE_CLASS_NUMBER);
+        ChipLayout tagSuggestions=new ChipLayout(this);tagSuggestions.setTag("filterTagSuggestions");int tagIndex=form.indexOfChild((View)tag.getParent());form.addView(tagSuggestions,tagIndex+1);
         AutoCompleteTextView rating=filterInput(form,"最低评分（0–10）",ratingMinFilter);rating.setInputType(InputType.TYPE_CLASS_NUMBER);
-        android.widget.Spinner watching=new android.widget.Spinner(this);String[] states={"","unwatched","progress","completed"};
-        watching.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"全部观看状态","未开始","观看中","已完成"}));
-        for(int i=0;i<states.length;i++)if(states[i].equals(watchFilter))watching.setSelection(i);watching.setVisibility(View.GONE);form.addView(watching);
-        LinearLayout watchRow=MediaStyle.row(this);watchRow.setOrientation(LinearLayout.HORIZONTAL);watchRow.setTag("watchSegments");
+        String[] states={"","unwatched","progress","completed"};final int[] watching={Math.max(0,java.util.Arrays.asList(states).indexOf(watchFilter))};
+        ChipLayout watchRow=MediaStyle.actionFlow(this);watchRow.setTag("watchSegments");
         String[] watchLabels={"全部","未看","观看中","已看完"};
-        Runnable refreshWatch=()->{for(int i=0;i<watchRow.getChildCount();i++){Button option=(Button)watchRow.getChildAt(i);MediaStyle.button(option,false,watching.getSelectedItemPosition()==i,false);option.setTextSize(12);option.setPadding(dp(3),dp(6),dp(3),dp(6));}};
-        for(int i=0;i<watchLabels.length;i++){final int index=i;Button option=button(watchLabels[i],()->{watching.setSelection(index);refreshWatch.run();});LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);cell.setMargins(0,0,0,dp(8));watchRow.addView(option,cell);}refreshWatch.run();form.addView(watchRow,0);form.addView(text("观看状态",14,MediaStyle.TEXT),0);
+        Runnable refreshWatch=()->{for(int i=0;i<watchRow.getChildCount();i++){Button option=(Button)watchRow.getChildAt(i);MediaStyle.button(option,watching[0]==i,watching[0]==i,false);option.setTextSize(12);}};
+        for(int i=0;i<watchLabels.length;i++){final int index=i;Button option=button(watchLabels[i],()->{watching[0]=index;refreshWatch.run();});watchRow.addView(option);}refreshWatch.run();form.addView(watchRow,0);form.addView(text("观看状态",14,MediaStyle.TEXT),0);
         LinearLayout yearPair=MediaStyle.row(this);yearPair.setOrientation(LinearLayout.HORIZONTAL);yearPair.setPadding(0,0,0,dp(8));
         for(AutoCompleteTextView input:new AutoCompleteTextView[]{yearFrom,yearTo}){View parent=(View)input.getParent();int index=form.indexOfChild(parent);View label=form.getChildAt(index-1);form.removeView(label);form.removeView(parent);((android.view.ViewGroup)parent).removeView(input);LinearLayout cell=new LinearLayout(this);cell.setOrientation(LinearLayout.VERTICAL);cell.addView(label);cell.addView(input,new LinearLayout.LayoutParams(-1,dp(48)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);yearPair.addView(cell,lp);}form.addView(yearPair);
         LinearLayout advanced=new LinearLayout(this);advanced.setOrientation(LinearLayout.VERTICAL);advanced.setTag("advancedFilterFields");
@@ -501,7 +493,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         ScrollView scroll=new ScrollView(this);scroll.addView(form);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("筛选媒体库").setView(scroll)
             .setPositiveButton("应用",null).setNegativeButton("取消",null).setNeutralButton("重置",(d,which)->{tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;showLibrary();}).create();
-        dialog.show();MediaStyle.sheet(dialog);
+        dialog.show();MediaStyle.sheet(dialog);dialog.setOnDismissListener(d->creatingSmartList=false);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
             String from=yearFrom.getText().toString().trim(),to=yearTo.getText().toString().trim(),score=rating.getText().toString().trim();
             if(!from.isEmpty()&&(!from.matches("[0-9]{4}")||Integer.parseInt(from)<1800||Integer.parseInt(from)>2200)){yearFrom.setError("请输入 1800–2200 的年份");return;}
@@ -510,17 +502,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if(!from.isEmpty()&&!to.isEmpty()&&Integer.parseInt(from)>Integer.parseInt(to)){yearFrom.setError("起始年份不能晚于结束");return;}
             if(discovery&&discoveryOnline)discoveryResultTag=tag.getText().toString().trim();else tagFilter=tag.getText().toString().trim();
             actorFilter=actor.getText().toString().trim();tagsAllFilter=multiTag.getText().toString().trim();tagsAnyFilter=anyTags.getText().toString().trim();tagsNotFilter=notTags.getText().toString().trim();
-            yearMinFilter=from;yearMaxFilter=to;ratingMinFilter=score;favorites=onlyFavorites[0];dislikedOnly=onlyDisliked[0];watchlistOnly=onlyWanted[0];watchFilter=states[watching.getSelectedItemPosition()];dialog.dismiss();showLibrary();
+            yearMinFilter=from;yearMaxFilter=to;ratingMinFilter=score;favorites=onlyFavorites[0];dislikedOnly=onlyDisliked[0];watchlistOnly=onlyWanted[0];watchFilter=states[watching[0]];boolean createList=creatingSmartList;creatingSmartList=false;dialog.dismiss();showLibrary();if(createList)saveSmartList();
         });
-        android.view.Window sheet=dialog.getWindow();if(sheet!=null){sheet.setBackgroundDrawable(MediaStyle.surface(this,0xff131e28,0xff2c414f,18));sheet.setGravity(Gravity.BOTTOM);sheet.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);sheet.setLayout(-1,-2);View sheetView=sheet.getDecorView();sheetView.post(()->{int available=getResources().getDisplayMetrics().heightPixels-dp(48);if(sheetView.getHeight()>available)sheet.setLayout(-1,available);});}
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view->{
-            tag.setText("");actor.setText("");multiTag.setText("");anyTags.setText("");notTags.setText("");yearFrom.setText("");yearTo.setText("");rating.setText("");watching.setSelection(0);refreshWatch.run();onlyWanted[0]=false;MediaStyle.button(wanted,false,false,false);MediaStyle.icon(wanted,"bookmark",false);onlyFavorites[0]=false;onlyDisliked[0]=false;disliked.setText("不喜欢");MediaStyle.icon(disliked,"ban",false);MediaStyle.button(disliked,false,false,false);
+            tag.setText("");actor.setText("");multiTag.setText("");anyTags.setText("");notTags.setText("");yearFrom.setText("");yearTo.setText("");rating.setText("");watching[0]=0;refreshWatch.run();onlyWanted[0]=false;MediaStyle.button(wanted,false,false,false);MediaStyle.icon(wanted,"bookmark",false);onlyFavorites[0]=false;onlyDisliked[0]=false;disliked.setText("不喜欢");MediaStyle.icon(disliked,"ban",false);MediaStyle.button(disliked,false,false,false);
             collection.setText("已收藏");MediaStyle.icon(collection,"heart",false);MediaStyle.button(collection,false,false,true);
         });
         MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_POSITIVE),true,false,false);
         MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEGATIVE),false,false,false);MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEUTRAL),false,false,false);
         request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)+"&discover="+discovery),options->{
             if(!dialog.isShowing())return;
+            JSONArray suggested=options.optJSONArray("tags");if(suggested!=null)for(int i=0;i<Math.min(6,suggested.length());i++){String value=suggested.optString(i);tagSuggestions.addView(BiliMainUi.suggestionChip(this,value,()->tag.setText(value)));}
             AutoCompleteTextView[] inputs={tag,actor,multiTag,yearFrom,yearTo,anyTags,notTags};String[] keys={"tags","actors","tags","years","years","tags","tags"};
             for(int i=0;i<inputs.length;i++){
                 JSONArray values=options.getJSONArray(keys[i]);java.util.ArrayList<String> choices=new java.util.ArrayList<>();
@@ -534,7 +526,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(discovery){if(discoveryCoordinator!=null)discoveryCoordinator.loadPage();return;}
         TextView loading=text("正在读取媒体库…",14,MUTED);browseLoading=loading;content.addView(loading);String path=listPath();
         request(()->api.get(path),result->{
-            content.removeView(loading);if(browseLoading==loading)browseLoading=null;JSONArray items=result.getJSONArray("items");int total=result.optInt("total");if(catalogCount!=null)catalogCount.setText(total+" 部");
+            content.removeView(loading);if(browseLoading==loading)browseLoading=null;JSONArray items=result.getJSONArray("items");int total=result.optInt("total");if(catalogCount!=null)catalogCount.setText(mainPage.equals("home")?(recommended?"为我推荐":"最近入库"):"共 "+total+" 部");
             if(total==0)content.addView(text(discovery?(discoveryOnline?"本次站点搜索没有匹配结果，可更换名称、标签或来源重试。":"暂无匹配的发现资料，可调整名称、标签或切换在线搜索站点。"):"暂无内容。请先在电脑端导入媒体，或调整搜索条件。",16,MUTED));
             int columns=Math.max(2,getResources().getConfiguration().screenWidthDp/165);
             int width=(getResources().getDisplayMetrics().widthPixels-dp(32))/columns;
@@ -572,19 +564,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             content.removeView(loading);if(browseLoading==loading)browseLoading=null;
             JSONArray items=result.getJSONArray("items");
             if(items.length()==0)content.addView(text("还没有女演员资料。影片刮削演员后，这里会按出演数量与评分汇总。",16,MUTED));
-            int columns=Math.max(2,getResources().getConfiguration().screenWidthDp/165);
-            int width=(getResources().getDisplayMetrics().widthPixels-dp(32)-(columns-1)*dp(6))/columns;
+            if(catalogCount!=null)catalogCount.setText("本地演员 · 共 "+items.length()+" 位");
             for(int i=0;i<items.length();i++){
-                JSONObject actor=items.getJSONObject(i);
-                LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(0,dp(4),0,dp(10));
-                FrameLayout cover=new FrameLayout(this);cover.setBackground(MediaStyle.surface(this,0xff172a35,0,12));cover.setClipToOutline(true);
-                ImageView photo=new ImageView(this);photo.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(photo,new FrameLayout.LayoutParams(-1,-1));
-                card.addView(cover,new LinearLayout.LayoutParams(-1,(int)(width*1.5)));loadImage(photo,actor.optString("photo",""));
-                TextView name=text(actor.optString("name"),15,Color.WHITE);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(name);
-                String average=actor.isNull("average")?"暂无评分":"均分 "+String.format(java.util.Locale.ROOT,"%.1f",actor.optDouble("average"));
-                card.addView(text(actor.optInt("count")+" 部 · "+average+" · 已评分 "+actor.optInt("rated"),12,MUTED));
-                card.setOnClickListener(view->{actorFilter=actor.optString("name");actresses=false;kind="movie";savedList="";query="";navigationHistory.clear();showLibrary();});
-                posters.addView(card,new android.view.ViewGroup.LayoutParams(width,-2));
+                JSONObject actor=items.getJSONObject(i);LinearLayout card=BiliMainUi.vertical(this);card.setGravity(Gravity.CENTER_HORIZONTAL);card.setTag("actor:"+actor.optString("name"));ImageView photo=BiliMainUi.avatar(this,96);card.addView(photo,new LinearLayout.LayoutParams(dp(96),dp(96)));loadImage(photo,actor.optString("photo",""));
+                TextView name=text(actor.optString("name"),15,MediaStyle.TEXT);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);name.setGravity(Gravity.CENTER);card.addView(name,new LinearLayout.LayoutParams(-1,-2));TextView number=text(actor.optInt("count")+" 部作品",12,MUTED);number.setGravity(Gravity.CENTER);card.addView(number,new LinearLayout.LayoutParams(-1,-2));
+                String average=actor.isNull("average")?"暂无评分":"均分 "+String.format(java.util.Locale.ROOT,"%.1f",actor.optDouble("average"));TextView rating=text(average+" · 已评分 "+actor.optInt("rated"),10,MUTED);rating.setGravity(Gravity.CENTER);card.addView(rating);
+                card.setOnClickListener(view->{actorFilter=actor.optString("name");actorPhoto=actor.optString("photo");actorPhotoName=actor.optString("name");actresses=false;kind="movie";savedList="";query="";navigationHistory.clear();showLibrary();});peopleGrid.addView(card);
             }
         });
     }
@@ -593,7 +578,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(api!=null)imageRequests.load(api,view,path);
     }
     /** Movie/VR cards keep poster geometry while the existing image loader reports availability. */
-    private final class CatalogPoster extends ImageView implements ImageRequests.TargetState {
+    private final class CatalogPoster extends androidx.appcompat.widget.AppCompatImageView implements ImageRequests.TargetState {
         private final String title;
         CatalogPoster(String title){super(MainActivity.this);this.title=title;onImageLoading();}
         @Override public void onImageLoading(){setImageDrawable(new MediaStyle.ArtworkPlaceholder());setContentDescription(getString(R.string.catalog_poster_loading,title));}
@@ -609,16 +594,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void renderDetail(JSONObject work) throws Exception {
         int previousScroll=renderedDetailId==work.optLong("id")&&detailScroll!=null?detailScroll.getScrollY():0;
         detail=work;detailId=work.getLong("id");renderedDetailId=detailId;base();header("详情",true);
-        ScrollView scroll=new ScrollView(this);LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(20),0,dp(20),dp(24));scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        ScrollView scroll=new ScrollView(this);LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(16),0,dp(16),dp(24));scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         detailScroll=scroll;scroll.post(()->scroll.scrollTo(0,previousScroll));
         LinearLayout hero=new LinearLayout(this);hero.setGravity(Gravity.TOP);hero.setPadding(0,dp(8),0,dp(16));
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.FIT_CENTER);poster.setBackground(MediaStyle.surface(this,0xff101b24,0,6));poster.setClipToOutline(true);poster.setContentDescription("海报："+work.optString("title"));
-        hero.addView(poster,new LinearLayout.LayoutParams(dp(120),dp(180)));loadImage(poster,work.optString("cover",""));
+        hero.addView(poster,new LinearLayout.LayoutParams(dp(128),dp(192)));loadImage(poster,work.optString("cover",""));
         String coverPath=work.optString("cover","");
         poster.setContentDescription("放大封面："+work.optString("title"));
         poster.setOnClickListener(view->{if(!coverPath.isEmpty()&&!coverPath.equals("null"))showGallery(new JSONArray().put(coverPath),0);else message("此影片暂无封面");});
         LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(16),0,0,0);
-        TextView title=text(work.optString("title"),24,Color.WHITE);title.setMaxLines(4);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setContentDescription(work.optString("title"));
+        TextView title=text(work.optString("title"),22,MediaStyle.TEXT);title.setMaxLines(4);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setContentDescription(work.optString("title"));
         title.setOnClickListener(view->title.setMaxLines(title.getMaxLines()==4?Integer.MAX_VALUE:4));info.addView(title);
         String category=work.optString("kind").equals("series")?"电视剧":work.optString("kind").equals("vr")?"VR 电影":work.optString("kind").equals("fans")?"Fans视频":work.optString("kind").equals("movie")?"电影":"视频";
         info.addView(text((work.isNull("year")?"":work.optString("year")+"  ·  ")+category,14,MUTED));
@@ -627,19 +612,19 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         hero.addView(info,new LinearLayout.LayoutParams(0,-2,1));page.addView(hero);
         JSONObject resume=work.optJSONObject("resume");
         Button play=button(resume!=null&&resume.optDouble("position",work.optDouble("position"))>0||work.optDouble("position")>0?"继续播放":"播放",()->startPlayer(work.optLong("resume_file_id"),false));
-        play.setTag("detailPlay");MediaStyle.button(play,true,false,false);MediaStyle.icon(play,"play",true);play.setMinHeight(dp(52));play.setEnabled(work.optInt("file_count")>0);page.addView(play,new LinearLayout.LayoutParams(-1,-2));
+        play.setTag("detailPlay");MediaStyle.button(play,true,false,false);MediaStyle.icon(play,"play",true);play.setEnabled(work.optInt("file_count")>0);page.addView(play,new LinearLayout.LayoutParams(-1,-2));
         if(resume!=null&&!resume.optString("label").isEmpty()){TextView resumeInfo=text(resume.optString("label"),13,MUTED);resumeInfo.setTag("detailResumeInfo");page.addView(resumeInfo);}
-        ChipLayout personal=new ChipLayout(this);personal.setPadding(0,dp(12),0,dp(12));
-        personal.addView(markButton(work,"favorite",false));personal.addView(markButton(work,"watchlist",false));
+        LinearLayout personal=MediaStyle.actionRow(this);personal.setTag("detailPersonalActions");personal.setPadding(0,dp(8),0,dp(8));
+        Button favoriteAction=markButton(work,"favorite",false),watchlistAction=markButton(work,"watchlist",false);personal.addView(favoriteAction,new LinearLayout.LayoutParams(0,-2,1));personal.addView(watchlistAction,new LinearLayout.LayoutParams(0,-2,1));
         Button score=button(work.isNull("rating")?"评分":work.optInt("rating")+" 分",()->{
             String[] scores={"清除评分","1 分","2 分","3 分","4 分","5 分","6 分","7 分","8 分","9 分","10 分"};
-            new AlertDialog.Builder(this).setTitle("我的评分").setSingleChoiceItems(scores,work.optInt("rating",0),(dialog,index)->{dialog.dismiss();personal("rating",index==0?JSONObject.NULL:index);}).setNegativeButton("取消",null).show();
-        });score.setContentDescription("我的评分");score.setTag("rating:"+work.optLong("id"));MediaStyle.icon(score,"star",!work.isNull("rating"));personal.addView(score);page.addView(personal);
+            showDialog(new AlertDialog.Builder(this).setTitle("我的评分").setSingleChoiceItems(scores,work.optInt("rating",0),(dialog,index)->{dialog.dismiss();personal("rating",index==0?JSONObject.NULL:index);}).setNegativeButton("取消",null));
+        });score.setContentDescription("我的评分");score.setTag("rating:"+work.optLong("id"));detailAction(score,"star",!work.isNull("rating"));personal.addView(score,new LinearLayout.LayoutParams(0,-2,1));page.addView(personal);
         LinearLayout metadataSection=new LinearLayout(this);metadataSection.setOrientation(LinearLayout.VERTICAL);
         JSONArray tags=work.optJSONArray("tags");JSONArray actors=work.optJSONArray("actors");
-        ChipLayout metadata=new ChipLayout(this);metadata.setPadding(0,0,0,dp(12));
+        ChipLayout metadata=MediaStyle.actionFlow(this);metadata.setPadding(0,0,0,dp(12));
         if(tags!=null)for(int i=0;i<tags.length();i++){
-            String tag=tags.optString(i);metadata.addView(button(tag,()->filterMetadata("tag",tag)));
+            String tag=tags.optString(i);Button tagAction=button(tag,()->filterMetadata("tag",tag));BiliMainUi.lightAction(tagAction,"",false);metadata.addView(tagAction);
         }
         if(metadata.getChildCount()>0)metadataSection.addView(metadata);
         ChipLayout cast=new ChipLayout(this);cast.setPadding(0,0,0,dp(12));
@@ -652,14 +637,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 ImageView face=new ImageView(this);face.setScaleType(ImageView.ScaleType.CENTER_CROP);face.setContentDescription("演员头像："+actor);
                 personCard.addView(face,new LinearLayout.LayoutParams(dp(104),dp(132)));loadImage(face,photo);
                 face.setOnClickListener(view->filterMetadata("actor",actor));
-                face.setOnLongClickListener(view->{String credit=person.optString("photo_attribution","")+"\n"+person.optString("photo_license","")+"\n"+person.optString("photo_page",person.optString("photo_source_url",""));new AlertDialog.Builder(this).setTitle(actor+" · 头像来源 / 许可").setMessage(credit.trim().isEmpty()?"来源未提供署名资料":credit.trim()).setPositiveButton("关闭",null).show();return true;});
+                face.setOnLongClickListener(view->{String credit=person.optString("photo_attribution","")+"\n"+person.optString("photo_license","")+"\n"+person.optString("photo_page",person.optString("photo_source_url",""));showDialog(new AlertDialog.Builder(this).setTitle(actor+" · 头像来源 / 许可").setMessage(credit.trim().isEmpty()?"来源未提供署名资料":credit.trim()).setPositiveButton("关闭",null));return true;});
                 Button actorName=button(actor,()->filterMetadata("actor",actor));actorName.setTag("actorName:"+actor);personCard.addView(actorName,new LinearLayout.LayoutParams(dp(104),-2));cast.addView(personCard);
             }else cast.addView(button(actor,()->filterMetadata("actor",actor)));
         }
         if(cast.getChildCount()>0)metadataSection.addView(cast);
         TextView overview=text(work.optString("overview","暂无简介"),15,MUTED);overview.setTag("detailOverview");overview.setMaxLines(4);overview.setEllipsize(android.text.TextUtils.TruncateAt.END);overview.setContentDescription("简介，点击展开或收起");overview.setOnClickListener(v->overview.setMaxLines(overview.getMaxLines()==4?Integer.MAX_VALUE:4));metadataSection.addView(overview);
         JSONArray files=work.getJSONArray("files");page.addView(text(work.optString("kind").equals("series")?"季与集":work.optString("kind").equals("fans")?"作者视频":"视频文件",21,Color.WHITE));
-        LinearLayout episodes=new LinearLayout(this);episodes.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout episodes=MediaStyle.actionColumn(this);episodes.setTag("detailFileActions");
         android.widget.Spinner seasons=new android.widget.Spinner(this);java.util.ArrayList<Integer> seasonValues=new java.util.ArrayList<>();seasonValues.add(-1);
         java.util.TreeSet<Integer> available=new java.util.TreeSet<>();for(int j=0;j<files.length();j++)available.add(files.getJSONObject(j).optInt("season",1));seasonValues.addAll(available);
         java.util.ArrayList<String> seasonNames=new java.util.ArrayList<>();seasonNames.add("全部季");for(int j=1;j<seasonValues.size();j++)seasonNames.add(seasonValues.get(j)==0?"特别篇":"第 "+seasonValues.get(j)+" 季");
@@ -669,7 +654,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             JSONObject file=files.getJSONObject(i);long id=file.getLong("id");String name=file.optString("name");
             if(work.optString("kind").equals("series")&&!file.isNull("season")&&!file.isNull("episode"))name=String.format(java.util.Locale.ROOT,"S%02d E%02d  ·  ",file.optInt("season"),file.optInt("episode"))+name;
             LinearLayout episode=new LinearLayout(this);episode.setOrientation(LinearLayout.VERTICAL);episode.setTag(file.optInt("season",1));episodes.addView(episode);
-            Button playEpisode=button(name+"  ·  "+(int)(file.optDouble("duration")/60)+" 分钟",()->startPlayer(id,false));playEpisode.setOnLongClickListener(v->{watchAction(work.optLong("id"),id);return true;});episode.addView(playEpisode);
+            Button playEpisode=BiliMainUi.settingsRow(this,name+"  ·  "+(int)(file.optDouble("duration")/60)+" 分钟","play",()->startPlayer(id,false));playEpisode.setOnLongClickListener(v->{watchAction(work.optLong("id"),id);return true;});episode.addView(playEpisode);
             if(!file.optString("overview").isEmpty())episode.addView(text(file.optString("overview"),14,MUTED));
             JSONArray episodeStills=file.optJSONArray("stills");
             if(episodeStills!=null&&episodeStills.length()>0){
@@ -685,12 +670,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         JSONArray bookmarks=work.optJSONArray("bookmarks");
         if(bookmarks!=null&&bookmarks.length()>0){
             page.addView(text("时间点书签",21,Color.WHITE));
+            LinearLayout bookmarkEntries=MediaStyle.actionColumn(this);bookmarkEntries.setTag("detailBookmarkActions");page.addView(bookmarkEntries);
             for(int i=0;i<bookmarks.length();i++){
                 JSONObject mark=bookmarks.optJSONObject(i);if(mark==null)continue;
-                if(i<12&&!mark.isNull("image")){ImageView preview=new ImageView(this);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);page.addView(preview,new LinearLayout.LayoutParams(-1,dp(140)));loadImage(preview,mark.optString("image"));}
-                page.addView(button(String.format(java.util.Locale.ROOT,"%d:%02d · %s",mark.optInt("position")/60,mark.optInt("position")%60,mark.optString("title")),()->{
+                LinearLayout entry=new LinearLayout(this);entry.setOrientation(LinearLayout.VERTICAL);bookmarkEntries.addView(entry);
+                if(i<12&&!mark.isNull("image")){ImageView preview=new ImageView(this);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);entry.addView(preview,new LinearLayout.LayoutParams(-1,dp(140)));loadImage(preview,mark.optString("image"));}
+                entry.addView(button(String.format(java.util.Locale.ROOT,"%d:%02d · %s",mark.optInt("position")/60,mark.optInt("position")%60,mark.optString("title")),()->{
                     Intent intent=playerIntent(mark.optLong("file_id"),false);intent.putExtra("start_position",mark.optDouble("position"));startActivity(intent);
-                }));if(!mark.optString("note").isEmpty())page.addView(text(mark.optString("note"),14,MUTED));
+                }));if(!mark.optString("note").isEmpty())entry.addView(text(mark.optString("note"),14,MUTED));
             }
         }
         JSONArray stills=work.optJSONArray("stills");
@@ -711,22 +698,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             TextView directory=text("保存到电脑："+work.optString("download_directory","分类默认目录"),13,MUTED);page.addView(directory);
             page.addView(button("更改本片在电脑上的下载目录",()->{
                 EditText input=new EditText(this);input.setSingleLine(true);input.setText(work.optString("download_directory"));
-                new AlertDialog.Builder(this).setTitle("电脑端保存目录").setMessage("填写电脑上的完整路径；留空恢复分类默认目录。").setView(input)
+                showDialog(new AlertDialog.Builder(this).setTitle("电脑端保存目录").setMessage("填写电脑上的完整路径；留空恢复分类默认目录。").setView(input)
                     .setPositiveButton("保存",(dialog,which)->request(()->api.post("/api/works/"+work.optLong("id")+"/download-directory",new JSONObject().put("directory",input.getText().toString().trim())),result->{
                         work.put("download_directory",result.getString("directory"));directory.setText("保存到电脑："+result.getString("directory"));
-                    })).setNegativeButton("取消",null).show();
+                    })).setNegativeButton("取消",null));
             }));
             TextView status=text("HTTP 下载完成后自动加入当前影视资料；磁力由电脑端配置的外部下载器处理。",13,MUTED);page.addView(status);
+            LinearLayout downloadActions=MediaStyle.actionColumn(this);downloadActions.setTag("detailDownloadActions");page.addView(downloadActions);
             for(int i=0;i<downloads.length();i++){
                 JSONObject entry=downloads.optJSONObject(i);if(entry==null)continue;final int index=i;
-                page.addView(button(entry.optString("description","下载"),()->request(
+                downloadActions.addView(button(entry.optString("description","下载"),()->request(
                     ()->api.post("/api/works/"+work.optLong("id")+"/downloads",new JSONObject().put("index",index)),result->{
                         String task=result.getString("task_id");status.setText("已加入电脑端下载队列…");
                         getSharedPreferences("download-tasks",0).edit().putString(Long.toString(work.optLong("id")),task).apply();
                         pollDownload(task,work.optLong("id"),status,generation);
                     })));
             }
-            page.addView(button("外部下载完成，检查文件并入库",()->request(
+            downloadActions.addView(button("外部下载完成，检查文件并入库",()->request(
                 ()->api.post("/api/works/"+work.optLong("id")+"/import-downloads",new JSONObject().put("check",true)),result->{
                     String taskId=result.getString("task_id");
                     getSharedPreferences("download-tasks",0).edit().putString(Long.toString(work.optLong("id")),taskId).apply();
@@ -768,7 +756,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         state.discoverySort=discoverySort;state.discoveryDescending=discoveryDescending;
         state.discoveryOnline=discoveryOnline;state.discoveryProvider=discoveryProvider;state.searchTask=discoverySearchTask;state.searchState=discoverySearchState;state.searchMessage=discoverySearchMessage;state.searchErrors=discoverySearchErrors;state.resultIds=discoveryResultIds==null?null:discoveryResultIds.toString();
         state.resultTag=discoveryResultTag;state.nextSearchFilters=discoveryNextSearchFilters!=null;
-        state.mainPage=mainPage;state.watchlistOnly=watchlistOnly;state.dislikedOnly=dislikedOnly;state.favorites=favorites;state.recommended=recommended;state.discovery=discovery;state.actresses=actresses;
+        state.mainPage=mainPage;state.actorPhoto=actorPhoto;state.actorPhotoName=actorPhotoName;state.watchlistOnly=watchlistOnly;state.dislikedOnly=dislikedOnly;state.favorites=favorites;state.recommended=recommended;state.discovery=discovery;state.actresses=actresses;
         state.gridIndex=discoveryGridIndex;state.gridScroll=discoveryGridScroll;state.offset=offset;state.scroll=browseScroll==null?0:browseScroll.getScrollY();
         state.detailScroll=detailScroll==null?0:detailScroll.getScrollY();
         try{state.detail=detailId>0&&detail!=null?new JSONObject(detail.toString()):null;}catch(Exception ignored){}
@@ -777,7 +765,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";discoveryNextSearchFilters=null;favorites=false;watchlistOnly=false;dislikedOnly=false;mainPage="library";recommended=false;discovery=state.discovery;actresses=false;discoveryOnline=false;query="";kind="";showLibrary();
     }
     private void restoreNavigation(){
-        NavigationState state=navigationHistory.removeLast();
+        NavigationState state=navigationHistory.removeLast();actorPhoto=state.actorPhoto==null?"":state.actorPhoto;actorPhotoName=state.actorPhotoName==null?"":state.actorPhotoName;
         kind=state.kind;query=state.query;tagFilter=state.tag;actorFilter=state.actor;yearMinFilter=state.yearMin;yearMaxFilter=state.yearMax;ratingMinFilter=state.ratingMin;tagsAllFilter=state.tagsAll;
         tagsAnyFilter=state.tagsAny==null?"":state.tagsAny;tagsNotFilter=state.tagsNot==null?"":state.tagsNot;sortField=state.sort;watchFilter=state.watch;savedList=state.list;sortDescending=state.descending;
         discoverySort=state.discoverySort;discoveryDescending=state.discoveryDescending;
@@ -813,19 +801,31 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(discovery){
             if(discoveryCoordinator!=null)discoveryCoordinator.onSelectSort(discoverySort);return;
         }
-        new AlertDialog.Builder(this).setTitle("排序").setItems(new String[]{"入库时间","名称","年份","个人评分","时长","切换升序 / 降序"},(d,index)->{
+        showDialog(new AlertDialog.Builder(this).setTitle("排序").setItems(new String[]{"入库时间","名称","年份","个人评分","时长","切换升序 / 降序"},(d,index)->{
             if(index==5)sortDescending=!sortDescending;else sortField=new String[]{"added","title","year","rating","duration"}[index];
             getSharedPreferences("catalog",0).edit().putString("sort",sortField).putBoolean("descending",sortDescending).apply();showLibrary();
-        }).show();
+        }));
     }
     private void smartLists(){
+        LinearLayout page=utility("lists","智能片单");LinearLayout tools=MediaStyle.row(this);TextView subtitle=text("按保存的筛选条件组织影片",14,MUTED);tools.addView(subtitle,new LinearLayout.LayoutParams(0,-2,1));Button create=button("＋ 新建",()->{resetBrowseFilters();mainPage="library";creatingSmartList=true;showLibrary();showFilters();});BiliMainUi.lightAction(create,"",false);create.setTag("newSmartList");tools.addView(create);page.addView(tools);
+        TextView loading=text("正在读取片单…",14,MUTED);page.addView(loading);
         request(()->api.get("/api/lists"),result->{
-            JSONArray lists=result.getJSONArray("items");String[] names=new String[lists.length()];for(int i=0;i<lists.length();i++)names[i]=lists.getJSONObject(i).getString("name");
-            AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("智能片单").setNegativeButton("关闭",null);
-            if(names.length==0)dialog.setMessage("还没有片单。进入媒体库筛选影片后，在当前列表操作中保存片单。");
-            else dialog.setItems(names,(d,index)->{resetBrowseFilters();mainPage="mine";savedList=names[index];JSONObject stored=lists.optJSONObject(index).optJSONObject("filters");if(stored!=null){String sort=stored.optString("sort","added");sortField=java.util.Arrays.asList("added","title","year","rating","duration").contains(sort)?sort:"added";sortDescending=stored.optBoolean("descending",true);}showLibrary();});dialog.show();
-        });
+            page.removeView(loading);JSONArray lists=result.getJSONArray("items");if(lists.length()==0){page.addView(text("还没有片单。进入媒体库筛选影片后，在当前列表操作中保存片单。",15,MUTED));return;}
+            for(int i=0;i<lists.length();i++){
+                JSONObject list=lists.getJSONObject(i);String name=list.optString("name");JSONObject filters=list.optJSONObject("filters");String summary=listSummary(filters);View card=BiliMainUi.playlistCard(this,name,summary,()->openSmartList(name,filters));card.setTag("smartList:"+name);LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(-1,-2);size.setMargins(0,dp(12),0,0);page.addView(card,size);
+                card.setOnLongClickListener(v->{showDialog(new AlertDialog.Builder(this).setTitle(name).setMessage(summary).setPositiveButton("打开片单",(d,which)->openSmartList(name,filters)).setNegativeButton("关闭",null));return true;});
+                request(()->api.get("/api/works?offset=0&limit=3&list="+android.net.Uri.encode(name)),reply->{FrameLayout art=card.findViewWithTag("playlistArtwork");JSONArray works=reply.optJSONArray("items");if(works!=null&&works.length()>0){art.removeAllViews();for(int j=0;j<Math.min(3,works.length());j++){ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);FrameLayout.LayoutParams image=new FrameLayout.LayoutParams(dp(56),dp(84));image.leftMargin=dp(j*18);image.topMargin=dp(12-j*5);art.addView(poster,image);loadImage(poster,works.optJSONObject(j).optString("cover"));}}TextView count=text("共 "+reply.optInt("total")+" 部",12,MUTED);count.setTag("playlistCount:"+name);card.setContentDescription(name+" · "+reply.optInt("total")+" 部 · "+summary);if(card instanceof android.view.ViewGroup){android.view.ViewGroup row=(android.view.ViewGroup)((android.view.ViewGroup)card).getChildAt(0);android.view.ViewGroup labels=(android.view.ViewGroup)row.getChildAt(1);labels.addView(count,1);}},error->{});
+            }
+            page.addView(text("从媒体库筛选后，可在当前列表操作中保存为智能片单",13,MUTED));
+        },error->{loading.setText("读取失败："+error);page.addView(button("重试",this::smartLists));});
     }
+    private void openSmartList(String name,JSONObject stored){
+        utilityPage="";resetBrowseFilters();mainPage="mine";savedList=name;if(stored!=null){String sort=stored.optString("sort","added");sortField=java.util.Arrays.asList("added","title","year","rating","duration").contains(sort)?sort:"added";sortDescending=stored.optBoolean("descending",true);}showLibrary();
+    }
+    private String listSummary(JSONObject filters){
+        if(filters==null)return "已保存的筛选条件";java.util.ArrayList<String> labels=new java.util.ArrayList<>();if(filters.optBoolean("favorite"))labels.add("已收藏");if(filters.optBoolean("watchlist"))labels.add("想看");if(filters.optBoolean("disliked"))labels.add("不喜欢");if(filters.has("rating_min"))labels.add("评分 ≥ "+filters.optInt("rating_min"));if(!filters.optString("watch_state").isEmpty())labels.add(filters.optString("watch_state").equals("unwatched")?"未看":filters.optString("watch_state").equals("completed")?"已完成":"观看中");for(String key:new String[]{"tags_all","tags_any","tags_not"}){JSONArray tags=filters.optJSONArray(key);if(tags!=null&&tags.length()>0)labels.add((key.equals("tags_not")?"排除 ":key.equals("tags_any")?"任一 ":"")+android.text.TextUtils.join("、",jsonStrings(tags)));}if(!filters.optString("actor").isEmpty())labels.add(filters.optString("actor"));return labels.isEmpty()?"已保存的筛选条件":android.text.TextUtils.join(" · ",labels);
+    }
+    private java.util.List<String> jsonStrings(JSONArray array){java.util.ArrayList<String> values=new java.util.ArrayList<>();for(int i=0;i<array.length();i++)values.add(array.optString(i));return values;}
     void saveSmartList(){
         EditText input=new EditText(this);input.setSingleLine(true);input.setHint("片单名称（同名会覆盖）");
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("保存当前筛选为片单").setView(input).setPositiveButton("保存",null).setNegativeButton("取消",null).create();dialog.show();MediaStyle.sheet(dialog);
@@ -844,11 +844,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
     private void watchAction(long workId,Long fileId){
-        new AlertDialog.Builder(this).setTitle("观看状态").setItems(fileId==null?new String[]{"标记已看","标记未看 / 重置进度"}:new String[]{"标记已看","标记未看 / 重置进度","从头播放"},(d,index)->{
+        showDialog(new AlertDialog.Builder(this).setTitle("观看状态").setItems(fileId==null?new String[]{"标记已看","标记未看 / 重置进度"}:new String[]{"标记已看","标记未看 / 重置进度","从头播放"},(d,index)->{
             try{JSONObject payload=new JSONObject().put("state",index==0?"completed":"unwatched");if(fileId!=null)payload.put("file_id",fileId);else if(index==2)payload.put("file_id",detail.optLong("resume_file_id"));
                 request(()->api.post("/api/works/"+workId+"/watched",payload),ok->{if(index==2){startPlayer(fileId!=null?fileId:detail.optLong("resume_file_id"),false);}else openDetail(workId);});
             }catch(Exception e){message(e.getMessage());}
-        }).show();
+        }));
     }
     private void showGallery(JSONArray paths,int start){
         if(paths.length()==0)return;
@@ -857,33 +857,48 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         int[] index={start};ZoomImage[] image={null};TextView title=text("",16,Color.WHITE);
         Runnable render=()->{title.setText((index[0]+1)+" / "+paths.length()+" · 双指缩放，缩小时左右滑动切换");image[0].resetZoom();image[0].setImageDrawable(null);loadImage(image[0],paths.optString(index[0]));};
         image[0]=new ZoomImage(this,delta->{index[0]=(index[0]+delta+paths.length())%paths.length();render.run();});
-        page.addView(title);page.addView(image[0],new LinearLayout.LayoutParams(-1,0,1));LinearLayout controls=new LinearLayout(this);
+        page.addView(title);page.addView(image[0],new LinearLayout.LayoutParams(-1,0,1));LinearLayout controls=MediaStyle.actionRow(this);
         controls.addView(button("上一张",()->{index[0]=(index[0]+paths.length()-1)%paths.length();render.run();}));controls.addView(button("下一张",()->{index[0]=(index[0]+1)%paths.length();render.run();}));controls.addView(button("关闭",dialog::dismiss));page.addView(controls);
         dialog.setContentView(page);dialog.show();render.run();
     }
     void queueEditor(){
         android.content.SharedPreferences prefs=getSharedPreferences("queue",0);
         try{
-            JSONArray ids=new JSONArray(prefs.getString("ids","[]"));
-            if(ids.length()==0){new AlertDialog.Builder(this).setTitle("手机播放队列").setMessage("队列为空。可从影片详情加入，或随机播放当前列表。此队列保存在手机，与电脑队列独立。").setPositiveButton("关闭",null).show();return;}
+            final String captured=prefs.getString("ids","[]");JSONArray ids=new JSONArray(captured);
+            if(ids.length()==0){showDialog(new AlertDialog.Builder(this).setTitle("手机播放队列").setMessage("队列为空。可从影片详情加入，或随机播放当前列表。此队列保存在手机，与电脑队列独立。").setPositiveButton("关闭",null));return;}
             StringBuilder queryIds=new StringBuilder();for(int i=0;i<ids.length();i++){if(i>0)queryIds.append(",");queryIds.append(ids.optLong(i));}
             request(()->api.get("/api/queue-titles?ids="+queryIds),reply->{
+                if(!captured.equals(prefs.getString("ids","[]"))){message("手机队列已更新，请重新打开队列");return;}
+                final String[] expected={captured};final AlertDialog[] editor={null};java.util.function.BooleanSupplier currentQueue=()->{if(expected[0].equals(prefs.getString("ids","[]")))return true;if(editor[0]!=null)editor[0].dismiss();message("手机队列已更新，请重新打开队列");return false;};
                 java.util.ArrayList<Long> values=new java.util.ArrayList<>();for(int i=0;i<ids.length();i++)values.add(ids.getLong(i));JSONObject titles=reply.optJSONObject("titles");
-                LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(16),dp(8),dp(16),dp(8));TextView queueHint=text("此队列保存在手机，与电脑队列独立。选中影片后可连续调整顺序。",13,MUTED);queueHint.setMaxLines(2);queueHint.setEllipsize(android.text.TextUtils.TruncateAt.END);page.addView(queueHint);
+                LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(dp(16),dp(8),dp(16),dp(8));TextView queueHint=text("手机队列与电脑独立。拖动右侧把手排序，也可用上移、下移。",13,MUTED);queueHint.setMaxLines(2);queueHint.setEllipsize(android.text.TextUtils.TruncateAt.END);page.addView(queueHint);
                 ListView list=new ListView(this);list.setTag("phoneQueueItems");list.setChoiceMode(ListView.CHOICE_MODE_SINGLE);page.addView(list,new LinearLayout.LayoutParams(-1,dp(280),1));
-                ArrayAdapter<String> adapter=new MediaStyle.QueueAdapter(this);list.setAdapter(adapter);final int[] selected={Math.min(prefs.getInt("index",0),values.size()-1)};
+                final int[] selected={Math.min(prefs.getInt("index",0),values.size()-1)};ArrayAdapter<String> adapter=new BiliQueueAdapter(this,index->{selected[0]=index;list.setItemChecked(index,true);});list.setAdapter(adapter);
+                LinearLayout controls=MediaStyle.actionRow(this);controls.setTag("phoneQueueActions");controls.setPadding(0,dp(8),0,dp(8));
                 Runnable render=()->{adapter.clear();for(int i=0;i<values.size();i++){long id=values.get(i);adapter.add((i+1)+". "+(titles==null?"作品 #"+id:titles.optString(String.valueOf(id),"已移除的作品")));}adapter.notifyDataSetChanged();if(!values.isEmpty()){selected[0]=Math.max(0,Math.min(selected[0],values.size()-1));list.setItemChecked(selected[0],true);}};
                 list.setOnItemClickListener((parent,view,index,id)->selected[0]=index);
-                LinearLayout controls=MediaStyle.row(this);controls.setTag("phoneQueueActions");controls.setPadding(0,dp(8),0,dp(8));page.addView(controls);
+                page.addView(controls);
+                list.setOnDragListener((view,event)->{
+                    if(!(event.getLocalState() instanceof Integer))return false;
+                    switch(event.getAction()){
+                        case android.view.DragEvent.ACTION_DRAG_STARTED:return currentQueue.getAsBoolean();
+                        case android.view.DragEvent.ACTION_DRAG_LOCATION:if(event.getY()<dp(40))list.smoothScrollBy(-dp(24),100);else if(event.getY()>list.getHeight()-dp(40))list.smoothScrollBy(dp(24),100);return true;
+                        case android.view.DragEvent.ACTION_DROP:
+                            if(!currentQueue.getAsBoolean())return false;
+                            int from=(Integer)event.getLocalState(),target=list.pointToPosition((int)event.getX(),(int)event.getY());if(from<0||from>=values.size()||target<0||target>=values.size())return false;
+                            long current=values.get(Math.max(0,Math.min(prefs.getInt("index",0),values.size()-1))),selectedId=values.get(Math.max(0,Math.min(selected[0],values.size()-1)));Long moving=values.remove(from);values.add(target,moving);selected[0]=values.indexOf(selectedId);String updated=new JSONArray(values).toString();prefs.edit().putString("ids",updated).putInt("index",Math.max(0,values.indexOf(current))).apply();expected[0]=updated;render.run();return true;
+                        default:return true;
+                    }
+                });
                 java.util.function.IntConsumer change=action->{
-                    if(values.isEmpty())return;int index=Math.max(0,Math.min(selected[0],values.size()-1));long current=values.get(Math.max(0,Math.min(prefs.getInt("index",0),values.size()-1)));
+                    if(!currentQueue.getAsBoolean()||values.isEmpty())return;int index=Math.max(0,Math.min(selected[0],values.size()-1));long current=values.get(Math.max(0,Math.min(prefs.getInt("index",0),values.size()-1)));
                     if(action==0){prefs.edit().putInt("index",index).apply();Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",values.get(index));intent.putExtra("queue",true);startActivity(intent);return;}
                     if(action==3)values.remove(index);else {int target=action==1?index-1:index+1;if(target<0||target>=values.size())return;java.util.Collections.swap(values,index,target);selected[0]=target;}
-                    prefs.edit().putString("ids",new JSONArray(values).toString()).putInt("index",Math.max(0,values.indexOf(current))).apply();render.run();
+                    String updated=new JSONArray(values).toString();prefs.edit().putString("ids",updated).putInt("index",Math.max(0,values.indexOf(current))).apply();expected[0]=updated;render.run();
                 };
-                String[] labels={"播放","上移","下移","移除"};for(int i=0;i<labels.length;i++){final int action=i;Button control=button(labels[i],()->change.accept(action));control.setTextSize(13);control.setPadding(dp(4),dp(8),dp(4),dp(8));controls.addView(control,new LinearLayout.LayoutParams(0,-2,1));}
+                String[] labels={"播放","上移","下移","移除"};for(int i=0;i<labels.length;i++){final int action=i;Button control=button(labels[i],()->change.accept(action));BiliMainUi.lightAction(control,"",false);if(control instanceof com.google.android.material.button.MaterialButton)((com.google.android.material.button.MaterialButton)control).setIcon(null);controls.addView(control,new LinearLayout.LayoutParams(0,-2,1));}
                 Spinner repeat=new Spinner(this);repeat.setContentDescription("手机队列循环模式");repeat.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"播完停止","列表循环","单部循环"}));repeat.setSelection(prefs.getInt("repeat",0));repeat.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int mode,long id){prefs.edit().putInt("repeat",mode).apply();}});page.addView(repeat,new LinearLayout.LayoutParams(-1,dp(48)));
-                AlertDialog dialog=new AlertDialog.Builder(this).setTitle("手机播放队列").setView(page).setNegativeButton("关闭",null).create();dialog.show();MediaStyle.sheet(dialog);render.run();
+                AlertDialog dialog=new AlertDialog.Builder(this).setTitle("手机播放队列").setView(page).setNegativeButton("关闭",null).create();editor[0]=dialog;dialog.show();MediaStyle.sheet(dialog);render.run();
             });
         }catch(Exception error){message(error.getMessage());}
     }
@@ -920,14 +935,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(root==null)return;long id=work.optLong("id");for(String field:new String[]{"favorite","watchlist"})if(fields.has(field)){Button button=root.findViewWithTag("mark:"+id+":"+field);if(button!=null)markStyle(button,work,field,work.optInt(field)==1,false);}
         if(fields.has("rating")){Button score=root.findViewWithTag("rating:"+id);if(score!=null){score.setText(work.isNull("rating")?getString(R.string.personal_rating_unset):getString(R.string.personal_rating_value,work.optInt("rating")));MediaStyle.icon(score,"star",!work.isNull("rating"));}}
     }
+    private void detailAction(Button button,String icon,boolean selected){BiliMainUi.lightAction(button,icon,selected);if(button instanceof com.google.android.material.button.MaterialButton)((com.google.android.material.button.MaterialButton)button).setIconGravity(com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_TOP);button.setPaddingRelative(button.getPaddingStart(),dp(4),button.getPaddingEnd(),dp(4));button.setMinHeight(dp(64));button.setMinimumHeight(dp(64));}
     private void markStyle(Button button,JSONObject work,String field,boolean active,boolean compact){
         String title=field.equals("favorite")?"收藏":"想看";
         button.setText(compact?"":(active?"已":"")+title);button.setContentDescription((active?"取消":"加入")+title);
-        MediaStyle.button(button,false,active,field.equals("favorite"));MediaStyle.icon(button,field.equals("favorite")?"heart":"bookmark",active);
-        if(compact)button.setBackgroundColor(Color.TRANSPARENT);
+        if(compact)MediaStyle.cardMark(button,field.equals("favorite")?"heart":"bookmark",active);else detailAction(button,field.equals("favorite")?"heart":"bookmark",active);
     }
     private Button markButton(JSONObject work,String field,boolean compact){
-        Button button=button("",()->{});button.setTag("mark:"+work.optLong("id")+":"+field);markStyle(button,work,field,work.optInt(field)==1,compact);
+        Button button=compact?MediaStyle.cardIcon(this):button("",()->{});button.setTag("mark:"+work.optLong("id")+":"+field);markStyle(button,work,field,work.optInt(field)==1,compact);
         button.setOnClickListener(view->{
             boolean old=work.optInt(field)==1,value=!old;int ticket=generation;Api client=api;long id=work.optLong("id"),intent=beginPersonalWrite(client,id,field);
             markStyle(button,work,field,value,compact);button.setEnabled(false);
@@ -951,7 +966,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         long id=detailId;JSONObject current=detail;Api client=api;long intent=beginPersonalWrite(client,id,field);
         request(()->client.post("/api/works/"+id+"/personal",new JSONObject().put(field,value)),result->{
             copyPersonal(current,confirmPersonalWrite(client,id,intent,result.optJSONObject("personal"),field,value));Button score=root.findViewWithTag("rating:"+id);
-            if(score!=null){score.setText(current.isNull("rating")?"评分":current.optInt("rating")+" 分");MediaStyle.icon(score,"star",!current.isNull("rating"));}
+            if(score!=null){score.setText(current.isNull("rating")?"评分":current.optInt("rating")+" 分");detailAction(score,"star",!current.isNull("rating"));}
             message("评分已保存");
         });
     }
@@ -964,22 +979,67 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         intent.putExtra("browse_path",listPath().replaceFirst("offset=[0-9]+&limit=30&",""));
         intent.putExtra("browse_position",browsePositions.getOrDefault(detailId,-1));return intent;
     }
+    private Button globalShuffleButton(){
+        Button action=button(getString(R.string.global_shuffle_action),this::showGlobalShuffle);
+        action.setTag("globalShuffle");BiliMainUi.lightAction(action,"shuffle",false);action.setTextColor(BLUE);if(action instanceof com.google.android.material.button.MaterialButton)((com.google.android.material.button.MaterialButton)action).setIconTint(android.content.res.ColorStateList.valueOf(BLUE));return action;
+    }
+    private void showGlobalShuffle(){
+        if(api==null)return;
+        String saved=getSharedPreferences("global_shuffle",0).getString("scope","");
+        int initial=java.util.Arrays.asList(GLOBAL_SHUFFLE_KINDS).indexOf(saved);
+        final int[] selected={Math.max(0,initial)};
+        LinearLayout heading=new LinearLayout(this);heading.setOrientation(LinearLayout.VERTICAL);heading.setPadding(dp(24),dp(16),dp(24),dp(8));
+        heading.addView(text(getString(R.string.global_shuffle_scope_title),20,MediaStyle.TEXT));
+        TextView explanation=text(getString(R.string.global_shuffle_scope_hint),12,MUTED);explanation.setTag("globalShuffleHint");explanation.setPadding(0,dp(8),0,0);heading.addView(explanation);
+        AlertDialog dialog=new AlertDialog.Builder(this).setCustomTitle(heading)
+            .setSingleChoiceItems(R.array.global_shuffle_scopes,selected[0],(choice,index)->selected[0]=index)
+            .setNegativeButton(R.string.global_shuffle_cancel,null)
+            .setPositiveButton(R.string.global_shuffle_start,(choice,which)->{
+                String scope=GLOBAL_SHUFFLE_KINDS[selected[0]];
+                getSharedPreferences("global_shuffle",0).edit().putString("scope",scope).apply();
+                shuffleGlobal(scope);
+            }).create();
+        dialog.show();MediaStyle.sheet(dialog);
+    }
+    private void shuffleGlobal(String kindScope){
+        final Api client=api;if(client==null)return;
+        final int attempt=++shuffleRequest;
+        final String scope="/api/works"+(kindScope.isEmpty()?"":"?kind="+kindScope);
+        request(()->{
+            JSONObject result=client.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope));
+            JSONArray ids=result.getJSONArray("ids");for(int index=0;index<ids.length();index++)if(ids.getLong(index)<=0)throw new Exception(getString(R.string.global_shuffle_invalid_response));
+            return result;
+        },result->{
+            if(client!=api||attempt!=shuffleRequest)return;
+            JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message(getString(R.string.global_shuffle_empty));return;}
+            Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);
+            getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).apply();startActivity(intent);
+        },error->{
+            if(client!=api||attempt!=shuffleRequest)return;
+            String explanation=error!=null&&error.contains("404")?getString(R.string.global_shuffle_update_required):getString(R.string.global_shuffle_failed,error);
+            showDialog(new AlertDialog.Builder(this).setTitle(R.string.global_shuffle_failed_title).setMessage(explanation).setPositiveButton(R.string.global_shuffle_close,null));
+        });
+    }
     void shuffle() {
+        final Api client=api;if(client==null)return;
+        final int attempt=++shuffleRequest;
         final String scope=listPath();
-        request(()->api.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope)),result->{
+        request(()->client.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope)),result->{
+            if(client!=api||attempt!=shuffleRequest)return;
             JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message("当前列表没有可播放的本地视频");return;}
             getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).apply();
             Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);startActivity(intent);
         },error->{
+            if(client!=api||attempt!=shuffleRequest)return;
             String explanation=error!=null&&error.contains("404")?"当前电脑版本不支持按列表随机播放，请更新电脑端后重试。":"无法生成当前列表的播放队列："+error;
-            new AlertDialog.Builder(this).setTitle("未开始随机播放").setMessage(explanation).setPositiveButton("关闭",null).show();
+            showDialog(new AlertDialog.Builder(this).setTitle("未开始随机播放").setMessage(explanation).setPositiveButton("关闭",null));
         });
     }
+    private String statsValue(JSONObject stats,String key){return stats.has(key)&&!stats.isNull(key)?Long.toString(stats.optLong(key)):"—";}
     private void showStats() {
-        request(()->api.get("/api/stats"),stats->{
-            new AlertDialog.Builder(this).setTitle("观影统计 · 与电脑同步").setMessage(String.format(java.util.Locale.ROOT,
-                "累计实际观看 %.1f 小时\n有效播放 %d 次\n播放会话 %d 次\n看过电影 %d 部\n看过电视剧 %d 部\n\n有效播放须严格超过 600 秒。",
-                stats.optDouble("seconds")/3600,stats.optInt("valid"),stats.optInt("sessions"),stats.optInt("movies"),stats.optInt("series"))).setPositiveButton("关闭",null).show();
-        });
+        LinearLayout page=utility("stats","观影统计");page.addView(BiliMainUi.settingsRow(this,"与电脑共享观影记录","remote",()->message("观看记录由当前电脑媒体库提供")));TextView loading=text("正在读取观看记录…",14,MUTED);page.addView(loading);
+        request(()->api.get("/api/stats"),stats->{page.removeView(loading);page.addView(BiliMainUi.metric(this,stats.has("seconds")?String.format(java.util.Locale.ROOT,"%.1f 小时",stats.optDouble("seconds")/3600):"—","累计实际观看","phone_queue"));
+            String[] values={statsValue(stats,"valid"),statsValue(stats,"sessions"),statsValue(stats,"movies"),statsValue(stats,"series")};String[] labels={"有效播放","播放会话","部电影","部剧集"},icons={"play","smart_playlist","library","remote"};for(int row=0;row<2;row++){LinearLayout pair=MediaStyle.row(this);pair.setPadding(0,dp(12),0,0);for(int col=0;col<2;col++){int index=row*2+col;pair.addView(BiliMainUi.metric(this,values[index],labels[index],icons[index]),new LinearLayout.LayoutParams(0,-2,1));}page.addView(pair);}page.addView(BiliMainUi.section(this,"说明"));LinearLayout explanation=BiliMainUi.group(this);explanation.addView(BiliMainUi.settingsRow(this,"有效播放须严格超过 600 秒","check",()->message("累计观看时长严格超过 600 秒才计为有效播放")));explanation.addView(BiliMainUi.settingsRow(this,"观看记录来自实际播放","statistics",()->message("统计来自实际播放会话，不按标记状态推算")));page.addView(BiliMainUi.groupCard(this,explanation));page.addView(BiliMainUi.settingsRow(this,"详细统计","statistics",()->{try{showDialog(new AlertDialog.Builder(this).setTitle("详细统计").setMessage(stats.toString(2)).setPositiveButton("关闭",null));}catch(Exception error){message(error.getMessage());}}));
+        },error->{loading.setText("读取失败："+error);page.addView(button("重试",this::showStats));});
     }
 }

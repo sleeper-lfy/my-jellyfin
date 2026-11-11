@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
+import net.lumen.media.ui.theme.AppDimensions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -30,11 +32,10 @@ internal fun DiscoverySortMenu(field: String, descending: Boolean, onSelect: (St
     val arrow = stringResource(if (descending) R.string.discovery_sort_descending_arrow else R.string.discovery_sort_ascending_arrow)
     Box(modifier) {
         val label = stringResource(R.string.discovery_sort_label, discoverySortName(field), arrow)
-        AssistChip(
+        TextButton(
             onClick = { expanded = true },
-            modifier = Modifier.heightIn(min = DiscoveryDimensions.TouchTarget).testTag("discoverySort"),
-            label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-        )
+            modifier = Modifier.heightIn(min = AppDimensions.TouchTarget).testTag("discoverySort"),
+        ) { Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
                 val selected = option == field

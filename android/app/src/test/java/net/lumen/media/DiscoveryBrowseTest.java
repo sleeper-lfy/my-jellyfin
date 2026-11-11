@@ -6,7 +6,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
-import android.widget.Spinner;
+import com.google.android.material.tabs.TabLayout;
 import android.widget.TextView;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -57,6 +57,8 @@ public class DiscoveryBrowseTest {
     }
     private void show(MainActivity activity,MockWebServer server,boolean online)throws Exception{
         set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+        // Api injection stands in for a successful connection, which also leaves the connection utility route.
+        set(activity,"utilityPage","");
         set(activity,"mainPage","discover");set(activity,"discovery",true);set(activity,"discoveryOnline",online);call(activity,"showLibrary");
     }
     private DiscoveryCoordinator coordinator(MainActivity activity){return (DiscoveryCoordinator)get(activity,"discoveryCoordinator");}
@@ -144,7 +146,7 @@ public class DiscoveryBrowseTest {
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return json("{\"items\":[],\"total\":0}");}});server.start();MainActivity activity=lifecycle.get();
             set(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));call(activity,"showLibrary");
-            root(activity).findViewWithTag("nav:library").performClick();android.widget.Spinner categories=root(activity).findViewWithTag("libraryCategory");assertNotNull(categories);categories.setSelection(4);shadowOf(Looper.getMainLooper()).idle();assertTrue(path(activity).contains("kind=fans"));
+            root(activity).findViewWithTag("nav:library").performClick();TabLayout categories=root(activity).findViewWithTag("libraryCategory");assertNotNull(categories);assertEquals("Fans",categories.getTabAt(4).getText());categories.getTabAt(4).select();shadowOf(Looper.getMainLooper()).idle();assertTrue(path(activity).contains("kind=fans"));assertEquals(4,((TabLayout)root(activity).findViewWithTag("libraryCategory")).getSelectedTabPosition());
             JSONObject work=new JSONObject("{\"id\":42,\"title\":\"Author example\",\"kind\":\"fans\",\"file_count\":2,\"files\":[{\"id\":101,\"name\":\"First video\",\"duration\":120},{\"id\":102,\"name\":\"Second video\",\"duration\":180}]}");
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
             assertNotNull(text(root(activity),"作者视频",false));assertNull(text(root(activity),"季与集",false));assertFalse(VrProjection.autoEnable("fans"));

@@ -7,7 +7,8 @@ import android.view.ViewGroup;
 /** Wrapping chips avoid horizontal scrolling when browsing with one hand. */
 final class ChipLayout extends ViewGroup {
     final int gap;
-    ChipLayout(Context context){super(context);gap=MediaStyle.dp(context,MediaStyle.SPACE);}
+    ChipLayout(Context context){this(context,MediaStyle.SPACE);}
+    ChipLayout(Context context,int gapDp){super(context);gap=MediaStyle.dp(context,gapDp);}
     @Override protected void onMeasure(int widthSpec,int heightSpec){
         int width=MeasureSpec.getSize(widthSpec),available=Math.max(0,width-getPaddingLeft()-getPaddingRight()),x=0,y=0,rowHeight=0;
         for(int i=0;i<getChildCount();i++){

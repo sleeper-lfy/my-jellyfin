@@ -1,0 +1,13 @@
+<resources>
+    <string name="discovery_watch_all_short">全部</string>
+    <string name="discovery_watch_unwatched_short">未看</string>
+    <string name="discovery_watch_completed_short">已看完</string>
+    <string name="discovery_tags_section">标签</string>
+    <string name="discovery_tags_search_placeholder">搜索标签</string>
+    <string name="discovery_tags_selected_count">已选 %1$d 个标签</string>
+    <string name="discovery_actor_search_placeholder">搜索演员</string>
+    <string name="discovery_year_section">年份</string>
+    <string name="discovery_year_from_placeholder">起始年份</string>
+    <string name="discovery_year_to_placeholder">结束年份</string>
+    <string name="discovery_advanced_short">更多条件</string>
+</resources>

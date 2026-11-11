@@ -4,10 +4,10 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
-import android.widget.ImageView;
+import androidx.appcompat.widget.AppCompatImageView;
 
 /** Bounded image zoom; the parent loads only the current still. */
-final class ZoomImage extends ImageView {
+final class ZoomImage extends AppCompatImageView {
     private float zoom=1,panX=0,panY=0,lastX,lastY,startX;
     private boolean pinched=false;
     private final ScaleGestureDetector detector;

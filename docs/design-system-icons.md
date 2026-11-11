@@ -1,6 +1,6 @@
 # Design system icon sources
 
-This phase adds standalone UI foundations only; no existing page uses these assets yet.
+The standalone foundations introduced in 0.4.18 are also used by the actual Java-page Material 3 controls and bottom navigation in 0.4.19.
 
 `AppIcons` exposes one distinct Material Outlined symbol for each of the 16 entry points and four Filled variants for selected bottom navigation. The existing `material-icons-core` dependency supplies the standard auto-mirrored Back arrow. No extended icon dependency is added.
 
@@ -10,7 +10,7 @@ This phase adds standalone UI foundations only; no existing page uses these asse
 - Pinned revision: `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`.
 - License: Apache License 2.0; the upstream license is reproduced below.
 - Source: official 24px SVGs, converted to local 24dp Android vector XML. Source paths are unchanged. SVG rect/circle/polygon primitives are expressed as equivalent vector paths; empty `fill="none"` bounds and structural groups are omitted. No icon geometry was designed or redrawn.
-- A vector name is added for stable resource identity; black asset fills are tinted by the official Compose `Icon` using `MaterialTheme` roles.
+- A vector name is added for stable resource identity; black asset fills are tinted by official Compose `Icon` or Material View controls using the shared `MaterialTheme` roles.
 - The source and resulting file SHA-256 hashes allow later updates to be reviewed against these exact assets.
 
 | AppIcons property | Official source | Source SVG SHA-256 | Local vector SHA-256 |
@@ -35,6 +35,16 @@ This phase adds standalone UI foundations only; no existing page uses these asse
 | `Statistics` | [src/editor/bar_chart/materialiconsoutlined/24px.svg](https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/src/editor/bar_chart/materialiconsoutlined/24px.svg) | `5abe3390a29d11d9a3e2e212224d5196272a9072ae8bb76c963bf18fee4d5fe1` | `7d18af64dd404ea60236afa96580c5818168dc37145a46c7bd40daa538f4d0ea` |
 | `Tasks` | [src/action/assignment/materialiconsoutlined/24px.svg](https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/src/action/assignment/materialiconsoutlined/24px.svg) | `374fa92bf5aec461e429335bc591f27fac552da2e1a36dfe560f795f5988f345` | `e55ba63a7fb216c8f27204da6d516cc37ae5e16214bae6d1c94b96e142affc6d` |
 | `Watchlist` | [src/action/bookmark_border/materialiconsoutlined/24px.svg](https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/src/action/bookmark_border/materialiconsoutlined/24px.svg) | `1a624fa82577014fbf066bd8ffd6817ea3532c34413a9810af442e7b1c78f9eb` | `f8b0270a3f4c3edd1d9d9851922cc01105ee0bde621a1fad46c2eea616808262` |
+
+## Native action assets (0.4.19)
+
+Selected favorite and watchlist actions use official Filled Favorite and Bookmark; unselected actions retain their outlined variants. These paths follow the same pinned upstream Material Icons source and Apache 2.0 license.
+
+| Local vector | Official source | Local SHA-256 |
+| --- | --- | --- |
+| `design_system_favorite_filled` | [src/action/favorite/materialicons/24px.svg](https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/src/action/favorite/materialicons/24px.svg) | `8c3d16524c01831a59464b85f2221638d9f9b42efe56d6766152fd75fe96a6ab` |
+| `design_system_watchlist_filled` | [src/action/bookmark/materialicons/24px.svg](https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/src/action/bookmark/materialicons/24px.svg) | `a4172cb8502c5e7003f046606de4087e21126499b491fb0f1b28d9b99d7470ae` |
+| `design_system_shuffle` | [src/av/shuffle/materialicons/24px.svg](https://raw.githubusercontent.com/google/material-design-icons/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/src/av/shuffle/materialicons/24px.svg) | `01892685b123aa675dae310e594cc43d4183ad9adadaeba1a50b9ac37fba5679` |
 
 ## Retained upstream license
 
@@ -242,3 +252,8 @@ This phase adds standalone UI foundations only; no existing page uses these asse
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
+
+
+## 0.4.19 页面辅助图形
+
+`bili_chevron_right`、`bili_drag_handle` 与 `bili_aux_audio/power/refresh/subtitle/volume` 是本项目为页面布局绘制的几何矢量，随项目源码提供。播放界面的轻量控制图形由 `PlayerChrome.Glyph` 绘制。它们不使用 Bilibili 的商标或图标文件；官方 Material Icons 资源的来源与许可仍按本文记录。

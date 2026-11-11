@@ -31,6 +31,8 @@ import static org.robolectric.Shadows.shadowOf;
 public class BrowseUiTest {
     private void call(Object object,String name)throws Exception{Method method=object.getClass().getDeclaredMethod(name);method.setAccessible(true);method.invoke(object);}
     private void field(Object object,String name,Object value)throws Exception{Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);field.set(object,value);}
+    private void connect(MainActivity activity,MockWebServer server)throws Exception{field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));field(activity,"utilityPage","");}
+    private com.google.android.material.tabs.TabLayout tabs(View root){if(root instanceof com.google.android.material.tabs.TabLayout)return (com.google.android.material.tabs.TabLayout)root;if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++){com.google.android.material.tabs.TabLayout found=tabs(((ViewGroup)root).getChildAt(i));if(found!=null)return found;}return null;}
     private List<AutoCompleteTextView> inputs(View view){
         List<AutoCompleteTextView> result=new ArrayList<>();
         if(view instanceof AutoCompleteTextView)result.add((AutoCompleteTextView)view);
@@ -62,7 +64,7 @@ public class BrowseUiTest {
                     ?"{\"tags\":[\"Drama\",\"Travel\"],\"actors\":[\"Example actor\"],\"years\":[2024,2020]}"
                     :"{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();
-            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            connect(activity,server);
             call(activity,"showLibrary");call(activity,"showFilters");
             AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
             List<AutoCompleteTextView> fields=inputs(dialog.getWindow().getDecorView());assertEquals(8,fields.size());
@@ -107,7 +109,7 @@ public class BrowseUiTest {
                 }
                 return new MockResponse().setBody("{\"status\":\"running\",\"payload\":{\"message\":\"Downloading on server\"}}");
             }});server.start();MainActivity activity=lifecycle.get();
-            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            connect(activity,server);
             org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Chosen movie\",\"kind\":\"movie\",\"year\":2024,\"file_count\":0,\"files\":[],\"download_directory\":\"D:/Media/Movies/Chosen movie\",\"download_url\":[{\"url\":\"https://example.org/video.mp4\",\"method\":\"direct\",\"description\":\"Download sample\"}]}");
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
             View root=activity.findViewById(android.R.id.content);
@@ -123,7 +125,7 @@ public class BrowseUiTest {
     @Test public void sortingPersistsAndReturningFromDetailKeepsLibraryView()throws Exception{
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");}});server.start();
-            MainActivity activity=lifecycle.get();field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            MainActivity activity=lifecycle.get();connect(activity,server);
             call(activity,"showLibrary");call(activity,"sorting");AlertDialog menu=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
             menu.getListView().performItemClick(menu.getListView().getChildAt(1),1,1);
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);assertTrue(((String)path.invoke(activity)).contains("sort=title"));
@@ -146,7 +148,7 @@ public class BrowseUiTest {
                 assertEquals("Bearer abcdefghijklmnopqrstuvwxyz123456",request.getHeader("Authorization"));
                 return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();
-            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            connect(activity,server);
             field(activity,"kind","series");field(activity,"query","Original search");call(activity,"showLibrary");
             org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Source detail\",\"kind\":\"series\",\"files\":[],\"tags\":[\"Adventure\"],\"actors\":[{\"name\":\"Example actor\"}]}");
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
@@ -165,7 +167,7 @@ public class BrowseUiTest {
             activity.onBackPressed();
             View discovery=activity.findViewById(android.R.id.content).findViewWithTag("nav:discover");assertNotNull(discovery);discovery.performClick();
             assertTrue(((String)path.invoke(activity)).startsWith("/api/discover?"));
-            activity.discoveryCoordinator.onNavigatePrimary("home");View recommendation=findText(activity.findViewById(android.R.id.content),"为我推荐");assertNotNull(recommendation);recommendation.performClick();
+            activity.discoveryCoordinator.onNavigatePrimary("home");com.google.android.material.tabs.TabLayout feed=tabs(activity.findViewById(android.R.id.content));assertNotNull(feed);assertEquals("推荐",feed.getTabAt(0).getText().toString());feed.getTabAt(0).select();
             assertTrue(((String)path.invoke(activity)).startsWith("/api/recommendations?"));
         }
     }
@@ -179,7 +181,7 @@ public class BrowseUiTest {
                     .setBody("{\"items\":[{\"id\":42,\"title\":\"Restored movie\",\"kind\":\"movie\",\"favorite\":0}],\"total\":1}")
                     .setBodyDelay(300,java.util.concurrent.TimeUnit.MILLISECONDS);
             }});server.start();MainActivity activity=lifecycle.get();
-            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            connect(activity,server);
             field(activity,"discovery",true);call(activity,"showLibrary");
             org.json.JSONObject work=new org.json.JSONObject("{\"id\":42,\"title\":\"Restored movie\",\"kind\":\"movie\",\"files\":[],\"tags\":[\"Remote tag\"]}");
             Method render=MainActivity.class.getDeclaredMethod("renderDetail",org.json.JSONObject.class);render.setAccessible(true);render.invoke(activity,work);
@@ -202,7 +204,7 @@ public class BrowseUiTest {
     @Test public void recommendationSearchKeepsRecommendationContext()throws Exception{
         try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");}});
-            server.start();MainActivity activity=lifecycle.get();field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            server.start();MainActivity activity=lifecycle.get();connect(activity,server);
             field(activity,"recommended",true);call(activity,"showLibrary");
             android.widget.EditText search=searchInput(activity.findViewById(android.R.id.content));assertNotNull(search);search.setText("Search title");
             search.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
@@ -220,7 +222,7 @@ public class BrowseUiTest {
             server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
                 return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();
-            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            connect(activity,server);
             call(activity,"showLibrary");
             View root=(View)read(activity,"root");
             for(int[] size:new int[][]{{360,800},{320,640}}){
@@ -228,16 +230,16 @@ public class BrowseUiTest {
                 root.layout(0,0,size[0],size[1]);
                 assertNull(root.findViewWithTag("homeCategories"));
                 assertNull(findText(root,"我的媒体"));
-                assertNotNull(findText(root,"为我推荐"));assertNotNull(findText(root,"最近入库"));
-                assertEquals(4,((ViewGroup)root.findViewWithTag("primaryNavigation")).getChildCount());
+                assertNotNull(findText(root,"推荐"));assertNotNull(findText(root,"最近"));assertNotNull(root.findViewWithTag("globalShuffle"));
+                assertEquals(4,((com.google.android.material.bottomnavigation.BottomNavigationView)root.findViewWithTag("primaryNavigation")).getMenu().size());
             }
             root.findViewWithTag("nav:library").performClick();
             String[] kinds={"movie","series","vr","fans","other"};
             for(int i=0;i<kinds.length;i++){
                 root=(View)read(activity,"root");
                 assertNull(root.findViewWithTag("homeCategories"));
-                android.widget.Spinner category=root.findViewWithTag("libraryCategory");assertNotNull(category);
-                category.setSelection(i+1);shadowOf(Looper.getMainLooper()).idle();
+                com.google.android.material.tabs.TabLayout category=root.findViewWithTag("libraryCategory");assertNotNull(category);assertEquals(7,category.getTabCount());
+                category.getTabAt(i+1).select();shadowOf(Looper.getMainLooper()).idle();
                 assertEquals(kinds[i],read(activity,"kind"));
             }
         }
@@ -250,14 +252,14 @@ public class BrowseUiTest {
                     .setBody("{\"total\":2,\"items\":[{\"name\":\"Star\",\"count\":5,\"rated\":3,\"average\":7.5,\"work_ids\":[1],\"photo\":\"/api/works/1/actors/0/photo\"},{\"name\":\"Other\",\"count\":1,\"rated\":0,\"average\":null,\"work_ids\":[2],\"photo\":null}]}");
                 return new MockResponse().setHeader("Content-Type","application/json").setBody("{\"items\":[],\"total\":0}");
             }});server.start();MainActivity activity=lifecycle.get();
-            field(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));
+            connect(activity,server);
             call(activity,"showLibrary");
             activity.findViewById(android.R.id.content).findViewWithTag("nav:library").performClick();
-            android.widget.Spinner category=activity.findViewById(android.R.id.content).findViewWithTag("libraryCategory");assertNotNull(category);category.setSelection(6);shadowOf(Looper.getMainLooper()).idle();
+            com.google.android.material.tabs.TabLayout category=activity.findViewById(android.R.id.content).findViewWithTag("libraryCategory");assertNotNull(category);category.getTabAt(6).select();shadowOf(Looper.getMainLooper()).idle();
             long deadline=System.currentTimeMillis()+5000;
             while(findText(activity.findViewById(android.R.id.content),"Star")==null&&System.currentTimeMillis()<deadline){Thread.sleep(15);shadowOf(Looper.getMainLooper()).idle();}
             assertNotNull("女演员墙应渲染演员卡片",findText(activity.findViewById(android.R.id.content),"Star"));
-            assertNotNull(findText(activity.findViewById(android.R.id.content),"5 部 · 均分 7.5 · 已评分 3"));
+            assertNotNull(findText(activity.findViewById(android.R.id.content),"5 部作品"));assertNotNull(findText(activity.findViewById(android.R.id.content),"均分 7.5 · 已评分 3"));
             View star=findText(activity.findViewById(android.R.id.content),"Star");((View)star.getParent()).performClick();
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);
             long filterDeadline=System.currentTimeMillis()+5000;

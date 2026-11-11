@@ -5,8 +5,9 @@ import android.app.AlertDialog;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Spinner;
 import android.widget.TextView;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -56,10 +57,11 @@ public class TaskCenterTest {
                 assertNotNull(find(root,"关联此影片的电脑任务"));assertNotNull(find(root,"选择正确的资料"));
                 root.findViewWithTag("nextTaskPage").performClick();waitUntil(()->find(root,"第 31–31 项")!=null);
                 assertTrue(server.takeRequest(2,TimeUnit.SECONDS).getPath().contains("offset=30"));assertNull(find(root,"影片 0"));
-                Spinner category=root.findViewWithTag("computerTaskCategory");category.setSelection(2);shadowOf(Looper.getMainLooper()).idle();
+                ChipGroup category=root.findViewWithTag("computerTaskCategory");assertEquals(5,category.getChildCount());assertTrue(category.isSingleSelection());
+                Chip pending=root.findViewWithTag("taskCategory:pending");assertNotNull(pending);assertTrue(pending.isEnabled());pending.performClick();shadowOf(Looper.getMainLooper()).idle();
                 waitUntil(()->find(root,"第 1–1 项")!=null);
                 String path=server.takeRequest(2,TimeUnit.SECONDS).getPath();assertTrue(path.contains("state=pending"));assertTrue(path.contains("offset=0"));
-                assertTrue(dialog.isShowing());
+                assertTrue(pending.isChecked());assertFalse(root.findViewWithTag("previousTaskPage").isEnabled());assertTrue(dialog.isShowing());
             }finally{dialog.dismiss();}
         }
     }
