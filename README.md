@@ -1,8 +1,10 @@
 # Lumen · 私人光影库
 
-Windows 本地影音管理软件：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
+Windows 本地影音管理软件，配套 Android 局域网客户端：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
 最新测试预发布：[Lumen 0.4.19 Preview 1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.19-preview.1) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.19-preview.1/Lumen-android-debug.apk)。Android 首页、媒体库、发现、我的、详情、播放器及辅助页面已按确认的 Bilibili 风格重排；统一轻量操作与间距，恢复首页和“我的”的全局随机入口。Windows 839 项测试及安装／卸载验收、Android 226 项测试与 lint 通过，六个公开附件已完整下载校验。[版本说明](docs/releases/0.4.19.md) · [实际页面截图与规范](docs/android-actions-0.4.19.md) · [发布验证](docs/validation/preview-0.4.19-1.json)。
+
+**当前源码更新（尚未打包发布）**：`work` 分支已修复系统浅色模式下进入发现页变白、移除长按临时倍速的动态文字浮层，并新增其他应用“打开方式”的独立视频播放入口。Android 247 项测试通过，lint 零错误、87 项警告。[源码验证记录](docs/validation/android-fixes-unreleased.json) · [修复后的发现页](docs/screenshots/android-fixes-unreleased/app-daymode-discovery-dark.png)。这些修复尚未包含在上述 APK 中；版本仍为 0.4.19／versionCode 36，本次未生成安装包或发布 Release。
 
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
@@ -22,13 +24,13 @@ Windows 本地影音管理软件：真实文件扫描与播放、电影/整部�
 
 ### Android 界面预览
 
-以下是实际 Activity 在 Android 原生图形测试环境中的绘制结果，使用示例服务端数据，尚非手机实机截图。Windows / Android 真机显示仍需验收。
+以下是 0.4.19 实际 Activity 在 Android 原生图形测试环境中的绘制结果，使用虚构资料与合成图片，尚非手机实机截图。
 
 | 媒体库 | 筛选 | 详情 |
 | --- | --- | --- |
-| [![Android 媒体库与海报收藏](docs/screenshots/ui-android-library.png)](docs/screenshots/ui-android-library.png) | [![Android 底部筛选面板](docs/screenshots/ui-android-filters.png)](docs/screenshots/ui-android-filters.png) | [![Android 详情页与个人操作](docs/screenshots/ui-android-detail.png)](docs/screenshots/ui-android-detail.png) |
+| [![Android 媒体库分类导航与海报](docs/screenshots/android-actions-0.4.19/bilibili-main-library-393.png)](docs/screenshots/android-actions-0.4.19/bilibili-main-library-393.png) | [![Android 媒体库底部筛选面板](docs/screenshots/android-actions-0.4.19/bilibili-main-filters-393.png)](docs/screenshots/android-actions-0.4.19/bilibili-main-filters-393.png) | [![Android 详情页与个人操作](docs/screenshots/android-actions-0.4.19/bilibili-main-detail-393.png)](docs/screenshots/android-actions-0.4.19/bilibili-main-detail-393.png) |
 
-更多交互说明与截图复现方法见 [UI 设计说明](docs/ui-design.md)。
+[查看首页、全局随机、播放器及其他页面](docs/android-actions-0.4.19.md)。当前未发布源码另有 [系统浅色模式下的深色发现页](docs/screenshots/android-fixes-unreleased/app-daymode-discovery-dark.png)、[筛选抽屉](docs/screenshots/android-fixes-unreleased/app-daymode-discovery-sheet-dark.png) 和 [Activity 重建后](docs/screenshots/android-fixes-unreleased/app-daymode-discovery-recreated-dark.png) 的实际绘制截图。交互规范见 [UI 设计说明](docs/ui-design.md)。
 
 ### 0.4.9 播放中评分，喜欢即收藏
 
@@ -67,6 +69,8 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 - Release 附带 SHA-256、Windows 自动验收记录和 Android 签名／测试记录。target 目录为历史构建，请从本次 Release 下载当前安装包。
 
 [更新说明](docs/releases/0.4.19.md)。Windows 839 项测试及安装／卸载验收、Android 226 项测试及 lint 通过；六个公开附件已完整下载核验。安装新版 Android APK 后即可使用整套新布局与全局随机入口。小米 15 的 HEVC 4K 真机流畅度尚未确认。
+
+当前 `work` 分支的发现页主题、长按倍速提示和外部视频打开修复尚未打包；上面的公开安装包不包含这些源码更新。
 
 此前已按要求删除 14 个历史 Release，保留 Git 标签和源码历史；后续测试预发布另行保留。[清理记录](docs/validation/release-cleanup-0.4.14.json)。本版已将 PC / Android 更新检测切回 GitHub；旧版仍使用 Gitee 渠道的客户端需手动升级。更新检测只接收正式 Release，测试预发布可从上述页面下载。
 
@@ -119,6 +123,10 @@ py -3.12 -m venv .venv
 
 已增加原生 Android 客户端（Android 8.0+）。在电脑端设置 → 局域网 / Android 中启用服务，手机填写电脑局域网地址与访问密钥，即可浏览媒体、播放视频并同步观看记录；手机端已有女演员墙（点击演员进入其影片筛选）与年份范围、评分下限、多标签组合筛选。安卓播放器使用 LibVLC，支持硬件优先、软件解码兜底和手动切换，可选择音轨与字幕。安装、构建和连接说明见 [Android 文档](docs/android.md)。
 
+电影／VR 电影网格显示作品海报，继续观看使用对应视频文件的缩略图；缩略图缺失时显示占位。首页与“我的”提供全局随机入口，当前列表随机继续遵循搜索和筛选范围。普通播放支持单击显隐控件、长按画面临时 2×，松手恢复原速；当前源码已取消长按时的动态文字浮层。
+
+**外部视频播放（源码已实现，尚未发布）**：在文件管理器或其他应用中选择视频 →“打开方式”→ Lumen。支持来源应用授予读取权限的本机视频，以及 HTTP／HTTPS 视频链接，无需先连接电脑。外部播放不写入媒体库队列、观看记录或个人状态，媒体库专属操作不可用；音轨、字幕、倍速与解码设置沿用现有播放器。实际来源应用兼容性仍待真机验证。
+
 ## 数据安全
 
 - 文件操作不静默覆盖，跨卷先复制、同步并 SHA-256 校验，成功后才删除源文件。失败在任务页重试。
@@ -170,4 +178,4 @@ PC 支持按插件批量获取演员头像，以及将本地图片拖到演员�
 
 PC / Android 实时视频美颜支持本地 GPU 磨皮和肤色提亮，默认关闭，详见 [使用说明](docs/video-beauty.md)。0.4.12 首次以测试预发布提供，设备验收范围和手机签名变化见 [版本说明](docs/releases/0.4.12.md)。
 
-[历史 0.4.12 版本说明](docs/releases/0.4.12.md)。GitHub 当前提供 [0.4.15 测试预发布](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.15-preview.2)。
+[历史 0.4.12 版本说明](docs/releases/0.4.12.md) · [历史 0.4.15 测试预发布](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.15-preview.2)。当前公开下载见上方“下载”章节。
