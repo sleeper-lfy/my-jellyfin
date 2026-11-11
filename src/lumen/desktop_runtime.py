@@ -435,8 +435,8 @@ class DesktopRuntime:
         return 0
 
 
-def run_desktop(directory, *, background=False):
-    runtime = DesktopRuntime(directory, tray=sys.platform == 'win32', open_window=not background)
+def run_desktop(directory, *, background=False, tray=True):
+    runtime = DesktopRuntime(directory, tray=tray and sys.platform == 'win32', open_window=not background)
     if threading.current_thread() is threading.main_thread():
         for kind in (signal.SIGINT, signal.SIGTERM):
             signal.signal(kind, lambda *_: runtime.exit())

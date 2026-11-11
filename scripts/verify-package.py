@@ -1,5 +1,6 @@
 """Exercise the packaged executable and isolated worker, without relying on console output."""
 import json
+import argparse
 from pathlib import Path
 import os
 import subprocess
@@ -8,7 +9,19 @@ import tempfile
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from threading import Thread
 
-executable = Path(sys.argv[1]).resolve(strict=True)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('executable', type=Path)
+parser.add_argument('--standby-report', type=Path, default=Path('.local/standby-verification.json'))
+args = parser.parse_args()
+executable = args.executable.resolve(strict=True)
+if sys.platform == 'win32':
+    from lumen.standby_acceptance import verify_standby, write_report
+    standby = verify_standby(executable)
+    write_report(args.standby_report, standby)
+    print('Packaged no-tray standby passed; working set: ' + str(standby['max_working_set_bytes']) +
+          ' bytes; private usage: ' + str(standby['max_private_usage_bytes']) +
+          ' bytes; below 50 MB target: ' + str(standby['working_set_target_met']) +
+          '; native tray/login manual acceptance remains unverified.')
 with tempfile.TemporaryDirectory(prefix='lumen-package-') as directory:
     root = Path(directory)
     environment = dict(os.environ, QT_QPA_PLATFORM='offscreen')

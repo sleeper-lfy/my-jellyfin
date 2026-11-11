@@ -1,4 +1,4 @@
-# Windows 自启动与轻量托盘待机（源码更新，尚未发布）
+# Windows 自启动与轻量托盘待机
 
 Windows 正常启动 Lumen 后，通知区域会出现 Lumen 图标；Windows 可能把它放在任务栏的隐藏图标栏中。
 
@@ -37,4 +37,4 @@ PyInstaller 的标准 PySide6 启动钩子原本会提前加载 QtCore；新增�
 .venv/bin/python scripts/profile-background-memory.py
 ```
 
-本轮只更新源码及验证记录，不生成安装包、不创建发布标签、不发布 Release。现有公开安装包尚未包含这些改动；Windows 真机与冻结安装版的内存、登录自启动及托盘行为需在后续允许打包时验收。
+本功能从 0.4.20 测试预发布提供，安装包以对应 Release 的完整构建门禁和公开附件为准。Windows 冻结安装版会对无托盘的自动化后台入口执行功能、DLL 隔离及内存测量，数据保存在 Release 附件 `windows-acceptance.json` 的 `automated.installation.standby` 中；它不能替代真实桌面的登录自启动、托盘菜单和大资料库使用验收。

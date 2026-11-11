@@ -83,7 +83,6 @@ def test_owner_survives_gui_close_and_queues_quit_only_for_explicit_exit(tmp_pat
     assert owner._dispatch('poll', {'snapshot': {}})['events'] == ['quit']
 
 
-@pytest.mark.skipif(sys.platform == 'win32', reason='CLI exercise uses the headless Linux tray substitute; Windows tray has separate contract tests')
 def test_actual_background_entry_lan_range_single_instance_and_exit(tmp_path):
     directory = tmp_path / 'data'
     library = Library(directory)
@@ -98,7 +97,7 @@ def test_actual_background_entry_lan_range_single_instance_and_exit(tmp_path):
     library.close()
     environment = dict(os.environ)
     environment['PYTHONPATH'] = str(Path(__file__).resolve().parents[1] / 'src')
-    arguments = [sys.executable, '-m', 'lumen', '--background', '--data-dir', str(directory)]
+    arguments = [sys.executable, '-m', 'lumen', '--background-no-tray', '--data-dir', str(directory)]
     process = subprocess.Popen(arguments, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     client = None
     try:

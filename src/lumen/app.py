@@ -30,9 +30,12 @@ def main():
     parser.add_argument('--verify-mpv', action='store_true', help='Verify the bundled libmpv and shader resources')
     parser.add_argument('--smoke', action='store_true', help='Render all main pages and exit (for CI)')
     parser.add_argument('--background', action='store_true', help='Start the lightweight desktop owner in the tray')
+    parser.add_argument('--background-no-tray', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--desktop-child', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--foreground', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.background_no_tray and (args.serve or args.smoke or args.verify_mpv or args.desktop_child or args.foreground):
+        parser.error('--background-no-tray cannot be combined with another execution mode')
     if args.smoke:
         os.environ['LUMEN_SMOKE'] = '1'
     if args.data_dir:
@@ -40,11 +43,11 @@ def main():
     directory = data_directory()
     directory.mkdir(parents=True, exist_ok=True)
     from .logging_setup import configure_logging
-    managed = not args.serve and not args.smoke and not args.verify_mpv and not args.desktop_child and not args.foreground and (sys.platform == 'win32' or args.background)
+    managed = not args.serve and not args.smoke and not args.verify_mpv and not args.desktop_child and not args.foreground and (sys.platform == 'win32' or args.background or args.background_no_tray)
     configure_logging(directory, 'background.log' if managed else 'diagnostics.log')
     if managed:
         from .desktop_runtime import run_desktop
-        return run_desktop(directory, background=args.background)
+        return run_desktop(directory, background=args.background or args.background_no_tray, tray=not args.background_no_tray)
     if args.verify_mpv:
         import json
         from pathlib import Path

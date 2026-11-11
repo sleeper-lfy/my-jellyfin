@@ -15,7 +15,7 @@ def _lumen_supervisor_arguments(arguments):
     index = 0
     while index < len(arguments):
         argument = arguments[index]
-        if argument == '--background':
+        if argument in ('--background', '--background-no-tray'):
             index += 1
         elif argument in ('--data-dir', '--host', '--port'):
             index += 1

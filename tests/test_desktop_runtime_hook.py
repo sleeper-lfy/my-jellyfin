@@ -16,6 +16,8 @@ HOOK = ROOT / 'scripts/pyinstaller-hooks/rth_lumen_desktop.py'
 @pytest.mark.parametrize('arguments,expected', [
     ([], True),
     (['--background'], True),
+    (['--background-no-tray'], True),
+    (['--background-no-tray', '--desktop-child'], False),
     (['--data-dir', r'C:\My library', '--background'], True),
     (['--background', r'--data-dir=C:\Library', '--host=127.0.0.1', '--port', '8097'], True),
     (['--data-dir=--desktop-child'], True),  # a value is not a mode flag
@@ -132,6 +134,7 @@ print(json.dumps({
 @pytest.mark.parametrize('arguments,include_custom,expect_qt', [
     ([], True, False),
     (['--background', '--data-dir', r'C:\My library'], True, False),
+    (['--background-no-tray'], True, False),
     (['--background'], False, True),  # reproduce the original eager import
     (['--desktop-child'], True, True),
     (['--foreground'], True, True),
