@@ -21,6 +21,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import androidx.core.content.ContextCompat;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -94,7 +96,8 @@ public class ActionStyleIntegrationTest {
     private List<View> visibleChildren(ViewGroup group){
         List<View> children=new ArrayList<>();for(int i=0;i<group.getChildCount();i++)if(group.getChildAt(i).getVisibility()!=View.GONE)children.add(group.getChildAt(i));return children;
     }
-    private void gap(ViewGroup group){
+    private void gap(ViewGroup group){gap(group,12);}
+    private void gap(ViewGroup group,int expected){
         List<View> children=visibleChildren(group);assertTrue("Need adjacent actions to verify actual spacing",children.size()>1);
         int rowBottom=children.get(0).getBottom();
         for(int i=1;i<children.size();i++){
@@ -103,8 +106,14 @@ public class ActionStyleIntegrationTest {
             // A horizontal LinearLayout vertically centers children of different heights;
             // only a wrapping flow can start another row when its child's top changes.
             int actual=vertical?after.getTop()-before.getBottom():linear||after.getTop()==before.getTop()?after.getLeft()-before.getRight():after.getTop()-rowBottom;
-            assertEquals("Actions must reserve an external 12dp gap: "+before.getContentDescription()+" / "+after.getContentDescription(),12,actual);
+            assertEquals("Actions must reserve an external "+expected+"dp gap: "+before.getContentDescription()+" / "+after.getContentDescription(),expected,actual);
             rowBottom=after.getTop()==before.getTop()?Math.max(rowBottom,after.getBottom()):after.getBottom();
+        }
+    }
+    private void filterChoices(ViewGroup group){
+        assertTrue("Library filters use official Material ChipGroup",group instanceof ChipGroup);gap(group,8);
+        for(View child:visibleChildren(group)){
+            assertTrue("Each filter option uses an official checkable Chip",child instanceof Chip);Chip choice=(Chip)child;assertTrue(choice.isCheckable());readable(choice);
         }
     }
     private void readable(Button button){
@@ -164,10 +173,29 @@ public class ActionStyleIntegrationTest {
         }
     }
     private ScrollView scroll(View view){if(view instanceof ScrollView)return (ScrollView)view;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++){ScrollView found=scroll(group.getChildAt(i));if(found!=null)return found;}}return null;}
-    private void footer(AlertDialog dialog){
+    private void footer(AlertDialog dialog){footer(dialog.getWindow().getDecorView(),dialog::getButton);}
+    private void footer(LibraryFilterBottomSheet dialog){
+        View root=dialog.getWindow().getDecorView(),fixed=root.findViewWithTag("filterFooter");assertNotNull("Material sheet retains a fixed action footer",fixed);
+        for(android.view.ViewParent parent=fixed.getParent();parent instanceof View;parent=parent.getParent())assertFalse("Footer actions must remain outside the scrolling form",parent instanceof ScrollView||parent instanceof androidx.core.widget.NestedScrollView);
+        Rect bounds=inRoot(root,fixed);assertTrue("Footer stays inside the actual window",bounds.left>=0&&bounds.top>=0&&bounds.right<=root.getWidth()&&bounds.bottom<=root.getHeight());
+        List<Button> actions=new ArrayList<>();
+        for(int which:new int[]{AlertDialog.BUTTON_NEGATIVE,AlertDialog.BUTTON_NEUTRAL,AlertDialog.BUTTON_POSITIVE}){
+            MaterialButton action=dialog.getButton(which);assertNotNull(action);readable(action);actions.add(action);
+            assertNotNull("Official Material actions keep ripple feedback",action.getRippleColor());assertEquals(8,action.getInsetTop());assertEquals(8,action.getInsetBottom());
+            if(which==AlertDialog.BUTTON_POSITIVE){
+                assertEquals(net.lumen.media.ui.theme.NativeActionTokens.primary(true),action.getBackgroundTintList().getDefaultColor());
+                assertEquals(net.lumen.media.ui.theme.NativeActionTokens.content(true,1,false),action.getCurrentTextColor());paintedBackground(action,false);
+            }else{
+                assertEquals("Reset and cancel are secondary text actions",0,Color.alpha(action.getBackgroundTintList().getDefaultColor()));
+                assertEquals(net.lumen.media.ui.theme.NativeActionTokens.primary(true),action.getCurrentTextColor());
+            }
+        }
+        footerSlots(root,actions);
+    }
+    private void footer(View root,java.util.function.IntFunction<Button> action){
         List<Button> buttons=new ArrayList<>();
         for(int which:new int[]{AlertDialog.BUTTON_NEGATIVE,AlertDialog.BUTTON_NEUTRAL,AlertDialog.BUTTON_POSITIVE}){
-            Button button=dialog.getButton(which);if(button!=null&&button.getVisibility()==View.VISIBLE){readable(button);paintedBackground(button,false);buttons.add(button);
+            Button button=action.apply(which);if(button!=null&&button.getVisibility()==View.VISIBLE){readable(button);paintedBackground(button,false);buttons.add(button);
                 if(which==AlertDialog.BUTTON_POSITIVE&&button.isEnabled()){
                     Bitmap painted=Bitmap.createBitmap(button.getWidth(),button.getHeight(),Bitmap.Config.ARGB_8888);button.draw(new Canvas(painted));
                     int actual=painted.getPixel(button.getWidth()/2,9);painted.recycle();
@@ -175,8 +203,11 @@ public class ActionStyleIntegrationTest {
                 }
             }
         }
+        footerSlots(root,buttons);
+    }
+    private void footerSlots(View root,List<Button> buttons){
         for(int i=0;i<buttons.size();i++)for(int j=i+1;j<buttons.size();j++){
-            Rect a=inRoot(dialog.getWindow().getDecorView(),buttons.get(i)),b=inRoot(dialog.getWindow().getDecorView(),buttons.get(j));
+            Rect a=inRoot(root,buttons.get(i)),b=inRoot(root,buttons.get(j));
             if(a.top<b.bottom&&b.top<a.bottom){int distance=a.left<b.left?b.left-a.right:a.left-b.right;assertTrue("Platform dialog actions need a visible external gap, got "+distance,distance>=12);}
             assertFalse("Dialog action slots overlap",Rect.intersects(a,b));
         }
@@ -233,16 +264,15 @@ public class ActionStyleIntegrationTest {
         }
     }
 
-    @Test public void realLibraryFiltersKeepWatchAndPreferenceGapsAndCompactPlatformFooter()throws Exception{
+    @Test public void realLibraryFiltersKeepMaterialChoicesAndFixedCompactFooter()throws Exception{
         try(Fixture fixture=new Fixture();ActivityController<MainActivity> life=Robolectric.buildActivity(MainActivity.class).create().start().resume().visible()){
             MainActivity activity=life.get();fixture.connect(activity);activity.showLibrary();waitFor(()->content(activity).findViewWithTag("card:7")!=null);call(activity,"showFilters");
-            AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();try{
-                View root=dialog.getWindow().getDecorView();dialogLayout(root,393,804);ViewGroup watch=root.findViewWithTag("watchSegments");gap(watch);
-                for(View child:visibleChildren(watch))material((Button)child,true);
-                Button disliked=root.findViewWithTag("filterDisliked");ViewGroup preferences=(ViewGroup)disliked.getParent();gap(preferences);for(View child:visibleChildren(preferences))material((Button)child,true);
-                Button wanted=button(root,"想看");edgeTap(root,wanted);assertTrue("Inset touch must toggle the actual filter",wanted.isSelected());edgeTap(root,wanted);assertFalse(wanted.isSelected());
+            LibraryFilterBottomSheet dialog=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();try{
+                View root=dialog.getWindow().getDecorView();dialogLayout(root,393,804);ViewGroup watch=root.findViewWithTag("watchSegments");filterChoices(watch);
+                Chip disliked=root.findViewWithTag("filterDisliked");ViewGroup preferences=(ViewGroup)disliked.getParent();filterChoices(preferences);
+                Chip wanted=(Chip)button(root,"想看");edgeTap(root,wanted);assertTrue("Inset touch must toggle the actual filter",wanted.isChecked());edgeTap(root,wanted);assertFalse(wanted.isChecked());
                 footer(dialog);snapshot(root,"action-main-filters-393-dark.png");
-                edgeTap(root,dialog.getButton(AlertDialog.BUTTON_NEGATIVE));assertFalse("Platform footer inset remains clickable",dialog.isShowing());
+                edgeTap(root,dialog.getButton(AlertDialog.BUTTON_NEGATIVE));assertFalse("Material sheet footer remains clickable",dialog.isShowing());
             }finally{dialog.dismiss();}
         }
     }
@@ -301,10 +331,10 @@ public class ActionStyleIntegrationTest {
 
     @Test @Config(qualifiers="w320dp-h852dp-mdpi") public void actualNarrowLargeFontFilterQueueAndPlayerActionsRemainReadable()throws Exception{
         try(Fixture fixture=new Fixture();ActivityController<MainActivity> life=Robolectric.buildActivity(MainActivity.class).create().start().resume().visible()){
-            MainActivity activity=life.get();font(activity,1.5f);fixture.connect(activity);activity.showLibrary();waitFor(()->content(activity).findViewWithTag("card:7")!=null);call(activity,"showFilters");AlertDialog filters=ShadowAlertDialog.getLatestAlertDialog();try{
-                View root=filters.getWindow().getDecorView();dialogLayout(root,320,804);ViewGroup watch=root.findViewWithTag("watchSegments");gap(watch);for(View child:visibleChildren(watch))material((Button)child,false);ViewGroup preferences=(ViewGroup)root.findViewWithTag("filterDisliked").getParent();gap(preferences);for(View child:visibleChildren(preferences))material((Button)child,false);footer(filters);snapshot(root,"action-main-filters-320-font150.png");
+            MainActivity activity=life.get();font(activity,1.5f);fixture.connect(activity);activity.showLibrary();waitFor(()->content(activity).findViewWithTag("card:7")!=null);call(activity,"showFilters");LibraryFilterBottomSheet filters=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();try{
+                View root=filters.getWindow().getDecorView();dialogLayout(root,320,804);ViewGroup watch=root.findViewWithTag("watchSegments");filterChoices(watch);ViewGroup preferences=(ViewGroup)root.findViewWithTag("filterDisliked").getParent();filterChoices(preferences);footer(filters);snapshot(root,"action-main-filters-320-font150.png");
             }finally{filters.dismiss();}
-            activity.getSharedPreferences("queue",0).edit().putString("ids","[7,8,9]").apply();activity.queueEditor();waitFor(()->ShadowAlertDialog.getLatestAlertDialog()!=filters&&ShadowAlertDialog.getLatestAlertDialog().isShowing());AlertDialog queue=ShadowAlertDialog.getLatestAlertDialog();try{
+            activity.getSharedPreferences("queue",0).edit().putString("ids","[7,8,9]").apply();activity.queueEditor();waitFor(()->ShadowAlertDialog.getLatestAlertDialog()!=null&&ShadowAlertDialog.getLatestAlertDialog().isShowing());AlertDialog queue=ShadowAlertDialog.getLatestAlertDialog();try{
                 View root=queue.getWindow().getDecorView();dialogLayout(root,320,804);LinearLayout actions=root.findViewWithTag("phoneQueueActions");gap(actions);for(View child:visibleChildren(actions))light((Button)child);ListView items=root.findViewWithTag("phoneQueueItems");assertTrue(items.getHeight()>48);assertTrue(items.getChildCount()>0);TextView title=(TextView)items.getChildAt(0);assertTrue(title.getText().length()>30);assertTrue(title.getLayout().getLineCount()<=2);assertTrue(title.getBottom()<=items.getHeight());footer(queue);snapshot(root,"action-main-queue-320-font150.png");
             }finally{queue.dismiss();}
         }

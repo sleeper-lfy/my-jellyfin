@@ -4,6 +4,8 @@ Windows 本地影音管理软件，配套 Android 局域网客户端：真实文
 
 最新测试预发布：[Lumen 0.4.20 Preview 3](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.20-preview.3) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.20-preview.3/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.20-preview.3/Lumen-android-debug.apk)。新增 PC 开机自启动与轻量托盘后台，关闭窗口后保留 LAN 和目录监控；修复 Android 发现页变白、长按倍速文字浮层，并支持其他应用“打开方式”播放视频。Windows 1012 项测试及安装／卸载验收、Android 247 项测试与 lint 通过，六个公开附件已完整下载校验。[版本说明](docs/releases/0.4.20.md) · [托盘操作与内存说明](docs/desktop-standby.md) · [发布验证](docs/validation/preview-0.4.20-3.json)。
 
+**后续源码修复（尚未发布）**：修正 Android 详情操作、“我的”数量与文字、连接列表的对齐和间距；媒体库筛选与下拉输入改用官方 Material 3 组件，补齐与 Compose 一致的原生主题；手机和 PC 的更新渠道可点击打开 GitHub Release。[实际截图与修复范围](docs/android-ui-alignment.md)。上述下载仍为已发布的 Preview 3。
+
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
 ## 软件界面

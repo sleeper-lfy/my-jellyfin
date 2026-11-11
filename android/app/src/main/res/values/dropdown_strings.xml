@@ -1,0 +1,8 @@
+<resources>
+    <string name="search_dropdown_options">展开或收起%1$s选项</string>
+    <string name="connection_dropdown_options">展开或收起已发现服务器</string>
+    <string name="search_dropdown_actor_hint">搜索演员</string>
+    <string name="search_dropdown_year_hint">输入年份</string>
+    <string name="search_dropdown_tag_hint">搜索标签</string>
+    <string name="search_dropdown_value_hint">输入条件</string>
+</resources>

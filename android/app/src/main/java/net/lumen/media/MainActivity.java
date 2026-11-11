@@ -184,15 +184,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void showConnection() {
         if(api!=null)connectionReturn=api;generation++;utilityPage="connection";mineLanding=false;detailId=0;api=null;navigationHistory.clear();discovery=false;discoveryProvidersLoaded=false;discoveryProviders=new JSONArray();clearDiscoverySearch();base();header("连接管理",connectionReturn!=null);
         LinearLayout panel=BiliMainUi.vertical(this);panel.setPadding(dp(16),dp(8),dp(16),dp(24));ScrollView connectionScroll=new ScrollView(this);connectionScroll.setFillViewport(true);connectionScroll.addView(panel);root.addView(connectionScroll,new LinearLayout.LayoutParams(-1,0,1));
-        Connection saved=Connection.load(this);LinearLayout identity=BiliMainUi.group(this);Button current=BiliMainUi.settingsRow(this,saved==null?"连接你的家庭媒体库":"当前保存的媒体库","server",()->message("手机与电脑连接同一局域网后，填写电脑地址和访问密钥"));identity.addView(current);if(saved!=null)identity.addView(text(saved.base,13,MUTED));panel.addView(BiliMainUi.groupCard(this,identity));
-        panel.addView(BiliMainUi.section(this,"服务器地址"));AutoCompleteTextView address=new SearchDropdown(this);address.setSingleLine(true);address.setHint("http://192.168.1.10:8097");address.setContentDescription("服务器地址");address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);address.setText(getSharedPreferences("connection",0).getString("base",""));MediaStyle.field(address);
-        ArrayAdapter<ServerDiscovery.Server> servers=new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line);address.setAdapter(servers);address.setOnItemClickListener((parent,view,position,id)->address.setText(servers.getItem(position).address,false));LinearLayout addressRow=MediaStyle.row(this);addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));Button choose=button("⌄",()->{address.requestFocus();address.showDropDown();});BiliMainUi.lightAction(choose,"",false);addressRow.addView(choose,new LinearLayout.LayoutParams(dp(48),dp(48)));panel.addView(addressRow);
+        Connection saved=Connection.load(this);ConnectionLibraryRow current=new ConnectionLibraryRow(this,saved==null?"连接你的家庭媒体库":"当前保存的媒体库",saved==null?"":saved.base,R.drawable.design_system_connections,()->message("手机与电脑连接同一局域网后，填写电脑地址和访问密钥"));current.setTag("currentLibraryRow");panel.addView(BiliMainUi.groupCard(this,current));
+        panel.addView(BiliMainUi.section(this,"服务器地址"));AutoCompleteTextView address=new SearchDropdown(this);address.setSingleLine(true);address.setHint("http://192.168.1.10:8097");address.setContentDescription("服务器地址");address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);address.setText(getSharedPreferences("connection",0).getString("base",""));
+        ArrayAdapter<ServerDiscovery.Server> servers=new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line);address.setAdapter(servers);address.setOnItemClickListener((parent,view,position,id)->address.setText(servers.getItem(position).address,false));panel.addView(SearchDropdown.row(address,getString(R.string.connection_dropdown_options)));
         panel.addView(BiliMainUi.section(this,"访问密钥"));EditText token=new EditText(this);token.setSingleLine(true);token.setHint("电脑端访问密钥");token.setContentDescription("访问密钥");token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);if(saved!=null)token.setText(saved.token);MediaStyle.field(token);panel.addView(token,new LinearLayout.LayoutParams(-1,dp(48)));
         TextView status=text("",13,MUTED);panel.addView(status);Button connect=button("连接服务器",()->{
             try{Connection candidate=new Connection(address.getText().toString(),token.getText().toString());Api client=new Api(candidate);status.setText("正在连接…");request(()->client.get("/api/info"),info->{if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");candidate.save(this);api=client;connectionReturn=null;utilityPage="";pictures.evictAll();resetBrowseFilters();mainPage="home";showLibrary();},error->status.setText("连接失败："+error+"\n请检查电脑服务、地址和访问密钥，然后重试。"));}catch(Exception error){status.setText(error.getMessage());}
         });MediaStyle.button(connect,true,false,false);panel.addView(connect,new LinearLayout.LayoutParams(-1,-2));
         TextView discoveryStatus=text("正在发现同一局域网内的服务端…",13,MUTED);Button discover=button("发现服务器",()->{});BiliMainUi.lightAction(discover,"server",false);panel.addView(discover);panel.addView(BiliMainUi.section(this,"已发现服务器"));panel.addView(discoveryStatus);LinearLayout found=BiliMainUi.group(this);panel.addView(BiliMainUi.groupCard(this,found));
-        Runnable scan=()->{final int ticket=generation;discover.setEnabled(false);servers.clear();found.removeAllViews();discoveryStatus.setText("正在发现同一局域网内的服务端…");network.execute(()->{String failure="";try{ServerDiscovery.scan(server->runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){servers.add(server);servers.notifyDataSetChanged();found.addView(BiliMainUi.settingsRow(this,server.name+"\n"+server.address,"remote",()->{address.setText(server.address,false);discoveryStatus.setText("已选择 "+server.name);}));discoveryStatus.setText("发现 "+servers.getCount()+" 个服务端");}}));}catch(Exception error){failure="发现失败，可手动输入地址";}final String problem=failure;runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){discover.setEnabled(true);discoveryStatus.setText(!problem.isEmpty()?problem:servers.isEmpty()?"未发现服务端。可重试或手动输入；请检查电脑服务和防火墙 UDP 8098。":"发现 "+servers.getCount()+" 个服务端，点击选择");}});});};discover.setOnClickListener(v->scan.run());scan.run();
+        Runnable scan=()->{final int ticket=generation;discover.setEnabled(false);servers.clear();found.removeAllViews();discoveryStatus.setText("正在发现同一局域网内的服务端…");network.execute(()->{String failure="";try{ServerDiscovery.scan(server->runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){servers.add(server);servers.notifyDataSetChanged();found.addView(new ConnectionLibraryRow(this,server.name,server.address,R.drawable.design_system_remote,()->{address.setText(server.address,false);discoveryStatus.setText("已选择 "+server.name);}));discoveryStatus.setText("发现 "+servers.getCount()+" 个服务端");}}));}catch(Exception error){failure="发现失败，可手动输入地址";}final String problem=failure;runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){discover.setEnabled(true);discoveryStatus.setText(!problem.isEmpty()?problem:servers.isEmpty()?"未发现服务端。可重试或手动输入；请检查电脑服务和防火墙 UDP 8098。":"发现 "+servers.getCount()+" 个服务端，点击选择");}});});};discover.setOnClickListener(v->scan.run());scan.run();
         panel.addView(text("地址使用电脑的局域网 IPv4。电脑休眠或服务关闭时无法播放。",12,MUTED));panel.addView(BiliMainUi.settingsRow(this,"检查客户端更新","check",()->startActivity(new Intent(this,UpdateActivity.class))));
     }
     private void header(String title, boolean back) {
@@ -447,73 +447,59 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         MediaStyle.button(chip,false,true,false);MediaStyle.icon(chip,"close",false);chip.setContentDescription("移除筛选："+text);return chip;
     }
     private AutoCompleteTextView filterInput(LinearLayout form,String label,String value){
-        form.addView(text(label,13,MUTED));
-        AutoCompleteTextView input=new SearchDropdown(this);input.setSingleLine(true);input.setTextColor(Color.WHITE);input.setHintTextColor(MUTED);
-        input.setHint(label.contains("演员")?"搜索演员":label.startsWith("年份")?"输入年份":label.contains("标签")?"搜索标签":"输入条件");input.setText(value);MediaStyle.field(input);
-        LinearLayout row=MediaStyle.row(this);row.addView(input,new LinearLayout.LayoutParams(0,dp(48),1));
-        row.addView(button("⌄",()->{input.requestFocus();input.showDropDown();}),new LinearLayout.LayoutParams(dp(48),dp(48)));form.addView(row);
+        AutoCompleteTextView input=new SearchDropdown(this);input.setSingleLine(true);
+        com.google.android.material.textview.MaterialTextView caption=new com.google.android.material.textview.MaterialTextView(input.getContext());caption.setText(label);caption.setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelLarge);caption.setTextColor(net.lumen.media.ui.theme.NativeActionTokens.onSurfaceVariant(true));caption.setIncludeFontPadding(false);caption.setPadding(0,dp(8),0,dp(4));form.addView(caption);
+        input.setHint(label.contains("演员")?R.string.search_dropdown_actor_hint:label.startsWith("年份")?R.string.search_dropdown_year_hint:label.contains("标签")?R.string.search_dropdown_tag_hint:R.string.search_dropdown_value_hint);input.setText(value);
+        form.addView(SearchDropdown.row(input,getString(R.string.search_dropdown_options,label)));
         return input;
     }
     private void showFilters(){
         if(discovery){if(discoveryCoordinator!=null)discoveryCoordinator.onOpenFilters();return;}
-        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(16),dp(12),dp(16),dp(12));
-        final boolean[] onlyFavorites={favorites},onlyDisliked={dislikedOnly};
-        Button collection=button("已收藏",()->{});
-        Button disliked=button("不喜欢",()->{});disliked.setTag("filterDisliked");
-        MediaStyle.icon(collection,"heart",favorites);MediaStyle.button(collection,false,favorites,true);
-        MediaStyle.icon(disliked,"ban",dislikedOnly);MediaStyle.button(disliked,false,dislikedOnly,false);
-        collection.setOnClickListener(view->{
-            onlyFavorites[0]=!onlyFavorites[0];collection.setText("已收藏");MediaStyle.icon(collection,"heart",onlyFavorites[0]);MediaStyle.button(collection,false,onlyFavorites[0],true);
-            if(onlyFavorites[0]){onlyDisliked[0]=false;MediaStyle.icon(disliked,"ban",false);MediaStyle.button(disliked,false,false,false);}
-        });
-        disliked.setOnClickListener(view->{
-            onlyDisliked[0]=!onlyDisliked[0];MediaStyle.icon(disliked,"ban",onlyDisliked[0]);MediaStyle.button(disliked,false,onlyDisliked[0],false);
-            if(onlyDisliked[0]){onlyFavorites[0]=false;collection.setText("已收藏");MediaStyle.icon(collection,"heart",false);MediaStyle.button(collection,false,false,true);}
-        });
-        form.addView(text("我的偏好",14,MediaStyle.TEXT));
-        ChipLayout preferences=MediaStyle.actionFlow(this);preferences.setTag("filterPreferences");
-        Button wanted=button("想看",()->{});final boolean[] onlyWanted={watchlistOnly};MediaStyle.icon(wanted,"bookmark",onlyWanted[0]);MediaStyle.button(wanted,false,onlyWanted[0],false);
-        wanted.setOnClickListener(v->{onlyWanted[0]=!onlyWanted[0];MediaStyle.button(wanted,false,onlyWanted[0],false);MediaStyle.icon(wanted,"bookmark",onlyWanted[0]);});
-        for(Button option:new Button[]{collection,wanted,disliked}){option.setTextSize(12);preferences.addView(option);}form.addView(preferences);
-        AutoCompleteTextView tag=filterInput(form,"标签",discovery&&discoveryOnline?discoveryResultTag:tagFilter),actor=filterInput(form,"演员",actorFilter),multiTag=filterInput(form,"多个标签（逗号分隔，需全部包含）",tagsAllFilter);
-        AutoCompleteTextView anyTags=filterInput(form,"包含任一标签",tagsAnyFilter),notTags=filterInput(form,"排除标签／不想看的类型",tagsNotFilter);
-        AutoCompleteTextView yearFrom=filterInput(form,"年份从",yearMinFilter),yearTo=filterInput(form,"年份到",yearMaxFilter);
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setTag("libraryFilterForm");form.setPadding(dp(16),0,dp(16),dp(12));
+        final boolean[] onlyFavorites={favorites},onlyDisliked={dislikedOnly},onlyWanted={watchlistOnly};
+        com.google.android.material.chip.Chip collection=LibraryFilterBottomSheet.choice(this,R.string.discovery_filter_favorite,"filterFavorite",favorites);
+        com.google.android.material.chip.Chip wanted=LibraryFilterBottomSheet.choice(this,R.string.discovery_filter_wanted,"filterWanted",watchlistOnly);
+        com.google.android.material.chip.Chip disliked=LibraryFilterBottomSheet.choice(this,R.string.discovery_filter_disliked,"filterDisliked",dislikedOnly);
+        collection.setOnCheckedChangeListener((view,checked)->{onlyFavorites[0]=checked;if(checked)disliked.setChecked(false);});
+        disliked.setOnCheckedChangeListener((view,checked)->{onlyDisliked[0]=checked;if(checked)collection.setChecked(false);});
+        wanted.setOnCheckedChangeListener((view,checked)->onlyWanted[0]=checked);
+        form.addView(LibraryFilterBottomSheet.section(this,R.string.discovery_filter_preferences));
+        com.google.android.material.chip.ChipGroup preferences=LibraryFilterBottomSheet.choices(this,"filterPreferences");
+        preferences.addView(collection);preferences.addView(wanted);preferences.addView(disliked);form.addView(preferences);
+        AutoCompleteTextView tag=filterInput(form,getString(R.string.library_filter_tag),tagFilter),actor=filterInput(form,getString(R.string.discovery_filter_actor),actorFilter),multiTag=filterInput(form,getString(R.string.library_filter_tags_all),tagsAllFilter);
+        AutoCompleteTextView anyTags=filterInput(form,getString(R.string.discovery_filter_tags_any),tagsAnyFilter),notTags=filterInput(form,getString(R.string.library_filter_tags_not),tagsNotFilter);
+        AutoCompleteTextView yearFrom=filterInput(form,getString(R.string.discovery_filter_year_from),yearMinFilter),yearTo=filterInput(form,getString(R.string.discovery_filter_year_to),yearMaxFilter);
         yearFrom.setTag("filterYearFrom");yearTo.setTag("filterYearTo");
         yearFrom.setInputType(InputType.TYPE_CLASS_NUMBER);yearTo.setInputType(InputType.TYPE_CLASS_NUMBER);
-        ChipLayout tagSuggestions=new ChipLayout(this);tagSuggestions.setTag("filterTagSuggestions");int tagIndex=form.indexOfChild((View)tag.getParent());form.addView(tagSuggestions,tagIndex+1);
-        AutoCompleteTextView rating=filterInput(form,"最低评分（0–10）",ratingMinFilter);rating.setInputType(InputType.TYPE_CLASS_NUMBER);
+        com.google.android.material.chip.ChipGroup tagSuggestions=LibraryFilterBottomSheet.choices(this,"filterTagSuggestions");int tagIndex=form.indexOfChild(SearchDropdown.container(tag));form.addView(tagSuggestions,tagIndex+1);
+        AutoCompleteTextView rating=filterInput(form,getString(R.string.library_filter_rating),ratingMinFilter);rating.setInputType(InputType.TYPE_CLASS_NUMBER);
+        java.util.ArrayList<String> scores=new java.util.ArrayList<>();for(int i=0;i<=10;i++)scores.add(Integer.toString(i));rating.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line,scores));
         String[] states={"","unwatched","progress","completed"};final int[] watching={Math.max(0,java.util.Arrays.asList(states).indexOf(watchFilter))};
-        ChipLayout watchRow=MediaStyle.actionFlow(this);watchRow.setTag("watchSegments");
-        String[] watchLabels={"全部","未看","观看中","已看完"};
-        Runnable refreshWatch=()->{for(int i=0;i<watchRow.getChildCount();i++){Button option=(Button)watchRow.getChildAt(i);MediaStyle.button(option,watching[0]==i,watching[0]==i,false);option.setTextSize(12);}};
-        for(int i=0;i<watchLabels.length;i++){final int index=i;Button option=button(watchLabels[i],()->{watching[0]=index;refreshWatch.run();});watchRow.addView(option);}refreshWatch.run();form.addView(watchRow,0);form.addView(text("观看状态",14,MediaStyle.TEXT),0);
+        com.google.android.material.chip.ChipGroup watchRow=LibraryFilterBottomSheet.choices(this,"watchSegments");watchRow.setSingleSelection(true);watchRow.setSelectionRequired(true);
+        int[] watchLabels={R.string.discovery_watch_all_short,R.string.discovery_watch_unwatched_short,R.string.discovery_filter_watch_progress,R.string.discovery_watch_completed_short};
+        Runnable refreshWatch=()->{for(int i=0;i<watchRow.getChildCount();i++)((com.google.android.material.chip.Chip)watchRow.getChildAt(i)).setChecked(watching[0]==i);};
+        for(int i=0;i<watchLabels.length;i++){final int index=i;com.google.android.material.chip.Chip option=LibraryFilterBottomSheet.choice(this,watchLabels[i],"filterWatch:"+states[i],watching[0]==i);option.setOnClickListener(view->watching[0]=index);watchRow.addView(option);}form.addView(watchRow,0);form.addView(LibraryFilterBottomSheet.section(this,R.string.discovery_filter_watch),0);
         LinearLayout yearPair=MediaStyle.row(this);yearPair.setOrientation(LinearLayout.HORIZONTAL);yearPair.setPadding(0,0,0,dp(8));
-        for(AutoCompleteTextView input:new AutoCompleteTextView[]{yearFrom,yearTo}){View parent=(View)input.getParent();int index=form.indexOfChild(parent);View label=form.getChildAt(index-1);form.removeView(label);form.removeView(parent);((android.view.ViewGroup)parent).removeView(input);LinearLayout cell=new LinearLayout(this);cell.setOrientation(LinearLayout.VERTICAL);cell.addView(label);cell.addView(input,new LinearLayout.LayoutParams(-1,dp(48)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);yearPair.addView(cell,lp);}form.addView(yearPair);
+        for(AutoCompleteTextView input:new AutoCompleteTextView[]{yearFrom,yearTo}){View parent=SearchDropdown.container(input);int index=form.indexOfChild(parent);View label=form.getChildAt(index-1);form.removeView(label);form.removeView(parent);LinearLayout cell=new LinearLayout(this);cell.setOrientation(LinearLayout.VERTICAL);cell.addView(label);cell.addView(parent,new LinearLayout.LayoutParams(-1,-2));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);yearPair.addView(cell,lp);}form.addView(yearPair);
         LinearLayout advanced=new LinearLayout(this);advanced.setOrientation(LinearLayout.VERTICAL);advanced.setTag("advancedFilterFields");
-        for(AutoCompleteTextView input:new AutoCompleteTextView[]{multiTag,anyTags,notTags,rating}){View parent=(View)input.getParent();int index=form.indexOfChild(parent);View label=form.getChildAt(index-1);form.removeView(label);form.removeView(parent);advanced.addView(label);advanced.addView(parent);}
+        for(AutoCompleteTextView input:new AutoCompleteTextView[]{multiTag,anyTags,notTags,rating}){View parent=SearchDropdown.container(input);int index=form.indexOfChild(parent);View label=form.getChildAt(index-1);form.removeView(label);form.removeView(parent);advanced.addView(label);advanced.addView(parent);}
         advanced.setVisibility(tagsAllFilter.isEmpty()&&tagsAnyFilter.isEmpty()&&tagsNotFilter.isEmpty()&&ratingMinFilter.isEmpty()?View.GONE:View.VISIBLE);
-        Button moreFilters=button("更多条件 · 标签组合、排除、评分",()->advanced.setVisibility(advanced.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));form.addView(moreFilters);form.addView(advanced);
-        TextView status=text("正在读取筛选选项…",13,MUTED);form.addView(status);
-        ScrollView scroll=new ScrollView(this);scroll.addView(form);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("筛选媒体库").setView(scroll)
-            .setPositiveButton("应用",null).setNegativeButton("取消",null).setNeutralButton("重置",(d,which)->{tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";favorites=false;showLibrary();}).create();
-        dialog.show();MediaStyle.sheet(dialog);dialog.setOnDismissListener(d->creatingSmartList=false);
+        Button moreFilters=button(getString(R.string.library_filter_more),()->advanced.setVisibility(advanced.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));BiliAuxiliaryUi.textAction(moreFilters,false);form.addView(moreFilters);form.addView(advanced);
+        TextView status=BiliAuxiliaryUi.supporting(this,getString(R.string.library_filter_loading));status.setPadding(0,dp(8),0,dp(8));form.addView(status);
+        LibraryFilterBottomSheet dialog=new LibraryFilterBottomSheet(this,form);dialog.setOnDismissListener(d->creatingSmartList=false);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
             String from=yearFrom.getText().toString().trim(),to=yearTo.getText().toString().trim(),score=rating.getText().toString().trim();
-            if(!from.isEmpty()&&(!from.matches("[0-9]{4}")||Integer.parseInt(from)<1800||Integer.parseInt(from)>2200)){yearFrom.setError("请输入 1800–2200 的年份");return;}
-            if(!to.isEmpty()&&(!to.matches("[0-9]{4}")||Integer.parseInt(to)<1800||Integer.parseInt(to)>2200)){yearTo.setError("请输入 1800–2200 的年份");return;}
-            if(!score.isEmpty()&&(!score.matches("[0-9]{1,2}")||Integer.parseInt(score)>10)){rating.setError("评分范围 0–10");return;}
-            if(!from.isEmpty()&&!to.isEmpty()&&Integer.parseInt(from)>Integer.parseInt(to)){yearFrom.setError("起始年份不能晚于结束");return;}
-            if(discovery&&discoveryOnline)discoveryResultTag=tag.getText().toString().trim();else tagFilter=tag.getText().toString().trim();
-            actorFilter=actor.getText().toString().trim();tagsAllFilter=multiTag.getText().toString().trim();tagsAnyFilter=anyTags.getText().toString().trim();tagsNotFilter=notTags.getText().toString().trim();
+            if(!from.isEmpty()&&(!from.matches("[0-9]{4}")||Integer.parseInt(from)<1800||Integer.parseInt(from)>2200)){yearFrom.setError(getString(R.string.discovery_filter_error_year));return;}
+            if(!to.isEmpty()&&(!to.matches("[0-9]{4}")||Integer.parseInt(to)<1800||Integer.parseInt(to)>2200)){yearTo.setError(getString(R.string.discovery_filter_error_year));return;}
+            if(!score.isEmpty()&&(!score.matches("[0-9]{1,2}")||Integer.parseInt(score)>10)){rating.setError(getString(R.string.discovery_filter_error_rating));return;}
+            if(!from.isEmpty()&&!to.isEmpty()&&Integer.parseInt(from)>Integer.parseInt(to)){yearFrom.setError(getString(R.string.discovery_filter_error_range));return;}
+            tagFilter=tag.getText().toString().trim();actorFilter=actor.getText().toString().trim();tagsAllFilter=multiTag.getText().toString().trim();tagsAnyFilter=anyTags.getText().toString().trim();tagsNotFilter=notTags.getText().toString().trim();
             yearMinFilter=from;yearMaxFilter=to;ratingMinFilter=score;favorites=onlyFavorites[0];dislikedOnly=onlyDisliked[0];watchlistOnly=onlyWanted[0];watchFilter=states[watching[0]];boolean createList=creatingSmartList;creatingSmartList=false;dialog.dismiss();showLibrary();if(createList)saveSmartList();
         });
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view->{
-            tag.setText("");actor.setText("");multiTag.setText("");anyTags.setText("");notTags.setText("");yearFrom.setText("");yearTo.setText("");rating.setText("");watching[0]=0;refreshWatch.run();onlyWanted[0]=false;MediaStyle.button(wanted,false,false,false);MediaStyle.icon(wanted,"bookmark",false);onlyFavorites[0]=false;onlyDisliked[0]=false;disliked.setText("不喜欢");MediaStyle.icon(disliked,"ban",false);MediaStyle.button(disliked,false,false,false);
-            collection.setText("已收藏");MediaStyle.icon(collection,"heart",false);MediaStyle.button(collection,false,false,true);
+            tag.setText("");actor.setText("");multiTag.setText("");anyTags.setText("");notTags.setText("");yearFrom.setText("");yearTo.setText("");rating.setText("");watching[0]=0;refreshWatch.run();wanted.setChecked(false);collection.setChecked(false);disliked.setChecked(false);
         });
-        MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_POSITIVE),true,false,false);
-        MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEGATIVE),false,false,false);MediaStyle.button(dialog.getButton(AlertDialog.BUTTON_NEUTRAL),false,false,false);
+        dialog.show();
         request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)+"&discover="+discovery),options->{
             if(!dialog.isShowing())return;
             JSONArray suggested=options.optJSONArray("tags");if(suggested!=null)for(int i=0;i<Math.min(6,suggested.length());i++){String value=suggested.optString(i);tagSuggestions.addView(BiliMainUi.suggestionChip(this,value,()->tag.setText(value)));}
@@ -523,7 +509,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 for(int j=0;j<values.length();j++)choices.add(values.optString(j));
                 inputs[i].setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line,choices));
             }
-            status.setText("输入搜索或下拉选择，多个条件同时生效。");
+            status.setText(R.string.library_filter_note);
         });
     }
     private void loadPage() {
@@ -937,9 +923,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void refreshPersonalButtons(JSONObject work,JSONObject fields){
         if(root==null)return;long id=work.optLong("id");for(String field:new String[]{"favorite","watchlist"})if(fields.has(field)){Button button=root.findViewWithTag("mark:"+id+":"+field);if(button!=null)markStyle(button,work,field,work.optInt(field)==1,false);}
-        if(fields.has("rating")){Button score=root.findViewWithTag("rating:"+id);if(score!=null){score.setText(work.isNull("rating")?getString(R.string.personal_rating_unset):getString(R.string.personal_rating_value,work.optInt("rating")));MediaStyle.icon(score,"star",!work.isNull("rating"));}}
+        if(fields.has("rating")){Button score=root.findViewWithTag("rating:"+id);if(score!=null){score.setText(work.isNull("rating")?getString(R.string.personal_rating_unset):getString(R.string.personal_rating_value,work.optInt("rating")));detailAction(score,"star",!work.isNull("rating"));}}
     }
-    private void detailAction(Button button,String icon,boolean selected){BiliMainUi.lightAction(button,icon,selected);if(button instanceof com.google.android.material.button.MaterialButton)((com.google.android.material.button.MaterialButton)button).setIconGravity(com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_TOP);button.setPaddingRelative(button.getPaddingStart(),dp(4),button.getPaddingEnd(),dp(4));button.setMinHeight(dp(64));button.setMinimumHeight(dp(64));}
+    private void detailAction(Button button,String icon,boolean selected){BiliMainUi.stackedAction(button,icon,selected);}
     private void markStyle(Button button,JSONObject work,String field,boolean active,boolean compact){
         String title=field.equals("favorite")?"收藏":"想看";
         button.setText(compact?"":(active?"已":"")+title);button.setContentDescription((active?"取消":"加入")+title);

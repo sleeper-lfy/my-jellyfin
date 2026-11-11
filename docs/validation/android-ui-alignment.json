@@ -1,0 +1,607 @@
+{
+  "status": "passed",
+  "verified_at": "2026-11-12T00:57:07.807420+08:00",
+  "base_commit": "17e6d91a41b403226406ccb5a23c4579dba9a321",
+  "source_files_sha256": {
+    "android/app/src/main/java/net/lumen/media/BiliMainUi.java": "7d63f0795a9dd68121ab494021ff8a099c2b5f5ae9948d06d8dd935afb37eea1",
+    "android/app/src/main/java/net/lumen/media/ConnectionLibraryRow.java": "38a09d193f324307c4237ab5efeca83d523dc92028acf98dd6fdf690ae8e7c9a",
+    "android/app/src/main/java/net/lumen/media/GitHubUpdates.java": "4117d7bb4cbf6ae7ee63f5464a5ec66acf78adf63e150b896f92836954229e6f",
+    "android/app/src/main/java/net/lumen/media/LibraryFilterBottomSheet.java": "f21f92ba49e80faad6d10fd2fe716f949600481c6610005748f8fc925ec8d4d4",
+    "android/app/src/main/java/net/lumen/media/MainActivity.java": "2ddade60b7e9b5f5d732c9a516136ed58dfcd37d6018b972bca61d0ec145b14a",
+    "android/app/src/main/java/net/lumen/media/SearchDropdown.java": "ae05880075a06c914a0680fd53e7f36b41e585ddff4868c6f557ebfb91859b1b",
+    "android/app/src/main/java/net/lumen/media/UpdateActivity.java": "0d611af45ca43e6d81b90a042ba5e2e0aea604a53e45e923b3cbc026a51d930c",
+    "android/app/src/main/java/net/lumen/media/ui/theme/NativeActionTokens.kt": "af1037c10737829a46a2684a05c2af7fa826ea8bc7240bad0be9656005498234",
+    "android/app/src/main/res/layout/library_filter_chip.xml": "73b7d89979490ae2e137708b0d6018e1a273b6a805f530175f0ccbd5f616d957",
+    "android/app/src/main/res/values/dropdown_strings.xml": "7fffec17d436435e855f1a7ac2545eb1cbf8fe9eca10ad743a2201dabe3930e2",
+    "android/app/src/main/res/values/library_filter_strings.xml": "4182187dafdaf15bfff4f4f44e3ed4cc1ef509c996195c48b4434b41204eb6d2",
+    "android/app/src/main/res/values/native_m3_colors.xml": "0ea0838898f7960945821a3fdae2be189af3e15c680afb9c939ba161b07f3401",
+    "android/app/src/main/res/values/styles.xml": "d081ba2dec540b6413d0d137afddfbedcd4fcf12f289cf1f35ffc58d93e3c0a1",
+    "android/app/src/main/res/values/update_channel_strings.xml": "937bd53b7a9501ac21ea7bf5bf4849eedfaab9864db3d36101a677fedc89b3cd",
+    "src/lumen/updates_ui.py": "15663a989da1e5f6a36e6bb05997109cca39499c001f3333893f2a34d7106bc3"
+  },
+  "android": {
+    "full_unit_tests": {
+      "tests": 263,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "net.lumen.media.BrowseUiTest",
+          "tests": 9,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "ee1f77b14218f0477675cbf4b8c1a80639bd19d2ab1b21797c583affc72b1fcb"
+        },
+        {
+          "name": "net.lumen.media.ControllerBindingsTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "84f07f42d7cb76327264bee104fb0d1786e74c04b95caa1caac0a96065dd03ad"
+        },
+        {
+          "name": "net.lumen.media.MediaDesignTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "6bd8bc40dad3064ba86a312192ce95fafd4eee21232d313f24c26aff0df7c3d3"
+        },
+        {
+          "name": "net.lumen.media.MediaPreviewTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "d003acbd802eda98640a35471d88c7d405e19cab55964741043f2cfdda156b37"
+        },
+        {
+          "name": "net.lumen.media.MediaToolsTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "126cd81cb105b10baa1728fdf8c342248a3d5823efa4a4bf8c2136333c3a23e0"
+        },
+        {
+          "name": "net.lumen.media.PlaybackBridgeTest",
+          "tests": 11,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "125195bfa02c526d6b57d8159830e0b3abfe151dbaca0713d90735baf8ead3cc"
+        },
+        {
+          "name": "net.lumen.media.PlaybackPolicyTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "fc5050b321f4422f0f212878226db0ea16e1d685d67e43874083d69baaffd0cc"
+        },
+        {
+          "name": "net.lumen.media.PlayerUiTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "b0b92149e579c59bbe937da5ddf0f321ffd044a7114eb0cb1a65c690b8a2c098"
+        },
+        {
+          "name": "net.lumen.media.SeekGestureTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "ca6fcb111942a93be9559f1c7200efce93bd270aecfa4a2bee2c6ce39d5c59f4"
+        },
+        {
+          "name": "net.lumen.media.ServerDiscoveryTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "8db05fc1ee02f51b4b9c9c55f724f1e4a5d976132729c15b0761f34eb1327cbc"
+        },
+        {
+          "name": "net.lumen.media.VrProjectionTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "afab87efff06a536a7b5c3741cc80f24902d41df47fe36d21acfa8f06fc49130"
+        },
+        {
+          "name": "net.lumen.media.ui.DesignSystemTest",
+          "tests": 13,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "fc251e7164509e4ccdc0006cf76ededce4c1a5aeceac0409fa8097ddb9a7813a"
+        },
+        {
+          "name": "net.lumen.media.SearchDropdownLayoutTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "2a1f8e79c76a2c0c9e5b075acbe4812ef50a0fab43d15bb88ede83597eccd5f9"
+        },
+        {
+          "name": "net.lumen.media.ImageRequestsTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "717db1ecf704f847f94000574326a54e6c9d3fc3500a2467c3d31245e08cef48"
+        },
+        {
+          "name": "net.lumen.media.BeautySettingsTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "95a1e8159f89adbe913bce1091fcd14137fbaadf9d62f7b5dd8dcd9bb408de72"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryVisualRefinementTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "1656ad69ebfdb371a3632b3dcef65f0215f8660facb3a0d762c1feb614fbf5e7"
+        },
+        {
+          "name": "net.lumen.media.VrMotionFilterTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "fc96a28c01e0158cb212794f0dc04db3618d935d7fa82b1ec21a950db1c4c5dd"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryBrowseTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "1f94e643ca73214800787204ec5dbcfa3338b8a496895bbb45058996ecdb9ae0"
+        },
+        {
+          "name": "net.lumen.media.PosterPresentationTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "b72e64778ef2cefac81c952f8b4adf2aea1ed73da060f24dc9be4e777fe88d34"
+        },
+        {
+          "name": "net.lumen.media.LibraryFilterBottomSheetTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "2e6c5286ccdeff350b929492c36350a4c8d7f02852d455f69d177332548724d3"
+        },
+        {
+          "name": "net.lumen.media.PlayerResponsiveLayoutTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "8847680ee1860ccd8724757b1a55b5ca22384eada80249a7b3812c90a847f3e8"
+        },
+        {
+          "name": "net.lumen.media.GitHubUpdatesTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "d4ef6dd27a0eccaac64a849fa67eeb8d94f2a7f90dbff248db3b512856d2d46a"
+        },
+        {
+          "name": "net.lumen.media.UpdateChannelTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "e8735779f05d21e17d3598285905c2bd7c755de1987ffb0f148a7e1d8e5bf9d0"
+        },
+        {
+          "name": "net.lumen.media.ActionStyleIntegrationTest",
+          "tests": 10,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "0291070d4b985067b11c09677587f1fd9463976d293a58f6597ce524c7c05e3d"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryAppThemeTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "a1ae8ec3353203878878c84426464b24bb4017691cb12a17e78ef82e24d441d6"
+        },
+        {
+          "name": "net.lumen.media.ContinueHomeTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "f15246929cced02a0b9a551cd0a84720c5d94b8b1df5ad174b6c7a4a877ece48"
+        },
+        {
+          "name": "net.lumen.media.PlaybackMeasurementsTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "597186e465a3303fee02c687e1d0e1a6ecd396b40f75ff8f9111fb878347a461"
+        },
+        {
+          "name": "net.lumen.media.MobileAlignmentTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "0504b9295869372586fe60a00292c664604628bee0891ebfcb0885336b0a28a8"
+        },
+        {
+          "name": "net.lumen.media.ExternalPlayerUiTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "fbf58355afba08ddc5d4b05954be78cf5707da15d2998d17ac28e92983125837"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryImageLoaderTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "4cc4ea7c8fcb44bcc2e0c7a9f563126560bee44b535d62e786f8df503f0a7d7a"
+        },
+        {
+          "name": "net.lumen.media.ApprovedUiTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "9bab14208543429a41addbc40b154f0dfcc173a4f35b587160e78a3b5bd01d5d"
+        },
+        {
+          "name": "net.lumen.media.PlayerChromeBilibiliTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "da5b842fc22e688e06e9fe84f13d14aec207a641a960b788a82fa683ab11fc76"
+        },
+        {
+          "name": "net.lumen.media.ui.DesignSystemPreviewTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "f4f2deb576614bf5114f8e22917407d5d5782015b17f2d0a2f8209ad38730f9e"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryComposeUiTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "31d5c738b16caed382b217194f0e24a2fd04e267db2acec6ab3040582e2685e6"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryCoordinatorTest",
+          "tests": 15,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "0dab997699f166b01ac076e41ef59ec29e2c344163745aba9e0b92b402ffcbcf"
+        },
+        {
+          "name": "net.lumen.media.GlobalShuffleTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "c4d40f889c6314a25be00c10682f09158c2e66a7ef742c7445d1dd7bf7a96c45"
+        },
+        {
+          "name": "net.lumen.media.PlaybackNoticeUiTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "011636fd6c4f8c2486c942729e845d9067ae27bd642e400c39319a73a7468663"
+        },
+        {
+          "name": "net.lumen.media.PictureViewerTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "2408d4716ee1180952eb0dd649e60f536dbc8fdf0282a852d57e2e16605a3786"
+        },
+        {
+          "name": "net.lumen.media.TaskCenterTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "2870051be590c3feafffdca782731b26f6823b77dc268c8c959c017537679bcf"
+        },
+        {
+          "name": "net.lumen.media.VideoNavigatorTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "9ef3631414f777d307b9d59fac0101af765deac32ef35acbe58aca95e061ae0e"
+        },
+        {
+          "name": "net.lumen.media.SubtitleAppearanceTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "f23d38ea3de3fe5286744554d2a107f74ba3744422fa398a60e2378269be16a6"
+        },
+        {
+          "name": "net.lumen.media.PlaybackDecoderPolicyTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "6c2949acbecfe58ef2995477b87ca04ae72ea2290609005177db859b57f8829b"
+        },
+        {
+          "name": "net.lumen.media.NativeMaterialThemeParityTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "bd49a7fb07a949c80d0e8ae235b23fd4ec95f0b74fb0322e5abfe43d8bd3b782"
+        },
+        {
+          "name": "net.lumen.media.DiscoveryFilterBottomSheetTest",
+          "tests": 10,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "ac177a1ab13c8390f5af197c7faa8d7f88de8cfdb83fc8497f82ba06a079df8c"
+        },
+        {
+          "name": "net.lumen.media.ConnectionLibraryRowTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "582bd03eb4122e732d4bd35200801e86c45a303a224562c6a92a3190e60a986d"
+        },
+        {
+          "name": "net.lumen.media.ExternalVideoIntentTest",
+          "tests": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "62424c5e86d28a18d6acb7b12e21480da5984345d01cbdba2b4bd574229ce9b8"
+        },
+        {
+          "name": "net.lumen.media.PlayerPersonalTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "b3040f87c5ce411921cd88eb27cedd57be291e51eb315639e25f94834cee4d7f"
+        },
+        {
+          "name": "net.lumen.media.HoldGestureUiTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "968fee9a199bf35293f6c5eea7ee8f28d0b31abaf7dcd835c31e551026c0db4d"
+        },
+        {
+          "name": "net.lumen.media.CompactActionPagesTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "8caca9d825ff45c1143e0a3f156231775fb622c914453fb5a2f8f341c4e96904"
+        },
+        {
+          "name": "net.lumen.media.DialogActionStateTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "8b14c66ce141b63454bb88bf8aea7498c0b9bb2cc9dea5e188f418a2f963ee3e"
+        },
+        {
+          "name": "net.lumen.media.BiliAuxiliaryPagesTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "7435fa17c5c933174b739630b8e79ac3dd6a8f9d9c1892ef60cd836554ce593b"
+        },
+        {
+          "name": "net.lumen.media.RecentPosterModeTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "d506beae9283f45d904d51510b1e2042f169caeb75682e2707ce51b929cadf76"
+        },
+        {
+          "name": "net.lumen.media.VrPreferencePatchTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "48cec53292f75dfe3f4c3a739c61ba9604a37f0c90ca94520e6daf2e1351c9d0"
+        },
+        {
+          "name": "net.lumen.media.HoldSpeedTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "ae416ddb7fd9c736e5d2433cd036150e860a1ccb04ca9853ccb15ea57e0070df"
+        },
+        {
+          "name": "net.lumen.media.AndroidLayoutRegressionTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "4f85eb46be363666e70c074814b7c1234a14b9d22bdaef79a5289d9efd5397c8"
+        },
+        {
+          "name": "net.lumen.media.EpisodeControllerTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "f0a1093f97d69d8b5a77b8a1015f428e7508175a35525dfbb1db47cc9b0291bd"
+        },
+        {
+          "name": "net.lumen.media.VideoReadCacheTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "bcd1128f8e24ef42c476c8bbfc3d9fa8f2aea36b5d9559413f305e824760e9ef"
+        },
+        {
+          "name": "net.lumen.media.BiliMainPagesTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "2be8051f4c5ca0a9051ad739938ced4c11e92b494c9eabe191d8987e0756854e"
+        },
+        {
+          "name": "net.lumen.media.BrowseScopeTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "d4ba937fa1d3505b6f60be08d607539f5644e807f1a0d3128bf2b15ff3163747"
+        },
+        {
+          "name": "net.lumen.media.NavigationLayoutTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "98e7e8aba1e4dd89b02b93b44f988875808cd463ad5a0c988e87b29831744af2"
+        },
+        {
+          "name": "net.lumen.media.PlayerPersonalPreviewTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "e6ef3eb67dd7dff8677e6b50f8bc1a941b65d574cfb2b2e20e2ff95226a90365"
+        }
+      ]
+    },
+    "after_api_compatibility_fix": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "net.lumen.media.LibraryFilterBottomSheetTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "3f648e8008da446319723e0f3c6fa1a5d16daf22ab9b212ba1e4fbbad6c19925"
+        },
+        {
+          "name": "net.lumen.media.NativeMaterialThemeParityTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "sha256": "d3eb394308650f0fc5a7a2d021727857e0ebb37f6a6304335033d9e111ffa217"
+        }
+      ]
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 89
+    },
+    "assembleDebug": "passed",
+    "minimum_sdk": 26
+  },
+  "pc": {
+    "command": "QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/test_update_channel_ui.py tests/test_updates_ui.py tests/test_desktop_updates.py",
+    "passed": 14,
+    "skipped": 1,
+    "failures": 0,
+    "skip_reason": "Windows PowerShell parser requires a Windows runner"
+  },
+  "screenshots": [
+    {
+      "path": "docs/screenshots/android-ui-alignment/bilibili-main-connection-393.png",
+      "sha256": "22aeea21cc99206bab9995cebf80098e10612ce372b8a8e0b2393848b5b8c59d",
+      "bytes": 46301
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/bilibili-main-filters-320-font150.png",
+      "sha256": "2500c6562cabe5f1e428499e1f0538b2a3287afb6c2df63e49c67f341e07a650",
+      "bytes": 43883
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/bilibili-main-filters-393.png",
+      "sha256": "22dedf20f667ab57378d5a4409da2f4ff3225d7c87b2a332381e89d9ac970577",
+      "bytes": 47751
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/bilibili-main-mine-393.png",
+      "sha256": "c610377a1da66b448520766f9943266e4fa4d5b031edd0dc8ef9c4ce3749df86",
+      "bytes": 50822
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/connection-libraries-320-font150.png",
+      "sha256": "a13ce5f84509a39eca2336030f56ddf46f6f28293d64907f38cb5cf9c51cfc14",
+      "bytes": 26362
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/detail-actions-font1.0.png",
+      "sha256": "e51714f44334c9f63e95e0a23d030027375719a2a52dfe6fc63bfc2c109276ba",
+      "bytes": 19571
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/detail-actions-font1.5.png",
+      "sha256": "bd4310e58b2a422d70b7b36ba3d192460328540e6e599375db11d7a1afced193",
+      "bytes": 26568
+    },
+    {
+      "path": "docs/screenshots/android-ui-alignment/mine-totals-font1.5.png",
+      "sha256": "d6a2e038f60879c5fa643eed9ffd208be2283db1e2e8bc9ac6c2aa97634ac5e3",
+      "bytes": 14222
+    }
+  ],
+  "synthetic_media_only": true,
+  "public_release_created": false,
+  "current_public_release": "v0.4.20-preview.3",
+  "limitations": [
+    "Robolectric rendering and synthetic insets do not replace physical-device keyboard and touch verification.",
+    "Other legacy Android dialogs have not all been migrated to Material 3.",
+    "The installed release remains Preview 3; these changes are source-only."
+  ]
+}

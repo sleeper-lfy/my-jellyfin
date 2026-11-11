@@ -3,7 +3,8 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import time
-from PySide6.QtCore import QObject,Signal,Slot,QTimer
+from PySide6.QtCore import QObject,Signal,Slot,QTimer,Qt,QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QCheckBox,QProgressBar,QPlainTextEdit,QDialog,QApplication
 from . import __version__,updates
 from .background import run_background
@@ -14,6 +15,10 @@ class UpdatePanel(QWidget):
     def __init__(self,controller,parent=None):
         super().__init__(parent);self.controller=controller;layout=QVBoxLayout(self)
         heading=QLabel('当前版本 '+__version__);layout.addWidget(heading)
+        self.channel=QLabel();self.channel.setObjectName('updateChannel');self.channel.setWordWrap(True)
+        self.channel.setTextFormat(Qt.TextFormat.RichText);self.channel.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse|Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+        self.channel.setFocusPolicy(Qt.FocusPolicy.StrongFocus);self.channel.setToolTip('在浏览器打开 GitHub 发布页面')
+        self.channel.linkActivated.connect(lambda _url:QDesktopServices.openUrl(QUrl(self.channel_url)));layout.addWidget(self.channel)
         self.status=QLabel();self.status.setWordWrap(True);layout.addWidget(self.status)
         self.progress=QProgressBar();self.progress.setRange(0,1000);layout.addWidget(self.progress)
         self.notes=QPlainTextEdit();self.notes.setReadOnly(True);self.notes.setMaximumHeight(180);layout.addWidget(self.notes)
@@ -30,6 +35,9 @@ class UpdatePanel(QWidget):
         controller.changed.connect(self.render);self.render(controller.state())
     @Slot(object)
     def render(self,state):
+        candidate=self.controller.candidate;self.channel_url=f'https://github.com/{updates.REPO}/releases'+(f'/tag/v{candidate.version}' if candidate else '')
+        channel_name='GitHub Releases'+(' · '+candidate.version if candidate else '')
+        self.channel.setText(f'更新渠道：<a href="{self.channel_url}">{channel_name} ↗</a>');self.channel.setAccessibleName('更新渠道：'+channel_name+'，打开发布页面')
         self.status.setText(state['message']);self.progress.setValue(state['progress']);self.progress.setVisible(state['busy']);
         if self.notes.toPlainText()!=state['notes']:self.notes.setPlainText(state['notes'])
         self.notes.setVisible(bool(state['notes']))

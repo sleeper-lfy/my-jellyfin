@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_channel_open">更新渠道，GitHub Releases，点击打开版本发布页面</string>
+    <string name="update_channel_no_browser">无法打开浏览器，请安装或启用浏览器后重试。</string>
+</resources>

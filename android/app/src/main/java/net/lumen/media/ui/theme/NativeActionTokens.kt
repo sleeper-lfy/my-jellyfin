@@ -11,6 +11,8 @@ object NativeActionTokens {
     @JvmStatic fun touchDp() = AppDimensions.TouchTarget.value
     @JvmStatic fun visualDp() = AppDimensions.ButtonVisualHeight.value
     @JvmStatic fun iconDp() = AppDimensions.ButtonIcon.value
+    @JvmStatic fun controlIconDp() = AppDimensions.Icon.value
+    @JvmStatic fun inputHeightDp() = AppDimensions.SearchHeight.value
     @JvmStatic fun posterIconDp() = AppDimensions.SmallIcon.value
     @JvmStatic fun insetDp() = (touchDp() - visualDp()) / 2
     @JvmStatic fun horizontalPaddingDp() = AppSpacing().sm.value

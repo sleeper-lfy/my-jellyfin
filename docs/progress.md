@@ -792,3 +792,10 @@ main 的 Windows 源码验证新增短时专项预检，先验证自启动、后
 无托盘自动验收中，安装版后台最高工作集 **37.31 MiB**（39,120,896 字节），专用提交 **21.64 MiB**；工作集低于 50,000,000 字节目标。未使用工作集压缩或硬内存限制；该结果不替代真实桌面托盘、登录启动及大资料库人工验收。
 
 README 下载入口与说明已更新。Android 保持 ARM32＋ARM64 通用包，尚未进行仅讨论过的 ARM64 单架构／R8 裁剪；真实第三方来源授权、HEVC 4K 流畅度与音画同步仍待真机确认。Preview 1／2 失败标签保持不变，Preview 3 从修正源码完整重建，没有复用旧安装包。
+
+
+## Android 对齐、官方 M3 筛选与更新渠道（2026-11-12，源码修复）
+
+修正详情收藏／想看／评分的图标和文字居中，个人状态刷新后保留竖向样式；“我的”数量与标签使用同宽居中列；连接名称和地址使用统一文本列及内边距。媒体库和服务器地址下拉改为官方 MaterialAutoCompleteTextView＋TextInputLayout，明确使用 M3 OutlinedBox 样式。媒体库筛选使用官方 BottomSheetDialog、Filter Chip／ChipGroup 与固定操作栏，保留所有筛选和片单逻辑，兼顾键盘与 Android 8。原生 M3 深浅主题 32 个语义角色与 Compose 对齐；生产界面继续深色，其余旧弹窗未宣称整体迁移完成。两端更新渠道可点击打开 GitHub Releases 或对应已识别候选版本页面。
+
+Android 全量263项零失败／错误／跳过；导航栏兼容接口修正后7项专项回归、lint零错误及构建通过。PC定向14项通过、1项Windows PowerShell检查由平台环境跳过。实际截图使用虚构内容，见[修复范围与截图](android-ui-alignment.md)及[验证记录](validation/android-ui-alignment.json)。本轮源码推送main，不创建新标签／Release，公开下载仍为0.4.20 Preview3。

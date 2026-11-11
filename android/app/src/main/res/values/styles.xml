@@ -1,12 +1,5 @@
 <resources>
-    <style name="AppThemeBase" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">?android:attr/colorAccent</item>
-        <item name="colorSecondary">?android:attr/colorAccent</item>
-        <item name="colorOnPrimary">?android:attr/windowBackground</item>
-        <item name="colorOnSecondary">?android:attr/windowBackground</item>
-        <item name="colorSurface">?android:attr/windowBackground</item>
-        <item name="colorOnSurface">?android:attr/textColorPrimary</item>
-        <item name="colorOnSurfaceVariant">?android:attr/textColorSecondary</item>
+    <style name="AppThemeBase" parent="LumenNativeActionsDark">
         <item name="android:alertDialogTheme">@style/LumenDialog</item>
         <item name="android:editTextStyle">@style/LumenInput</item>
         <item name="android:fontFamily">sans</item>
@@ -36,9 +29,99 @@
     </style>
     <style name="LumenNativeActionsDark" parent="Theme.Material3.Dark.NoActionBar">
         <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
+        <item name="colorPrimary">@color/lumen_dark_primary</item>
+        <item name="colorOnPrimary">@color/lumen_dark_on_primary</item>
+        <item name="colorPrimaryInverse">@color/lumen_dark_inverse_primary</item>
+        <item name="colorPrimaryContainer">@color/lumen_dark_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/lumen_dark_on_primary_container</item>
+        <item name="colorSecondary">@color/lumen_dark_secondary</item>
+        <item name="colorOnSecondary">@color/lumen_dark_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/lumen_dark_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/lumen_dark_on_secondary_container</item>
+        <item name="colorTertiary">@color/lumen_dark_tertiary</item>
+        <item name="colorOnTertiary">@color/lumen_dark_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/lumen_dark_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/lumen_dark_on_tertiary_container</item>
+        <item name="colorSurface">@color/lumen_dark_surface</item>
+        <item name="colorOnSurface">@color/lumen_dark_on_surface</item>
+        <item name="android:colorBackground">@color/lumen_dark_background</item>
+        <item name="colorOnBackground">@color/lumen_dark_on_background</item>
+        <item name="colorSurfaceVariant">@color/lumen_dark_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/lumen_dark_on_surface_variant</item>
+        <item name="colorOutline">@color/lumen_dark_outline</item>
+        <item name="colorOutlineVariant">@color/lumen_dark_outline_variant</item>
+        <item name="colorSurfaceDim">@color/lumen_dark_surface_dim</item>
+        <item name="colorSurfaceBright">@color/lumen_dark_surface_bright</item>
+        <item name="colorSurfaceContainerLowest">@color/lumen_dark_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/lumen_dark_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/lumen_dark_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/lumen_dark_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/lumen_dark_surface_container_highest</item>
+        <item name="colorError">@color/lumen_dark_error</item>
+        <item name="colorOnError">@color/lumen_dark_on_error</item>
+        <item name="colorErrorContainer">@color/lumen_dark_error_container</item>
+        <item name="colorOnErrorContainer">@color/lumen_dark_on_error_container</item>
+        <item name="android:windowBackground">@color/lumen_dark_background</item>
+        <item name="android:colorAccent">@color/lumen_dark_primary</item>
+        <item name="android:textColorPrimary">@color/lumen_dark_on_surface</item>
+        <item name="android:textColorSecondary">@color/lumen_dark_on_surface_variant</item>
+        <item name="android:colorControlNormal">@color/lumen_dark_on_surface_variant</item>
+        <item name="colorControlNormal">@color/lumen_dark_on_surface_variant</item>
+        <item name="colorControlActivated">@color/lumen_dark_primary</item>
+        <item name="android:colorBackgroundFloating">@color/lumen_dark_surface_container</item>
     </style>
     <style name="LumenNativeActionsLight" parent="Theme.Material3.Light.NoActionBar">
         <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
+        <item name="colorPrimary">@color/lumen_light_primary</item>
+        <item name="colorOnPrimary">@color/lumen_light_on_primary</item>
+        <item name="colorPrimaryInverse">@color/lumen_light_inverse_primary</item>
+        <item name="colorPrimaryContainer">@color/lumen_light_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/lumen_light_on_primary_container</item>
+        <item name="colorSecondary">@color/lumen_light_secondary</item>
+        <item name="colorOnSecondary">@color/lumen_light_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/lumen_light_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/lumen_light_on_secondary_container</item>
+        <item name="colorTertiary">@color/lumen_light_tertiary</item>
+        <item name="colorOnTertiary">@color/lumen_light_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/lumen_light_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/lumen_light_on_tertiary_container</item>
+        <item name="colorSurface">@color/lumen_light_surface</item>
+        <item name="colorOnSurface">@color/lumen_light_on_surface</item>
+        <item name="android:colorBackground">@color/lumen_light_background</item>
+        <item name="colorOnBackground">@color/lumen_light_on_background</item>
+        <item name="colorSurfaceVariant">@color/lumen_light_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/lumen_light_on_surface_variant</item>
+        <item name="colorOutline">@color/lumen_light_outline</item>
+        <item name="colorOutlineVariant">@color/lumen_light_outline_variant</item>
+        <item name="colorSurfaceDim">@color/lumen_light_surface_dim</item>
+        <item name="colorSurfaceBright">@color/lumen_light_surface_bright</item>
+        <item name="colorSurfaceContainerLowest">@color/lumen_light_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/lumen_light_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/lumen_light_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/lumen_light_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/lumen_light_surface_container_highest</item>
+        <item name="colorError">@color/lumen_light_error</item>
+        <item name="colorOnError">@color/lumen_light_on_error</item>
+        <item name="colorErrorContainer">@color/lumen_light_error_container</item>
+        <item name="colorOnErrorContainer">@color/lumen_light_on_error_container</item>
+        <item name="android:windowBackground">@color/lumen_light_background</item>
+        <item name="android:colorAccent">@color/lumen_light_primary</item>
+        <item name="android:textColorPrimary">@color/lumen_light_on_surface</item>
+        <item name="android:textColorSecondary">@color/lumen_light_on_surface_variant</item>
+        <item name="android:colorControlNormal">@color/lumen_light_on_surface_variant</item>
+        <item name="colorControlNormal">@color/lumen_light_on_surface_variant</item>
+        <item name="colorControlActivated">@color/lumen_light_primary</item>
+        <item name="android:colorBackgroundFloating">@color/lumen_light_surface_container</item>
+    </style>
+    <style name="LumenNativeDropdown" parent="LumenNativeActionsDark">
+        <item name="textInputStyle">@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu</item>
+        <item name="autoCompleteTextViewStyle">@style/Widget.Material3.AutoCompleteTextView.OutlinedBox</item>
+    </style>
+    <style name="LumenLibraryFilterSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="enableEdgeToEdge">true</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
     <style name="LumenNativeCardIconsDark" parent="LumenNativeActionsDark">
         <item name="materialButtonStyle">@style/LumenCardIconButton</item>

@@ -63,12 +63,12 @@ public class NavigationLayoutTest {
     @Test public void dislikedFilterSupportsDraftCancelApplyRestoreAndRemoval()throws Exception{
         try(MockWebServer server=server();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
             MainActivity activity=lifecycle.get();connect(activity,server);set(activity,"mainPage","library");set(activity,"kind","movie");call(activity,"showLibrary");
-            call(activity,"showFilters");AlertDialog sheet=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            call(activity,"showFilters");LibraryFilterBottomSheet sheet=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             sheet.getWindow().getDecorView().findViewWithTag("filterDisliked").performClick();
             layout(sheet.getWindow().getDecorView(),360,752);snapshot(sheet.getWindow().getDecorView(),"ui-android-disliked-filter.png");
             assertEquals(false,read(activity,"dislikedOnly"));sheet.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
             assertFalse(((String)call(activity,"listPath")).contains("disliked=true"));
-            call(activity,"showFilters");sheet=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            call(activity,"showFilters");sheet=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             sheet.getWindow().getDecorView().findViewWithTag("filterDisliked").performClick();sheet.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             assertTrue(((String)call(activity,"listPath")).contains("disliked=true"));
             assertNotNull(((View)read(activity,"root")).findViewWithTag("libraryCategory"));
@@ -77,7 +77,7 @@ public class NavigationLayoutTest {
             assertEquals(true,read(activity,"dislikedOnly"));
             View root=(View)read(activity,"root");View chip=root.findViewWithTag("activeFilters");find(chip,"不喜欢").performClick();
             assertFalse(((String)call(activity,"listPath")).contains("disliked=true"));
-            call(activity,"showFilters");sheet=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            call(activity,"showFilters");sheet=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             sheet.getWindow().getDecorView().findViewWithTag("filterDisliked").performClick();sheet.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
             sheet.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertEquals(false,read(activity,"dislikedOnly"));
         }
@@ -87,8 +87,8 @@ public class NavigationLayoutTest {
             RuntimeEnvironment.setQualifiers("w"+width+"dp-h800dp-mdpi");
             try(MockWebServer server=server();ActivityController<MainActivity> lifecycle=Robolectric.buildActivity(MainActivity.class).create()){
                 MainActivity activity=lifecycle.get();Configuration cfg=new Configuration(activity.getResources().getConfiguration());cfg.fontScale=scale;activity.getResources().updateConfiguration(cfg,activity.getResources().getDisplayMetrics());connect(activity,server);set(activity,"kind","movie");call(activity,"showLibrary");call(activity,"showFilters");
-                AlertDialog filters=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();View sheet=filters.getWindow().getDecorView();layout(sheet,width,752);
-                TextView from=sheet.findViewWithTag("filterYearFrom"),to=sheet.findViewWithTag("filterYearTo");assertTrue(from.getWidth()>100);assertTrue(to.getWidth()>100);assertEquals(from.getWidth(),to.getWidth());
+                LibraryFilterBottomSheet filters=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();View sheet=filters.getWindow().getDecorView();layout(sheet,width,752);
+                TextView from=sheet.findViewWithTag("filterYearFrom"),to=sheet.findViewWithTag("filterYearTo");from.setText("2020");to.setText("2026");layout(sheet,width,752);assertEquals(from.getWidth(),to.getWidth());fits(from);fits(to);for(TextView year:new TextView[]{from,to}){assertTrue("Four-digit year fits beside the Material end icon",year.getPaint().measureText(year.getText().toString())<=year.getWidth()-year.getCompoundPaddingLeft()-year.getCompoundPaddingRight());View wrapper=SearchDropdown.container((android.widget.AutoCompleteTextView)year);assertTrue(wrapper.getLeft()>=0&&wrapper.getRight()<=((View)wrapper.getParent()).getWidth());}
                 if(width==360&&scale==1f)snapshot(sheet,"ui-android-filters-fixed.png");filters.dismiss();
                 String actor="安娜玛丽亚·亚历山德拉";
                 JSONObject work=new JSONObject().put("id",42).put("title","长标题示例 ABC-123").put("kind","movie").put("file_count",1).put("resume_file_id",10)

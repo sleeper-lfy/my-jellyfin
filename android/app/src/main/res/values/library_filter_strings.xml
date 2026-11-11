@@ -1,0 +1,11 @@
+<resources>
+    <string name="library_filter_title">筛选媒体库</string>
+    <string name="library_filter_cancel">取消</string>
+    <string name="library_filter_tag">标签</string>
+    <string name="library_filter_tags_all">多个标签（逗号分隔，需全部包含）</string>
+    <string name="library_filter_tags_not">排除标签／不想看的类型</string>
+    <string name="library_filter_rating">最低评分（0–10）</string>
+    <string name="library_filter_more">更多条件 · 标签组合、排除、评分</string>
+    <string name="library_filter_loading">正在读取筛选选项…</string>
+    <string name="library_filter_note">输入搜索或下拉选择，多个条件同时生效。</string>
+</resources>

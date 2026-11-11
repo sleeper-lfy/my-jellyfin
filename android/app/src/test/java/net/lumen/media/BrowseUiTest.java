@@ -66,7 +66,7 @@ public class BrowseUiTest {
             }});server.start();MainActivity activity=lifecycle.get();
             connect(activity,server);
             call(activity,"showLibrary");call(activity,"showFilters");
-            AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            LibraryFilterBottomSheet dialog=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             List<AutoCompleteTextView> fields=inputs(dialog.getWindow().getDecorView());assertEquals(8,fields.size());
             long deadline=System.currentTimeMillis()+6000;
             while(fields.get(0).getAdapter()==null&&System.currentTimeMillis()<deadline){Thread.sleep(20);shadowOf(Looper.getMainLooper()).idle();}
@@ -77,11 +77,11 @@ public class BrowseUiTest {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertFalse(dialog.isShowing());
             Method path=MainActivity.class.getDeclaredMethod("listPath");path.setAccessible(true);String query=(String)path.invoke(activity);
             assertTrue("tag",query.contains("tag=Drama"));assertTrue("actor",query.contains("actor=Example%20actor"));assertTrue("yearmax",query.contains("year_max=2024"));
-            call(activity,"showFilters");AlertDialog second=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            call(activity,"showFilters");LibraryFilterBottomSheet second=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             List<AutoCompleteTextView> secondFields=inputs(second.getWindow().getDecorView());
             AutoCompleteTextView to=second.getWindow().getDecorView().findViewWithTag("filterYearTo");to.setText("bad",false);second.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-            assertTrue(second.isShowing());assertNotNull(to.getError());second.dismiss();
-            AlertDialog clear=second;clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
+            assertTrue(second.isShowing());assertNotNull(to.getError());
+            LibraryFilterBottomSheet clear=second;clear.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();clear.getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
             String cleared=(String)path.invoke(activity);assertTrue("cleared="+cleared,cleared.contains("&tag=&actor=&"));
         }
     }

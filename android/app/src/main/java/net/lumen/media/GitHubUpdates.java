@@ -15,6 +15,7 @@ import java.util.function.BooleanSupplier;
 final class GitHubUpdates {
     static final String REPO="sleeper-lfy/my-jellyfin";
     static final String RELEASE="https://api.github.com/repos/"+REPO+"/releases/latest";
+    static final String RELEASES="https://github.com/"+REPO+"/releases";
     static final String TARGET="https://raw.githubusercontent.com/"+REPO+"/main/target/";
     static final long MAX_APK=256L*1024*1024;
     interface Fetcher {byte[] get(String url,int limit)throws Exception;}
@@ -26,6 +27,16 @@ final class GitHubUpdates {
             if(!version.matches("[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}")||size<=0||size>MAX_APK||!hash.matches("[0-9a-fA-F]{64}"))throw new IOException("更新信息格式无效或缺少 SHA-256 校验值");
             validateUrl(url);this.version=version;this.code=code;this.url=url;this.size=size;sha256=hash.toLowerCase(Locale.ROOT);this.notes=notes.length()>2500?notes.substring(0,2500):notes;this.source=source;
         }
+    }
+    static String releasePage(Candidate candidate){
+        if(candidate!=null){
+            URI uri=URI.create(candidate.url);String prefix="/"+REPO+"/releases/download/";
+            if("github.com".equals(uri.getHost())&&uri.getRawPath().startsWith(prefix)){
+                String path=uri.getRawPath().substring(prefix.length());int end=path.indexOf('/');
+                if(end>0)return RELEASES+"/tag/"+path.substring(0,end);
+            }
+        }
+        return RELEASES;
     }
     static int compare(String left,String right){
         String[] a=left.replaceFirst("^v","").split("\\."),b=right.replaceFirst("^v","").split("\\.");

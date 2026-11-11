@@ -75,7 +75,7 @@ public class MediaPreviewTest {
             assertNotNull(root.findViewWithTag("card:1"));View first=root.findViewWithTag("card:1");View last=root.findViewWithTag("card:2");assertEquals(first.getTop(),last.getTop());assertTrue(last.getRight()<=393);
             snapshot(root,"ui-android-library.png");
             field(activity,"tagFilter","纪录片");field(activity,"actorFilter","林遥");field(activity,"yearMinFilter","2024");call(activity,"showFilters");
-            AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();shadowOf(Looper.getMainLooper()).idle();View sheet=dialog.getWindow().getDecorView();sheet.measure(View.MeasureSpec.makeMeasureSpec(393,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(803,View.MeasureSpec.AT_MOST));layout(sheet,393,sheet.getMeasuredHeight());snapshot(sheet,"ui-android-filters.png");dialog.dismiss();
+            LibraryFilterBottomSheet dialog=(LibraryFilterBottomSheet)org.robolectric.shadows.ShadowDialog.getLatestDialog();shadowOf(Looper.getMainLooper()).idle();View sheet=dialog.getWindow().getDecorView();sheet.measure(View.MeasureSpec.makeMeasureSpec(393,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(803,View.MeasureSpec.AT_MOST));layout(sheet,393,sheet.getMeasuredHeight());snapshot(sheet,"ui-android-filters.png");dialog.dismiss();
             JSONObject detail=new JSONObject(works.getJSONObject(0).toString()).put("favorite",1).put("position",90).put("resume_file_id",10)
                 .put("overview","沿着海岸线向北，穿过清晨的港口与安静的山林。本页使用独立测试数据预览界面。")
                 .put("tags",new JSONArray().put("纪录片").put("旅行")).put("actors",new JSONArray().put(new JSONObject().put("name","林遥")).put(new JSONObject().put("name","周宁")))
