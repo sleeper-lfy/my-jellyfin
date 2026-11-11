@@ -12,6 +12,9 @@ class PosterPathError(ValueError):
 @lru_cache(maxsize=256)
 def _poster_dimensions(path, modified, size):
     """Read cached image headers, not pixels; invalidate after any file change."""
+    from .image_isolation import should_isolate, run_image_operation
+    if should_isolate():
+        return run_image_operation('dimensions',path=str(Path(path).absolute()),modified=modified,size=size)
     from PySide6.QtGui import QImageReader
     bounds = QImageReader(path).size()
     return bounds.width(), bounds.height()

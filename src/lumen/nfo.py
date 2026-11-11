@@ -216,6 +216,9 @@ def local_thumbnail(video,root,entry,cache=None):
 
 
 def cache_poster(path, directory):
+    from .image_isolation import should_isolate, run_image_operation
+    if should_isolate():
+        return run_image_operation('cache_poster',path=str(path.absolute()),directory=str(directory.absolute()))
     from PySide6.QtGui import QImageReader
     if path.stat().st_size > 20_000_000: raise ValueError('本地海报超过 20 MB')
     reader = QImageReader(str(path)); size = reader.size()

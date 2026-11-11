@@ -13,7 +13,11 @@ def test_real_historical_initializers_upgrade_without_losing_data(tmp_path, tag)
     fixtures = Path(__file__).parent / 'fixtures/schema'
     path = fixtures / (tag + '.sql')
     provenance = json.loads((fixtures / 'provenance.json').read_text())
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == provenance[tag]['fixture_sha256']
+    # Provenance records the original Windows CRLF export; Git also checks out
+    # this text fixture with LF on POSIX. Canonicalize only line endings in
+    # memory, retaining the golden SQL and its recorded hash unchanged.
+    exported = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+    assert hashlib.sha256(exported).hexdigest() == provenance[tag]['fixture_sha256']
     directory = tmp_path / tag
     directory.mkdir()
     with sqlite3.connect(directory / 'library.sqlite') as db:

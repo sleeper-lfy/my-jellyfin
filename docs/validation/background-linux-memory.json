@@ -1,0 +1,295 @@
+{
+  "captured_at_utc": "2026-11-11T08:59:05.069781+00:00",
+  "platform": "linux",
+  "python": "3.12.14",
+  "measurement": "Linux /proc resident RSS and proportional PSS, bytes; MiB = 1048576 bytes",
+  "scope": "Resident BackgroundService with real LAN/discovery, short-lived watch/NFO image/media workers and disposable data",
+  "limitations": [
+    "Not Windows working-set evidence; no packaged executable was built.",
+    "Resident RSS excludes exited workers and active external descendants.",
+    "Idle API probes exclude uncached image requests and media playback."
+  ],
+  "source_sha256": {
+    "src/lumen/background_service.py": "c41bd85b96f1d69b401f895fb854fbf341d7bcd7e65732e7ddc1f540ee65e350",
+    "src/lumen/background_worker.py": "9d9080f6ff7c962300b2e0072f2fd1d8e421616a5547d8cc38f2d0d124fd44a1"
+  },
+  "file_count": 1,
+  "endpoints": [
+    {
+      "endpoint": "/api/info",
+      "status": 200
+    },
+    {
+      "endpoint": "/api/works",
+      "status": 200
+    },
+    {
+      "endpoint": "/api/continue",
+      "status": 200
+    }
+  ],
+  "workers": [
+    {
+      "job": "watch",
+      "status": "ok",
+      "summary": {
+        "imported": 0,
+        "updated": 0,
+        "waiting": 0,
+        "errors": 0,
+        "offline": 0,
+        "automation": {
+          "completed": 0,
+          "pending": 0,
+          "retry": 0
+        }
+      },
+      "error_type": "",
+      "observed_worker_peak_rss_bytes": 20721664,
+      "note": "Sampled child RSS; external FFmpeg/other descendants are not included."
+    },
+    {
+      "job": "watch",
+      "status": "ok",
+      "summary": {
+        "imported": 0,
+        "updated": 0,
+        "waiting": 1,
+        "errors": 0,
+        "offline": 0,
+        "automation": {
+          "completed": 0,
+          "pending": 0,
+          "retry": 0
+        }
+      },
+      "error_type": "",
+      "observed_worker_peak_rss_bytes": 20803584,
+      "note": "Sampled child RSS; external FFmpeg/other descendants are not included."
+    },
+    {
+      "job": "watch",
+      "status": "ok",
+      "summary": {
+        "imported": 1,
+        "updated": 0,
+        "waiting": 0,
+        "errors": 0,
+        "offline": 0,
+        "automation": {
+          "completed": 0,
+          "pending": 0,
+          "retry": 0
+        }
+      },
+      "error_type": "",
+      "observed_worker_peak_rss_bytes": 36397056,
+      "note": "Sampled child RSS; external FFmpeg/other descendants are not included."
+    },
+    {
+      "job": "media",
+      "status": "ok",
+      "summary": {
+        "completed": 1,
+        "errors": 0
+      },
+      "error_type": "",
+      "observed_worker_peak_rss_bytes": 14934016,
+      "note": "Sampled child RSS; external FFmpeg/other descendants are not included."
+    }
+  ],
+  "samples": [
+    {
+      "VmHWM_bytes": 12075008,
+      "VmRSS_bytes": 12075008,
+      "RssAnon_bytes": 7512064,
+      "RssFile_bytes": 4562944,
+      "Pss_bytes": 9528320,
+      "Private_Clean_bytes": 32768,
+      "Private_Dirty_bytes": 7512064,
+      "stage": "python_baseline",
+      "rss_mib": 11.516,
+      "pss_mib": 9.087,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread"
+      ]
+    },
+    {
+      "VmHWM_bytes": 19095552,
+      "VmRSS_bytes": 19095552,
+      "RssAnon_bytes": 14196736,
+      "RssFile_bytes": 4898816,
+      "Pss_bytes": 16377856,
+      "Private_Clean_bytes": 28672,
+      "Private_Dirty_bytes": 14196736,
+      "stage": "background_modules_imported",
+      "rss_mib": 18.211,
+      "pss_mib": 15.619,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread"
+      ]
+    },
+    {
+      "VmHWM_bytes": 22429696,
+      "VmRSS_bytes": 22429696,
+      "RssAnon_bytes": 16338944,
+      "RssFile_bytes": 6057984,
+      "Pss_bytes": 19128320,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 16375808,
+      "stage": "lan_and_empty_directory_monitor_ready",
+      "rss_mib": 21.391,
+      "pss_mib": 18.242,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    },
+    {
+      "VmHWM_bytes": 22573056,
+      "VmRSS_bytes": 22573056,
+      "RssAnon_bytes": 16404480,
+      "RssFile_bytes": 6135808,
+      "Pss_bytes": 19226624,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 16437248,
+      "stage": "empty_watch_worker_finished",
+      "rss_mib": 21.527,
+      "pss_mib": 18.336,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    },
+    {
+      "VmHWM_bytes": 22585344,
+      "VmRSS_bytes": 22585344,
+      "RssAnon_bytes": 16412672,
+      "RssFile_bytes": 6139904,
+      "Pss_bytes": 19236864,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 16445440,
+      "stage": "new_media_observation_worker_finished",
+      "rss_mib": 21.539,
+      "pss_mib": 18.346,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    },
+    {
+      "VmHWM_bytes": 22597632,
+      "VmRSS_bytes": 22597632,
+      "RssAnon_bytes": 16420864,
+      "RssFile_bytes": 6144000,
+      "Pss_bytes": 19247104,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 16453632,
+      "stage": "nfo_image_ingestion_worker_finished",
+      "rss_mib": 21.551,
+      "pss_mib": 18.355,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    },
+    {
+      "VmHWM_bytes": 22601728,
+      "VmRSS_bytes": 22601728,
+      "RssAnon_bytes": 16424960,
+      "RssFile_bytes": 6144000,
+      "Pss_bytes": 19251200,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 16457728,
+      "stage": "media_probe_worker_finished",
+      "rss_mib": 21.555,
+      "pss_mib": 18.359,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    },
+    {
+      "VmHWM_bytes": 25526272,
+      "VmRSS_bytes": 25526272,
+      "RssAnon_bytes": 17879040,
+      "RssFile_bytes": 7614464,
+      "Pss_bytes": 21440512,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 17911808,
+      "stage": "after_read_only_lan_requests",
+      "rss_mib": 24.344,
+      "pss_mib": 20.447,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    },
+    {
+      "VmHWM_bytes": 25534464,
+      "VmRSS_bytes": 25534464,
+      "RssAnon_bytes": 17887232,
+      "RssFile_bytes": 7614464,
+      "Pss_bytes": 21448704,
+      "Private_Clean_bytes": 24576,
+      "Private_Dirty_bytes": 17920000,
+      "stage": "idle_after_all_workers_exited",
+      "rss_mib": 24.352,
+      "pss_mib": 20.455,
+      "qt_modules": [],
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "mpv_module": false,
+      "threads": [
+        "MainThread",
+        "TaskJournal",
+        "LumenLAN",
+        "LumenDiscovery"
+      ]
+    }
+  ]
+}

@@ -117,6 +117,9 @@ def search_sites(library, query, tag='', plugin_id='', progress=None):
 
 def cache_discovery_cover(library, work_id, *, poster_only=False):
     """Fetch one small visible poster without holding a database write lock."""
+    from .image_isolation import should_isolate, run_image_operation
+    if should_isolate():
+        return run_image_operation('cache_discovery_cover',directory=str(library.directory.absolute()),work_id=work_id,poster_only=poster_only)
     import json
     from pathlib import Path
     from urllib.parse import urlparse

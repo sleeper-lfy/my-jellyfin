@@ -17,18 +17,19 @@ def isolated_data(tmp_path, monkeypatch):
 
 
 def test_tool_lookup_prefers_configured_then_path_then_downloaded(isolated_data, monkeypatch):
+    executable = 'ffmpeg' + ('.exe' if core.os.name == 'nt' else '')
     configured = isolated_data/'tools'; configured.mkdir()
-    (configured/'ffmpeg.exe').write_bytes(b'MZ-configured')
+    (configured/executable).write_bytes(b'MZ-configured')
     downloaded = isolated_data/'ffmpeg'; downloaded.mkdir()
-    (downloaded/'ffmpeg.exe').write_bytes(b'MZ-downloaded')
-    monkeypatch.setattr(core.shutil, 'which', lambda name: str(isolated_data/'path-ffmpeg.exe'))
+    (downloaded/executable).write_bytes(b'MZ-downloaded')
+    monkeypatch.setattr(core.shutil, 'which', lambda name: str(isolated_data/('path-'+executable)))
     core.set_tool_directory(str(configured))
-    assert core.tool('ffmpeg') == str(configured/'ffmpeg.exe')
-    (configured/'ffmpeg.exe').unlink()
-    assert core.tool('ffmpeg') == str(isolated_data/'path-ffmpeg.exe')
+    assert core.tool('ffmpeg') == str(configured/executable)
+    (configured/executable).unlink()
+    assert core.tool('ffmpeg') == str(isolated_data/('path-'+executable))
     monkeypatch.setattr(core.shutil, 'which', lambda name: None)
-    assert core.tool('ffmpeg') == str(downloaded/'ffmpeg.exe')
-    (downloaded/'ffmpeg.exe').unlink()
+    assert core.tool('ffmpeg') == str(downloaded/executable)
+    (downloaded/executable).unlink()
     assert core.tool('ffmpeg') is None
 
 

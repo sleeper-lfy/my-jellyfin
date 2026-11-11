@@ -248,11 +248,12 @@ if (-not (Get-Process -Id $request.pid -ErrorAction SilentlyContinue) -and (Test
 '''
 
 
-def prepare_installer(candidate,installer,data_dir,application=None):
+def prepare_installer(candidate,installer,data_dir,application=None,owner_pid=None):
     if not can_install():raise ValueError('自动安装仅支持已打包的 Windows 客户端；源码运行请更新 Git')
     installer=Path(installer).resolve();verify(installer,candidate)
     application=Path(application or sys.executable).resolve();directory=installer.parent
-    request={'pid':os.getpid(),'version':candidate.version,'installer':str(installer),'bytes':candidate.size,'sha256':candidate.sha256,
+    if owner_pid is not None and (type(owner_pid) is not int or owner_pid <= 0):raise ValueError('无效后台进程编号')
+    request={'pid':owner_pid or os.getpid(),'version':candidate.version,'installer':str(installer),'bytes':candidate.size,'sha256':candidate.sha256,
              'application':str(application),'directory':str(application.parent),'data_dir':str(Path(data_dir).resolve()),
              'log':str(directory/'update-install.log'),'result':str(directory/'update-result.json')}
     configuration=directory/'update-request.json';script=directory/'Lumen-update.ps1'

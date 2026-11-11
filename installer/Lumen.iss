@@ -50,3 +50,40 @@ Name: "{autodesktop}\Lumen"; Filename: "{app}\Lumen.exe"; WorkingDir: "{app}"; T
 Filename: "{app}\Lumen.exe"; Description: "Launch Lumen"; Flags: nowait postinstall skipifsilent
 
 ; Deliberately no UninstallDelete entry: media and %LOCALAPPDATA%\Lumen belong to the user.
+
+[Code]
+function IsThisInstallationStartup(const Command: String): Boolean;
+var
+  Application, Prefix: String;
+begin
+  { Match only the fixed command written by lumen.startup. An isolated
+    /LumenVerification install must not remove the real installation's value. }
+  Application := ExpandConstant('{app}\Lumen.exe');
+  Prefix := '"' + Application + '" --background --data-dir ';
+  Result := (Length(Command) > Length(Prefix)) and
+    (CompareText(Copy(Command, 1, Length(Prefix)), Prefix) = 0);
+  if not Result then
+  begin
+    { list2cmdline leaves an executable without spaces unquoted. }
+    if Pos(' ', Application) = 0 then
+    begin
+      Prefix := Application + ' --background --data-dir ';
+      Result := (Length(Command) > Length(Prefix)) and
+        (CompareText(Copy(Command, 1, Length(Prefix)), Prefix) = 0);
+    end;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Command: String;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Lumen', Command) then
+    begin
+      if IsThisInstallationStartup(Command) then
+        RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Lumen');
+    end;
+  end;
+end;

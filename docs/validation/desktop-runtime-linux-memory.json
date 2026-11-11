@@ -1,0 +1,65 @@
+{
+  "platform": "Linux",
+  "verified_at": "2026-11-11T09:10:22.848519+00:00",
+  "entry": "python -m lumen --background --data-dir <temporary synthetic library>",
+  "samples": [
+    {
+      "stage": "actual_application_background_entry",
+      "VmHWM_bytes": 22347776,
+      "VmRSS_bytes": 22347776,
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "rss_mib": 21.312,
+      "direct_child_pids": null
+    },
+    {
+      "stage": "after_api_and_isolated_poster_request",
+      "VmHWM_bytes": 23048192,
+      "VmRSS_bytes": 23048192,
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "rss_mib": 21.98,
+      "direct_child_pids": null
+    },
+    {
+      "stage": "idle_after_repeated_control_requests",
+      "VmHWM_bytes": 23064576,
+      "VmRSS_bytes": 23064576,
+      "qt_mapped": false,
+      "mpv_mapped": false,
+      "rss_mib": 21.996,
+      "direct_child_pids": null
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "/api/info",
+      "http": 200,
+      "bytes": 109
+    },
+    {
+      "route": "/api/works",
+      "http": 200,
+      "bytes": 51
+    },
+    {
+      "route": "/api/works/1/cover",
+      "http": 200,
+      "bytes": 73
+    }
+  ],
+  "source_sha256": {
+    "src/lumen/app.py": "c52ef627ba66b8e8dac588b8efa328a676143948b74baafbd20222372932690f",
+    "src/lumen/desktop_runtime.py": "c159bee27ac3ec85205a0659c2cb5b83d815aa72ba66c8e0a0d502bcf3bc8143",
+    "src/lumen/background_service.py": "c41bd85b96f1d69b401f895fb854fbf341d7bcd7e65732e7ddc1f540ee65e350",
+    "src/lumen/image_isolation.py": "7e302d1e0abee8020c61c7df4b16ae1a844261c21292008093e2f1801ebdd763",
+    "src/lumen/logging_setup.py": "3594369b88bc38924a35a3d321370f9bf23a66c62457e2dd03778982d61cdd57"
+  },
+  "limitations": [
+    "Linux resident RSS, not Windows working set or private bytes",
+    "No frozen EXE or real Windows tray was built or measured",
+    "Foreground UI, playback and active worker descendants are outside idle-owner samples"
+  ],
+  "packaged": false,
+  "released": false
+}

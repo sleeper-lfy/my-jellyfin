@@ -7,6 +7,13 @@ from .core import data_directory
 
 
 def main():
+    # Worker and tray entry points must run before importing any Qt module.
+    if '--background-worker' in sys.argv:
+        from .background_worker import main as worker
+        return worker([value for value in sys.argv[1:] if value != '--background-worker'])
+    if '--image-worker' in sys.argv:
+        from .image_worker import main as worker
+        return worker()
     if '--browser-http-worker' in sys.argv:
         from .browser_http_worker import main as worker
         worker()
@@ -22,6 +29,9 @@ def main():
     parser.add_argument('--port', type=int, default=8097)
     parser.add_argument('--verify-mpv', action='store_true', help='Verify the bundled libmpv and shader resources')
     parser.add_argument('--smoke', action='store_true', help='Render all main pages and exit (for CI)')
+    parser.add_argument('--background', action='store_true', help='Start the lightweight desktop owner in the tray')
+    parser.add_argument('--desktop-child', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--foreground', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.smoke:
         os.environ['LUMEN_SMOKE'] = '1'
@@ -29,8 +39,12 @@ def main():
         os.environ['LUMEN_DATA_DIR'] = args.data_dir
     directory = data_directory()
     directory.mkdir(parents=True, exist_ok=True)
-    from .diagnostics import configure_logging
-    configure_logging(directory)
+    from .logging_setup import configure_logging
+    managed = not args.serve and not args.smoke and not args.verify_mpv and not args.desktop_child and not args.foreground and (sys.platform == 'win32' or args.background)
+    configure_logging(directory, 'background.log' if managed else 'diagnostics.log')
+    if managed:
+        from .desktop_runtime import run_desktop
+        return run_desktop(directory, background=args.background)
     if args.verify_mpv:
         import json
         from pathlib import Path
@@ -51,10 +65,9 @@ def main():
         from .server import LanServer
         import signal
         import threading
-        from PySide6.QtCore import QLockFile
-        service_lock = QLockFile(str(directory / "app.lock"))
-        service_lock.setStaleLockTime(0)
-        if not service_lock.tryLock(100):
+        from .desktop_runtime import RuntimeLock
+        service_lock = RuntimeLock(directory)
+        if not service_lock.acquire():
             print("Lumen is already using this data directory.", file=sys.stderr)
             return 1
         service = LanServer(directory,args.host,args.port)
@@ -67,7 +80,7 @@ def main():
             stop.wait()
         finally:
             service.stop()
-            service_lock.unlock()
+            service_lock.close()
         return 0
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer, QLockFile
@@ -89,13 +102,20 @@ def main():
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(None, 'Lumen 已运行', '同一数据目录只允许一个应用实例，请切换到已打开的窗口。')
         return 1
+    desktop_client = None
     try:
-        window = MainWindow(directory)
+        if args.desktop_child:
+            from .desktop_client import GuiRuntimeClient
+            desktop_client = GuiRuntimeClient(directory)
+        window = MainWindow(directory, desktop_client=desktop_client) if desktop_client else MainWindow(directory)
+        if desktop_client:
+            desktop_client.attach(window)
     except (ValueError, OSError, sqlite3.Error) as error:
         logging.exception('Cannot open library')
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.critical(None, '资料库未能打开', str(error) + '\n\n请使用匹配版本的客户端或恢复备份。升级前备份保存在数据目录的 backups 文件夹。')
         watchdog.stop()
+        if desktop_client: desktop_client.stop()
         lock.unlock()
         return 1
     window.shutdownFinished.connect(app.quit)
@@ -121,5 +141,6 @@ def main():
             QTimer.singleShot(0,capture_and_close)
         QTimer.singleShot(100, check)
     result = app.exec()
+    if desktop_client: desktop_client.stop()
     lock.unlock()
     return result

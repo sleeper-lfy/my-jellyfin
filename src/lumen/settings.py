@@ -32,6 +32,15 @@ class Settings(QDialog):
         self.proxy.setPlaceholderText('留空直连；http://127.0.0.1:7890 或 socks5://127.0.0.1:1080')
         form.addRow('默认刮削代理', self.proxy)
         form.addRow('数据目录', label(str(self.library.directory)))
+        self.startup = QCheckBox('登录 Windows 后在后台启动')
+        self.startup.setObjectName('windowsStartup')
+        self.startup_status = label('')
+        self.startup_status.setObjectName('windowsStartupStatus')
+        self.startup_status.setWordWrap(True)
+        form.addRow('开机自启动', self.startup)
+        form.addRow(self.startup_status)
+        self.refresh_startup()
+        self.startup.toggled.connect(self.change_startup)
         form.addRow(button('显示大小 · 全局…',self.display_size))
         from . import fftools
         missing = fftools.missing_tools()
@@ -164,7 +173,7 @@ class Settings(QDialog):
         refresh_addresses()
         self.lan_port.valueChanged.connect(refresh_addresses)
         lan_form.addRow('电脑地址', addresses)
-        explanation = label('手机与电脑连接同一局域网，在 Android 客户端发现或输入电脑地址，并填写访问密钥。\n自动发现需要允许专用网络的 UDP 8098，视频连接使用上方 TCP 端口。\n如 Windows 防火墙提示，请仅允许专用网络。服务仅在程序打开时运行；视频原格式直传，不进行转码。')
+        explanation = label('手机与电脑连接同一局域网，在 Android 客户端发现或输入电脑地址，并填写访问密钥。\n自动发现需要允许专用网络的 UDP 8098，视频连接使用上方 TCP 端口。\n如 Windows 防火墙提示，请仅允许专用网络。Windows 关闭主窗口后服务继续在托盘运行，右键托盘选择“退出 Lumen”才停止；视频原格式直传，不进行转码。')
         explanation.setWordWrap(True)
         lan_form.addRow(explanation)
         def save_lan():
@@ -177,6 +186,32 @@ class Settings(QDialog):
         tabs.addTab(lan,'局域网 / Android')
         outer.addWidget(button('关闭', self.accept))
         self.reload()
+
+    def refresh_startup(self):
+        from . import startup
+        from PySide6.QtCore import QSignalBlocker
+        self._startup_state = startup.status(self.library.directory.resolve())
+        with QSignalBlocker(self.startup):
+            self.startup.setChecked(self._startup_state.enabled)
+        self.startup.setEnabled(self._startup_state.supported)
+        self.startup_status.setText(self._startup_state.description)
+
+    def change_startup(self, enabled):
+        from . import startup
+        previous = self._startup_state
+        try:
+            startup.set_enabled(self.library.directory.resolve(), enabled)
+        except startup.StartupError as error:
+            self.refresh_startup()
+            if not self._startup_state.supported:
+                # A permission change can also prevent the rollback read. Keep
+                # the last confirmed state visible, with the read-error notice.
+                from PySide6.QtCore import QSignalBlocker
+                with QSignalBlocker(self.startup):
+                    self.startup.setChecked(previous.enabled)
+            QMessageBox.warning(self, '未保存自启动设置', str(error))
+            return
+        self.refresh_startup()
 
     def save_downloads(self):
         try:

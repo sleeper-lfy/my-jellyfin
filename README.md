@@ -6,6 +6,8 @@ Windows 本地影音管理软件，配套 Android 局域网客户端：真实文
 
 **当前源码更新（尚未打包发布）**：`work` 分支已修复系统浅色模式下进入发现页变白、移除长按临时倍速的动态文字浮层，并新增其他应用“打开方式”的独立视频播放入口。Android 247 项测试通过，lint 零错误、87 项警告。[源码验证记录](docs/validation/android-fixes-unreleased.json) · [修复后的发现页](docs/screenshots/android-fixes-unreleased/app-daymode-discovery-dark.png)。这些修复尚未包含在上述 APK 中；版本仍为 0.4.19／versionCode 36，本次未生成安装包或发布 Release。
 
+PC 当前源码新增 [Windows 开机自启动与轻量托盘待机](docs/desktop-standby.md)：关闭窗口后保留手机服务与目录监控，右键托盘退出才停止。无活跃任务时释放完整界面，50MB 作为后台优化目标；Linux 实测与 Windows 尚待验收的范围在文档中分别说明。此项同样尚未打包发布。
+
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
 ## 软件界面
@@ -93,6 +95,8 @@ py -3.12 -m venv .venv
 ```
 
 也可运行 `scripts/start-windows.ps1`。默认数据目录 `%LOCALAPPDATA%\Lumen`；`--data-dir D:\MyLumenData` 可自定义。`LUMEN_DATA_DIR` 环境变量也可覆盖。相同目录使用单实例锁。
+
+当前源码的 Windows 安装版可在 **设置 → 通用 / 数据安全 → 开机自启动** 启用“登录 Windows 后在后台启动”。关闭主窗口回到托盘，已开启的 LAN 和目录监控继续工作；双击托盘重新打开，右键“退出 Lumen”完全退出。[操作与内存验证说明](docs/desktop-standby.md)。
 
 新版源码支持[编号影片 / VR 自动入库](docs/automatic-import.md)：目录监控接入识别、完整详情和整理，按目录保存规则，异常集中确认并支持重启恢复。
 

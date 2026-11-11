@@ -257,8 +257,22 @@ def test_stopping_engine_kills_its_descendant_process(tmp_path, stop):
                 finally:
                     kernel.CloseHandle(handle)
         else:
-            with pytest.raises(ProcessLookupError):
-                os.kill(pid, 0)
+            deadline = time.monotonic() + 3
+            while True:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    break
+                # Container PID 1 may leave a killed orphan as a zombie. It no
+                # longer executes, although kill(pid, 0) still sees its PID.
+                try:
+                    state = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+                except OSError:
+                    state = None
+                if state == 'Z':
+                    break
+                assert time.monotonic() < deadline, f'Descendant {pid} is still alive (state={state})'
+                time.sleep(.03)
 
 
 def test_process_output_is_bounded(tmp_path, monkeypatch):

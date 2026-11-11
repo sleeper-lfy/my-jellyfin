@@ -131,6 +131,8 @@ class DesktopUpdates(QObject):
         window=self.window
         if window._closing or window.task_budget.active or window.jobs or window.job_queue or window._browse_job or window._auxiliary_jobs-({ignore} if ignore else set()) or (window.player.isVisible() and window.player.file):return False
         if automatic and QApplication.activeModalWidget() is not None:return False
+        client=getattr(window,'desktop_client',None)
+        if client is not None and not client.idle():return False
         server=window.lan_server
         if server:
             if not server.lock.acquire(blocking=False):return False
@@ -158,7 +160,9 @@ class DesktopUpdates(QObject):
             try:library.backup(self.directory/f'library-before-{candidate.version}-{int(time.time())}.sqlite')
             finally:library.close()
             check_cancelled(job.isInterruptionRequested)
-            return updates.prepare_installer(candidate,installer,directory)
+            client=getattr(self.window,'desktop_client',None)
+            options={'owner_pid':client.owner_pid} if client is not None else {}
+            return updates.prepare_installer(candidate,installer,directory,**options)
         def prepared(plan):
             if self.window._closing:return
             if automatic and not self.window.library.setting('updates:install',False):
@@ -167,6 +171,12 @@ class DesktopUpdates(QObject):
                 self.busy=False;self.notify('有新任务或播放开始，已暂缓安装；请空闲后重试。');return
             try:updates.launch_installer(plan)
             except OSError as error:self.failed(str(error));return
+            client=getattr(self.window,'desktop_client',None)
+            if client is not None:
+                try:client.request_exit()
+                except Exception:
+                    self.notify('安装器已启动，后台尚未退出。请从系统托盘完全退出 Lumen 后继续安装。')
+                    return
             self.window._update_pending=True
             for widget in QApplication.topLevelWidgets():
                 if widget is not self.window and widget is not self.window.player:widget.close()

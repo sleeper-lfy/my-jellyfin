@@ -1277,13 +1277,14 @@ class MainWindow(QMainWindow):
     # Production browsing always runs on a worker. GUI regression fixtures may
     # opt into deterministic small-catalog rendering without changing workers.
     synchronous_small_catalog = False
-    def __init__(self, directory=None):
+    def __init__(self, directory=None, desktop_client=None):
         super().__init__()
+        self.desktop_client=desktop_client
         self.library = Library(directory,timeout=.15)
         from .task_journal import TaskJournal,TaskBudget
         self.task_journal=TaskJournal(self.library.directory)
-        self.task_budget=TaskBudget(self.library.setting('background_concurrency',1))
-        self.lan_server = None
+        self.task_budget=desktop_client.task_budget if desktop_client is not None else TaskBudget(self.library.setting('background_concurrency',1))
+        self.lan_server = desktop_client.lan_server if desktop_client is not None else None
         self.setWindowTitle('Lumen · 私人光影库')
         self.resize(1400, 900)
         self.setMinimumSize(1024, 700)
@@ -1291,7 +1292,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         self._auxiliary_jobs=set()
         self.jobs = []
-        self.job_queue=[];self.jobs_paused=False;self._job_resources={};self._job_functions={}
+        self.job_queue=[];self.jobs_paused=bool(self.task_budget.paused) if desktop_client is not None else False;self._job_resources={};self._job_functions={}
         self._closing = False
         self._browse_job=None;self._browse_pending=None;self._browse_epoch=0
         self.section, self.subtab = 'home', 0
@@ -1498,7 +1499,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.status)
         self.navigate('home')
         config = self.library.setting('lan', {})
-        if config.get('enabled'):
+        if desktop_client is None and config.get('enabled'):
             try:
                 self.apply_lan(True, config.get('port',8097))
             except Exception as exc:
@@ -1522,8 +1523,9 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(600_000,self.schedule_inspect)
         self.resource_scheduler=QTimer(self);self.resource_scheduler.setInterval(500);self.resource_scheduler.timeout.connect(self.sync_playback_budget);self.resource_scheduler.start()
         self.watch_scheduler=QTimer(self);self.watch_scheduler.setInterval(10000);self.watch_scheduler.timeout.connect(self.schedule_watched);self.watch_scheduler.start()
-        with self.library.db:
-            self.library.db.execute("UPDATE tasks SET status='cancelled',error='应用重启，未完成任务可重试' WHERE kind='background' AND status IN ('running','paused','queued')")
+        if desktop_client is None:
+            with self.library.db:
+                self.library.db.execute("UPDATE tasks SET status='cancelled',error='应用重启，未完成任务可重试' WHERE kind='background' AND status IN ('running','paused','queued')")
 
     def media_management(self,section=None):
         from .media_management_ui import show_media_management
@@ -2910,6 +2912,9 @@ class MainWindow(QMainWindow):
             self.stats_layout.addLayout(row)
 
     def apply_lan(self, enabled, port):
+        if self.desktop_client is not None:
+            self.lan_server=self.desktop_client.apply_lan(enabled,port)
+            return
         from .server import LanServer
         previous = self.lan_server
         if previous:
@@ -2947,9 +2952,17 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if getattr(self,'_shutdown_complete',False):event.accept();return
+        client=self.desktop_client
+        if client is not None and not client.exit_requested and not getattr(self,'_update_pending',False) and not self._closing:
+            if client.gui_active(self):
+                self._tray_requested=True
+                self.hide()
+                event.ignore()
+                return
         if not self._closing:self.player.close()
         self._closing = True
-        self.task_budget.set_playback(False);self.task_budget.set_paused(False)
+        self.task_budget.set_playback(False)
+        if self.desktop_client is None:self.task_budget.set_paused(False)
         self.discovery_images.stop()
         if getattr(self,'import_form',None):self.import_form.reject()
         self.resource_scheduler.stop();self.watch_scheduler.stop();self.remote.timer.stop();self.remote.clear()
@@ -3001,7 +3014,7 @@ class MainWindow(QMainWindow):
                 return
         self.scheduler.stop()
         self.media_scheduler.stop()
-        if self.lan_server:
+        if self.desktop_client is None and self.lan_server:
             self.lan_server.stop()
         self.task_journal.stop()
         self.library.close()

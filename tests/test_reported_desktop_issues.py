@@ -215,7 +215,7 @@ class Busy(Original):
         QTimer.singleShot(20,close_when_started)
 ui.MainWindow=Busy
 from lumen.app import main
-sys.argv=['lumen','--data-dir',sys.argv[1]]
+sys.argv=['lumen','--foreground','--data-dir',sys.argv[1]]
 raise SystemExit(main())
 '''
     env=dict(os.environ,QT_QPA_PLATFORM='offscreen')

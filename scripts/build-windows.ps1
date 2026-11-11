@@ -28,6 +28,7 @@ if ($SkipTests) {
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed; packaging stopped' }
 }
 & $LumenPython -m PyInstaller --noconfirm --clean --windowed --onedir --name Lumen --paths src --icon assets/lumen.ico `
+  --runtime-hook scripts/pyinstaller-hooks/rth_lumen_desktop.py `
   --hidden-import lumen.js_worker --hidden-import lumen.sandbox --hidden-import lumen.browser_http_worker --additional-hooks-dir scripts/pyinstaller-hooks --collect-all curl_cffi --collect-submodules PySide6.QtQml `
   --add-binary '.local/mpv-bundle/libmpv-2.dll;lumen/bin' `
   --add-data '.local/mpv-bundle/build.json;lumen/bin' --collect-data lumen `
