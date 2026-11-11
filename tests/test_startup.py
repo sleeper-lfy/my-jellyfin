@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import PureWindowsPath
 from types import SimpleNamespace
 
 import pytest
@@ -59,12 +60,25 @@ class Registry:
 
 
 @pytest.fixture
-def installation(tmp_path, monkeypatch):
-    executable = tmp_path / 'Installed app & media' / 'Lumen.exe'
+def installation(tmp_path_factory, monkeypatch):
+    # The ordinary registration tests must fit Windows Run's command limit;
+    # function-named tmp_path directories otherwise consume the budget twice.
+    root = tmp_path_factory.mktemp('su')
+    executable = root / '安装 & app' / 'Lumen.exe'
     executable.parent.mkdir()
     executable.write_bytes(b'MZ')
-    directory = tmp_path / '资料 & database'
+    directory = root / '资料 & db'
     directory.mkdir()
+    command = subprocess.list2cmdline([str(executable), '--background', '--data-dir', str(directory)])
+    assert len(command.encode('utf-16-le')) // 2 <= startup.MAX_COMMAND_LENGTH
+    # Also guard the fixture names against a longer Windows CI temp root,
+    # even when this suite is running under a shorter POSIX temp directory.
+    windows_root = PureWindowsPath(
+        r'C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-999999\su999999')
+    windows_command = subprocess.list2cmdline([
+        str(windows_root / executable.parent.name / executable.name),
+        '--background', '--data-dir', str(windows_root / directory.name)])
+    assert len(windows_command.encode('utf-16-le')) // 2 <= startup.MAX_COMMAND_LENGTH
     registry = Registry()
     monkeypatch.setattr(startup, 'sys', SimpleNamespace(platform='win32', frozen=True, executable=str(executable)))
     monkeypatch.setattr(startup, '_registry', lambda: registry)

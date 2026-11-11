@@ -1,6 +1,8 @@
 import ctypes
 import json
+import os
 from pathlib import Path
+import site
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -111,10 +113,48 @@ def test_module_matching_uses_basename_and_rejects_only_gui_playback_binaries(na
     assert acceptance._gui_module('C:\\Installed app\\' + name) is expected
 
 
-def source_entry(monkeypatch):
-    monkeypatch.setattr(acceptance, '_command', lambda executable, arguments: [sys.executable, '-m', 'lumen', *arguments])
+def source_entry(monkeypatch, *, runtime=sys):
+    # Windows venv python.exe is a redirector: Popen.pid is its wrapper PID,
+    # while IPC reports the real interpreter child. Run the base interpreter
+    # directly, with this environment's packages explicitly available, so the
+    # unchanged production verifier can still require an exact owner PID.
+    executable = str(Path(runtime._base_executable).resolve(strict=True)) if runtime.platform == 'win32' else runtime.executable
+    monkeypatch.setattr(acceptance, '_command', lambda ignored, arguments: [executable, '-m', 'lumen', *arguments])
     source = str(Path(__file__).resolve().parents[1] / 'src')
-    monkeypatch.setenv('PYTHONPATH', source)
+    paths = [source, *site.getsitepackages(), *os.environ.get('PYTHONPATH', '').split(os.pathsep)]
+    monkeypatch.setenv('PYTHONPATH', os.pathsep.join(dict.fromkeys(path for path in paths if path)))
+    return executable
+
+
+def test_source_fixture_bypasses_windows_venv_redirector_and_preserves_its_packages(monkeypatch, tmp_path):
+    redirector = tmp_path / 'venv' / 'Scripts' / 'python.exe'
+    base = tmp_path / 'base python' / 'python.exe'
+    packages = tmp_path / 'venv' / 'Lib' / 'site-packages'
+    inherited = tmp_path / 'inherited modules'
+    for executable in (redirector, base):
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b'fixture')
+    packages.mkdir(parents=True)
+    monkeypatch.setattr(site, 'getsitepackages', lambda: [str(packages)])
+    monkeypatch.setenv('PYTHONPATH', str(inherited))
+    runtime = SimpleNamespace(platform='win32', executable=str(redirector), _base_executable=str(base))
+    assert source_entry(monkeypatch, runtime=runtime) == str(base.resolve())
+    command = acceptance._command(redirector, ['--background-no-tray', '--data-dir', 'data'])
+    assert command == [str(base.resolve()), '-m', 'lumen', '--background-no-tray', '--data-dir', 'data']
+    assert str(redirector) not in command
+    assert os.environ['PYTHONPATH'].split(os.pathsep) == [
+        str(Path(__file__).resolve().parents[1] / 'src'), str(packages), str(inherited)]
+
+
+def test_source_interpreter_pid_matches_popen_and_can_import_venv_qt(monkeypatch):
+    executable = source_entry(monkeypatch)
+    process = subprocess.Popen([executable, '-c',
+        "import json,os; from PySide6 import QtCore; import lumen; print(json.dumps({'pid':os.getpid(),'qt':QtCore.qVersion()}))"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    output, error = process.communicate(timeout=15)
+    assert process.returncode == 0, error
+    state = json.loads(output)
+    assert state['pid'] == process.pid and state['qt'].startswith('6.')
 
 
 def test_actual_no_tray_entry_http_workers_duplicate_and_exit_and_durable_proof(monkeypatch, tmp_path):
