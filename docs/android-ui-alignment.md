@@ -1,6 +1,6 @@
 # Android 对齐与 Material 3 控件修复
 
-本页记录 0.4.20 Preview 3 之后的源码修复，尚未发布到现有安装包。Java View 页面可以直接使用 Material 3 官方组件，无需先重写成 Compose；本轮修正详情、我的、媒体库筛选、连接管理及两端更新渠道。
+本页记录已在 0.4.21 Preview 1 发布的界面修复。Java View 页面可以直接使用 Material 3 官方组件，无需先重写成 Compose；本轮修正详情、我的、媒体库筛选、连接管理及两端更新渠道。
 
 - 详情的收藏、想看、评分共用竖向图标操作样式，图标和文字居中，评分及个人状态更新后保持布局。
 - “我的”数量与说明文字使用同宽、居中的列；保留真实数量、快捷入口和动态更新。
@@ -32,3 +32,6 @@ Android 全量 **263 项测试通过，零失败／错误／跳过**；修正导
 [详情大字体](screenshots/android-ui-alignment/detail-actions-font1.5.png) · [数量列大字体](screenshots/android-ui-alignment/mine-totals-font1.5.png)。
 
 验证结果与源码文件、截图摘要记录在 [本轮验证](validation/android-ui-alignment.json)。
+
+
+[0.4.21 Preview 1 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.21-preview.1) · [公开发布验证](validation/preview-0.4.21-1.json)。

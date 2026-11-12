@@ -2,9 +2,7 @@
 
 Windows 本地影音管理软件，配套 Android 局域网客户端：真实文件扫描与播放、电影/整部电视剧/VR 电影/其他目录、插件刮削、安全整理、完整候选随机队列、个人评分与统计、女演员墙、可解释推荐和新片发现。无需云账号。
 
-最新测试预发布：[Lumen 0.4.20 Preview 3](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.20-preview.3) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.20-preview.3/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.20-preview.3/Lumen-android-debug.apk)。新增 PC 开机自启动与轻量托盘后台，关闭窗口后保留 LAN 和目录监控；修复 Android 发现页变白、长按倍速文字浮层，并支持其他应用“打开方式”播放视频。Windows 1012 项测试及安装／卸载验收、Android 247 项测试与 lint 通过，六个公开附件已完整下载校验。[版本说明](docs/releases/0.4.20.md) · [托盘操作与内存说明](docs/desktop-standby.md) · [发布验证](docs/validation/preview-0.4.20-3.json)。
-
-**后续源码修复（尚未发布）**：修正 Android 详情操作、“我的”数量与文字、连接列表的对齐和间距；媒体库筛选与下拉输入改用官方 Material 3 组件，补齐与 Compose 一致的原生主题；手机和 PC 的更新渠道可点击打开 GitHub Release。[实际截图与修复范围](docs/android-ui-alignment.md)。上述下载仍为已发布的 Preview 3。
+最新测试预发布：[Lumen 0.4.21 Preview 1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.21-preview.1) · [Windows 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.21-preview.1/Lumen-Setup-x64.exe) · [Android APK](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.21-preview.1/Lumen-android-debug.apk)。修复 Android 详情、我的与连接列表的对齐和间距；媒体库筛选及下拉采用官方 Material 3，统一主题并处理键盘安全区。两端更新渠道可直接打开 GitHub Release。Windows 1014 项测试与安装／卸载、Android 263 项测试与 lint 通过，六个公开附件已完整下载校验。[版本说明](docs/releases/0.4.21.md) · [实际截图与范围](docs/android-ui-alignment.md) · [发布验证](docs/validation/preview-0.4.21-1.json)。
 
 采用 PySide6 + libmpv GPU 播放内核 + SQLite，提供 Qt Multimedia 兼容播放模式。所有页面读取本地真实数据，空库不伪造影片、评分或观影记录。优先站点插件为用户指定的 TVmaze。
 
@@ -62,15 +60,15 @@ PC 和手机播放器直接评分、喜欢／收藏、确认不喜欢；喜欢�
 
 ## 下载
 
-[**Lumen 0.4.20 Preview 3 · Windows + Android**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.20-preview.3) 是当前测试预发布：
+[**Lumen 0.4.21 Preview 1 · Windows + Android**](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.21-preview.1) 是当前测试预发布：
 
-- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.20-preview.3/Lumen-Setup-x64.exe)，Windows 10/11 x64。
-- [Android APK：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.20-preview.3/Lumen-android-debug.apk)，Android 8.0+，versionCode 39，沿用既有签名，可覆盖安装。
+- [Windows x64 完整安装包：Lumen-Setup-x64.exe](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.21-preview.1/Lumen-Setup-x64.exe)，Windows 10/11 x64。
+- [Android APK：Lumen-android-debug.apk](https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.21-preview.1/Lumen-android-debug.apk)，Android 8.0+，versionCode 40，沿用既有签名，可覆盖安装。
 - Release 附带 SHA-256、Windows 自动验收记录和 Android 签名／测试记录。target 目录为历史构建，请从本次 Release 下载当前安装包。
 
-[更新说明](docs/releases/0.4.20.md)。Windows 1012 项测试及安装／卸载验收、Android 247 项测试及 lint 通过；六个公开附件已完整下载核验。安装新版 Android APK 后可使用新布局、全局随机及外部视频打开；Windows 自启动开关默认关闭。小米 15 的 HEVC 4K 真机流畅度尚未确认。
+[更新说明](docs/releases/0.4.21.md)。Windows 1014 项测试及安装／卸载验收、Android 263 项测试及 lint 通过；六个公开附件已完整下载核验。安装新版 Android APK 后可使用新布局、全局随机及外部视频打开；Windows 自启动开关默认关闭。小米 15 的 HEVC 4K 真机流畅度尚未确认。
 
-无托盘自动验收中，安装版后台最高工作集 **37.31 MiB**（39,120,896 字节），专用提交 **21.64 MiB**；工作集低于 50,000,000 字节目标。未使用工作集压缩或硬内存限制；该结果不替代真实桌面托盘、登录启动及大资料库人工验收。[完整发布验证](docs/validation/preview-0.4.20-3.json)。
+无托盘安装版自动验收最高工作集 **37.30 MiB**；真实桌面托盘、登录及大资料库仍需人工确认。[完整发布验证](docs/validation/preview-0.4.21-1.json)。
 
 此前已按要求删除 14 个历史 Release，保留 Git 标签和源码历史；后续测试预发布另行保留。[清理记录](docs/validation/release-cleanup-0.4.14.json)。本版已将 PC / Android 更新检测切回 GitHub；旧版仍使用 Gitee 渠道的客户端需手动升级。更新检测只接收正式 Release，测试预发布可从上述页面下载。
 

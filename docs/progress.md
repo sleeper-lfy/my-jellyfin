@@ -799,3 +799,12 @@ README 下载入口与说明已更新。Android 保持 ARM32＋ARM64 通用包�
 修正详情收藏／想看／评分的图标和文字居中，个人状态刷新后保留竖向样式；“我的”数量与标签使用同宽居中列；连接名称和地址使用统一文本列及内边距。媒体库和服务器地址下拉改为官方 MaterialAutoCompleteTextView＋TextInputLayout，明确使用 M3 OutlinedBox 样式。媒体库筛选使用官方 BottomSheetDialog、Filter Chip／ChipGroup 与固定操作栏，保留所有筛选和片单逻辑，兼顾键盘与 Android 8。原生 M3 深浅主题 32 个语义角色与 Compose 对齐；生产界面继续深色，其余旧弹窗未宣称整体迁移完成。两端更新渠道可点击打开 GitHub Releases 或对应已识别候选版本页面。
 
 Android 全量263项零失败／错误／跳过；导航栏兼容接口修正后7项专项回归、lint零错误及构建通过。PC定向14项通过、1项Windows PowerShell检查由平台环境跳过。实际截图使用虚构内容，见[修复范围与截图](android-ui-alignment.md)及[验证记录](validation/android-ui-alignment.json)。本轮源码推送main，不创建新标签／Release，公开下载仍为0.4.20 Preview3。
+
+
+## 0.4.21 Preview 1 已发布
+
+源码 `97886d63257434811050f7a3858ae250820ca06b`，标签 `v0.4.21-preview.1`；[构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/43166533089)两端及发布全部成功。Windows **1014 项测试零失败／错误／跳过**，实际安装、启动、工作进程和卸载通过；Android **263 项测试、lint、持久签名及 ZIP 对齐通过**，版本 0.4.21／code40。六个公开附件完整下载后，大小、SHA-256、GitHub 摘要、源码绑定及 APK 原证书再次验证通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.21-preview.1) · [公开验证](validation/preview-0.4.21-1.json)。
+
+无托盘安装版自动验收最高工作集 **37.30 MiB**；真实桌面托盘、登录及大资料库仍需人工确认。
+
+本版包括此前未发布的对齐、官方 M3 筛选和下拉、原生主题以及两端更新渠道链接。其余旧弹窗尚未整体迁移，真机键盘和 HEVC 4K 流畅度未宣称已验收。README 已同步当前下载。
