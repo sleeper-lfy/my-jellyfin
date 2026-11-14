@@ -819,3 +819,8 @@ schema 3 增加配置和文件归属表，升级前备份，旧备份可经临�
 PC 全量 **1033 项通过、3 项平台相关跳过、零失败／错误**，最终队列接口专项 **2 项通过**；JUnit 报告格式产生一项 `record_property` 兼容提示，不影响测试。Android 全量 **266 项通过、零失败／错误／跳过**，lint 零错误、89 项警告，本地调试构建成功。Python 语法、文档本地链接与差异格式检查通过。Windows 系统目录选择器和手机 LAN 实机联调仍待设备验证。[功能与截图](media-libraries.md) · [验证记录](validation/media-libraries-source.json)。
 
 两端源码版本统一 **0.4.22／Android code41**，提交推送 main 使用 `[skip ci]`，不创建标签或发布 Release；当前公开下载仍为 **0.4.21 Preview 1**。
+
+
+## 0.4.22 Preview 1 发布准备（2026-11-14）
+
+用户已明确要求发布 Release。沿用既有双端测试预发布流程，标签 `v0.4.22-preview.1`，两端版本 0.4.22／Android code41；使用同一标签源码重新构建 Windows 安装包与原签名 Android APK，并运行完整测试、Windows 安装／卸载验收、APK 签名和摘要检查，通过后才公开附件。不复用旧版安装包，人工设备验收不冒充通过。发布完成后补充公开附件下载核验与当前下载入口。
