@@ -8,7 +8,7 @@ import uuid
 
 from .schema import BASELINE
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def baseline(db):
@@ -33,13 +33,19 @@ def unified_preferences(db):
         db.execute("INSERT OR REPLACE INTO settings VALUES ('personal_unified_v1','true')")
 
 
-MIGRATIONS = {1: baseline, 2: unified_preferences}
+def named_media_libraries(db):
+    db.execute("CREATE TABLE IF NOT EXISTS media_libraries(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, config TEXT NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS media_library_files(file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE, library_id INTEGER NOT NULL REFERENCES media_libraries(id) ON DELETE CASCADE)")
+    db.execute("CREATE INDEX IF NOT EXISTS media_library_members ON media_library_files(library_id,file_id)")
+
+
+MIGRATIONS = {1: baseline, 2: unified_preferences, 3: named_media_libraries}
 
 
 def validate_schema(db):
     # Versioned databases must never be silently "repaired" as legacy databases.
     required = {'works', 'files', 'import_cache', 'sources', 'name_keys', 'external_ids',
-                'sessions', 'activity', 'tasks', 'settings', 'lists', 'playback_preferences', 'bookmarks'}
+                'sessions', 'activity', 'tasks', 'settings', 'lists', 'playback_preferences', 'bookmarks', 'media_libraries', 'media_library_files'}
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if not required <= tables or 'liked' not in {row[1] for row in db.execute('PRAGMA table_info(works)')}:
         raise ValueError('数据库结构与版本不一致，请从备份恢复，未自动修改数据库')

@@ -1,0 +1,5 @@
+<resources>
+    <string name="media_libraries_all">全部媒体库</string>
+    <string name="media_libraries_refresh">刷新媒体库</string>
+    <string name="media_libraries_description">%1$s，共 %2$d 部，在电脑端管理</string>
+</resources>

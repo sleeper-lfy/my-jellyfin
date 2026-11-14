@@ -91,12 +91,14 @@ def safe_name(value):
     return value
 
 
-def plan_move(library, work_id, destination, rule=None, cancelled=None):
+def plan_move(library, work_id, destination, rule=None, cancelled=None, media_library_id=None, file_ids=None):
     """Build a read-only, fully checked move plan; execution revalidates its hashes."""
     from .organize_templates import load_rule, validate_rule, destinations, companion_copies
     def hash_file(path):return fingerprint(path,cancelled=cancelled) if cancelled else fingerprint(path)
     check_cancelled(cancelled)
-    work = library.work(work_id)
+    work = library.work(work_id,media_library_id) if media_library_id is not None else library.work(work_id)
+    if file_ids is not None:work={**work,'files':[f for f in work['files'] if f['id'] in file_ids]}
+    if not work['files']:raise ValueError('没有属于当前整理范围的文件')
     root = Path(destination).resolve()
     selected = load_rule(library, work['kind'], root) if rule is None else validate_rule(rule)
     pairs = []

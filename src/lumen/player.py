@@ -517,6 +517,11 @@ class Player(QDialog):
         if not self.previous_episode():
             self.queuePrevious.emit()
 
+    def playback_work(self,work_id=None):
+        identifier=work_id if work_id is not None else self.file['work_id']
+        scope=self.file.get('_media_library_id') if self.file else None
+        return self.library.work(identifier,scope) if scope is not None else self.library.work(identifier)
+
     def open_file(self, file):
         if self.beauty_timer.isActive():self.save_beauty()
         self.finish()
@@ -534,7 +539,7 @@ class Player(QDialog):
             control.blockSignals(True);control.setValue(self.subtitle_preferences.get(key,default));control.blockSignals(False)
         self.apply_subtitle_preferences()
         self.load_beauty()
-        work = self.library.work(file['work_id'])
+        work = self.playback_work(file['work_id'])
         self.title.setToolTip(work['title'])
         self.title.setText(work['title'] + (f" · S{file['season']:02}E{file['episode']:02}" if work['kind'] == 'series' and file['season'] is not None and file['episode'] is not None else ''))
         if work['kind']=='fans':self.title.setText(work['title']+' · '+Path(file['path']).stem)
@@ -625,12 +630,12 @@ class Player(QDialog):
         if status == QMediaPlayer.MediaStatus.EndOfMedia and self.file:
             self.finish()
             self.playback_journal.completed(self.file['id'])
-            if self.library.work(self.file['work_id'])['kind'] in {'series','fans'}:
+            if self.playback_work()['kind'] in {'series','fans'}:
                 if not self.library.setting('auto_next',True):return
                 if self.next_episode():return
             if getattr(self.parent(),'random_active',False) and self.library.setting('queue',{}).get('repeat')=='one':
-                work=self.library.work(self.file['work_id'])
-                first=work['files'][0] if work['kind'] in {'series','fans'} else self.library.resume_file(work['id'])
+                work=self.playback_work()
+                first=work['files'][0] if work['kind'] in {'series','fans'} else self.library.resume_file(work['id'],media_library_id=self.file.get('_media_library_id'))
                 self.open_file({**first,'position':0});return
             self.finish()
             self.queueNext.emit()
@@ -644,7 +649,7 @@ class Player(QDialog):
     def step_group_file(self,direction):
         if not self.file:
             return False
-        work = self.library.work(self.file['work_id'])
+        work = self.playback_work()
         if work['kind'] not in {'series','fans'}:
             return False
         files = work['files']

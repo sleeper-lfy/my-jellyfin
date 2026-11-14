@@ -210,7 +210,7 @@ class Library(CatalogActions):
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)', (key, json.dumps(value, ensure_ascii=False)))
 
-    def work(self, work_id):
+    def work(self, work_id, media_library_id=None):
         row = self.db.execute('SELECT * FROM works WHERE id=?', (work_id,)).fetchone()
         if not row:
             raise ValueError('媒体不存在')
@@ -219,6 +219,12 @@ class Library(CatalogActions):
         item['liked'] = item['favorite']
         item['locked'] = json.loads(item['locked'])
         item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
+        if media_library_id is not None:
+            from .media_libraries import get
+            get(self,media_library_id)
+            owned={r[0] for r in self.db.execute('SELECT m.file_id FROM media_library_files m JOIN files f ON f.id=m.file_id WHERE m.library_id=? AND f.work_id=?',(media_library_id,work_id))}
+            item['files']=[{**f,'_media_library_id':media_library_id} for f in item['files'] if f['id'] in owned]
+            if not item['files']:raise ValueError('作品不在当前媒体库中')
         if item['kind'] in {'fans','vr'}:
             from .series import natural_key
             item['files'].sort(key=lambda file:natural_key(file['path']))
@@ -253,6 +259,8 @@ class Library(CatalogActions):
         cross_movie = source['kind'] != target['kind'] and {source['kind'],target['kind']} == {'movie','vr'}
         if source['kind'] == 'other' or source['kind'] != target['kind'] and not (allow_movie_vr and cross_movie):
             raise ValueError('仅可合并相同类型的影视或 Fans 条目')
+        if source['kind']!=target['kind'] and self.db.execute('SELECT 1 FROM media_library_files m JOIN files f ON f.id=m.file_id JOIN media_libraries l ON l.id=m.library_id WHERE f.work_id=? AND l.kind!=?',(source_id,target['kind'])).fetchone():
+            raise ValueError('合并后的类型与来源媒体库不一致，请先核对媒体库归属')
         merged = {**source['metadata'], **target['metadata']}
         if source['kind']=='fans':
             from .fans import roots_for
@@ -315,6 +323,8 @@ class Library(CatalogActions):
             raise ValueError('仅支持普通电影与 VR电影之间切换')
         if item['kind'] == kind:
             return
+        if self.db.execute('SELECT 1 FROM media_library_files m JOIN files f ON f.id=m.file_id JOIN media_libraries l ON l.id=m.library_id WHERE f.work_id=? AND l.kind!=?',(work_id,kind)).fetchone():
+            raise ValueError('作品属于固定类型的媒体库，不能直接更改分类，请先核对媒体库归属')
         titles = [item['title'], *item['metadata'].get('aliases', [])]
         keys = {identity(title, item['year'], kind) for title in titles}
         with self.db:
@@ -345,12 +355,20 @@ class Library(CatalogActions):
             root = source.parent
         if kind=='fans':
             from .fans import import_folder
-            return import_folder(self,root,progress,fast,cancelled,candidates)
+            result=import_folder(self,root,progress,fast,cancelled,candidates)
+            from .media_libraries import owner_for_path, attach, list_libraries
+            owners=list_libraries(self)
+            with self.db:
+                for file in self.db.execute("SELECT f.id,f.path FROM files f JOIN works w ON w.id=f.work_id WHERE w.kind='fans' AND f.root=?",(str(Path(root).resolve()),)).fetchall():
+                    attach(self,file['id'],owner_for_path(self,file['path'],'fans',owners))
+            return result
         if kind not in {'movie', 'series', 'other', 'vr'}:
             raise ValueError('无效媒体类型')
         root = Path(root).resolve(strict=True)
         if not root.is_dir():
             raise ValueError('请选择文件夹')
+        from .media_libraries import list_libraries, owner_for_path, attach
+        media_owners=list_libraries(self)
         task_id = uuid.uuid4().hex
         payload = {'root': str(root), 'kind': kind, 'fast': fast}
         if candidates is not None:
@@ -402,7 +420,11 @@ class Library(CatalogActions):
                     from . import nfo
                     stat = path.stat()
                     signature = nfo.sidecar_signature(path, root, kind, directory_cache, signatures) if fast else ''
-                    existing_file = self.db.execute('SELECT id,work_id FROM files WHERE path=?',(str(path),)).fetchone()
+                    scope_id=owner_for_path(self,path,kind,media_owners)
+                    existing_file = self.db.execute('SELECT f.id,f.work_id,w.kind FROM files f JOIN works w ON w.id=f.work_id WHERE path=?',(str(path),)).fetchone()
+                    if existing_file and scope_id is not None:
+                        if existing_file['kind']!=kind:raise ValueError('文件已有不同媒体类型，未改变原记录')
+                        with self.db:attach(self,existing_file['id'],scope_id)
                     if kind == 'vr':
                         group = vr_plan.group(path)
                         existing_file = vr_plan.reconcile(self,path,existing_file,results['warnings'])
@@ -444,7 +466,7 @@ class Library(CatalogActions):
                     if fast:
                         report(index, len(paths), '建立快速索引', path)
                         quick = quick_fingerprint(path)
-                        if self.confirm_duplicate(path, quick, stat, lambda text: report(index, len(paths), text, path), cancelled):
+                        if self.confirm_duplicate(path, quick, stat, lambda text: report(index, len(paths), text, path), cancelled, media_library_id=scope_id):
                             results['duplicates'] += 1
                             continue
                         digest = 'fast-' + uuid.uuid4().hex
@@ -452,7 +474,7 @@ class Library(CatalogActions):
                     else:
                         report(index, len(paths), '计算指纹 0%', path)
                         digest = fingerprint(path, lambda done, total: report(index, len(paths), f'计算指纹 {done * 100 // max(1, total)}%', path, False), cancelled)
-                        if self.db.execute('SELECT 1 FROM files WHERE digest=?', (digest,)).fetchone() or self.confirm_duplicate(path, quick_fingerprint(path), stat, lambda text: report(index,len(paths),text,path), cancelled):
+                        if self.db.execute('SELECT 1 FROM files WHERE digest=?'+(' AND id IN (SELECT file_id FROM media_library_files WHERE library_id=?)' if scope_id is not None else ''), (digest,scope_id) if scope_id is not None else (digest,)).fetchone() or self.confirm_duplicate(path, quick_fingerprint(path), stat, lambda text: report(index,len(paths),text,path), cancelled, media_library_id=scope_id):
                             results['duplicates'] += 1
                             continue
                         report(index, len(paths), '分析媒体', path)
@@ -506,6 +528,7 @@ class Library(CatalogActions):
                         self.db.execute('INSERT INTO files(work_id,path,digest,root,season,episode,duration) VALUES (?,?,?,?,?,?,?)',
                                         (work_id, str(path), digest, str(root), parsed['season'], parsed['episode'], duration))
                         file_id = self.db.execute('SELECT id FROM files WHERE path=?',(str(path),)).fetchone()[0]
+                        attach(self,file_id,scope_id)
                         if fast:
                             self.db.execute('INSERT INTO import_cache VALUES (?,?,?,?,?,?,?)', (file_id,stat.st_size,stat.st_mtime_ns,quick,None,signature,1))
                         if local['work'] or local['entry'] or local['poster'] or local.get('backdrop'):
@@ -545,8 +568,11 @@ class Library(CatalogActions):
             except OSError:
                 continue
 
-    def confirm_duplicate(self, path, quick, stat, progress, cancelled=None):
+    def confirm_duplicate(self, path, quick, stat, progress, cancelled=None, media_library_id=None):
         candidates = self.db.execute('SELECT c.*,f.path FROM import_cache c JOIN files f ON f.id=c.file_id WHERE c.quick=? AND c.size=?', (quick,stat.st_size)).fetchall()
+        if media_library_id is not None:
+            owned={r[0] for r in self.db.execute('SELECT file_id FROM media_library_files WHERE library_id=?',(media_library_id,))}
+            candidates=[row for row in candidates if row['file_id'] in owned]
         incoming = None
         for candidate in candidates:
             other = Path(candidate['path'])
@@ -774,6 +800,7 @@ class Library(CatalogActions):
         decorates the rows that survived."""
         f = filters or {}
         clauses, args = ['1=1'], []
+        if f.get('media_library_id') is not None:clauses.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
         if 'kinds' in f and not f['kinds']:
             return []
         if 'ids' in f:
@@ -857,17 +884,23 @@ class Library(CatalogActions):
         direction = 'DESC' if f.get('descending', True) else 'ASC'
         order = f' ORDER BY ({expression} IS NULL), {expression} {direction}, id ASC'
         where = 'SELECT * FROM works WHERE ' + ' AND '.join(clauses)
-        rows = self.db.execute(where + order, args).fetchall()
+        prefix=''
+        if f.get('media_library_id') is not None:
+            from .media_libraries import get
+            get(self,f['media_library_id'])
+            prefix='WITH files AS (SELECT f.* FROM main.files f JOIN media_library_files m ON m.file_id=f.id WHERE m.library_id=?) '
+            args=[f['media_library_id'],*args]
+        rows = self.db.execute(prefix + where + order, args).fetchall()
         ids = {row['id'] for row in rows}
         files, sources, watches = {}, {}, {}
         # Batch joins avoid N+1 queries while preserving complete-result filtering and shuffle.
-        for row in self.db.execute('SELECT * FROM files WHERE work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ') ORDER BY season,episode,path', args):
+        for row in self.db.execute(prefix + 'SELECT * FROM files WHERE work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ') ORDER BY season,episode,path', args):
             if row['work_id'] in ids:
                 files.setdefault(row['work_id'], []).append(dict(row))
-        for row in self.db.execute('SELECT * FROM sources WHERE work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ')', args):
+        for row in self.db.execute(prefix + 'SELECT * FROM sources WHERE work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ')', args):
             if row['work_id'] in ids:
                 sources.setdefault(row['work_id'], []).append(dict(row))
-        for row in self.db.execute('SELECT f.work_id,SUM(s.watched) FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ') GROUP BY f.work_id', args):
+        for row in self.db.execute(prefix + 'SELECT f.work_id,SUM(s.watched) FROM sessions s JOIN files f ON f.id=s.file_id WHERE f.work_id IN (SELECT id FROM works WHERE ' + ' AND '.join(clauses) + ') GROUP BY f.work_id', args):
             watches[row[0]] = row[1]
         items = []
         for row in rows:
@@ -876,6 +909,8 @@ class Library(CatalogActions):
             item['liked'] = item['favorite']
             item['locked'] = json.loads(item['locked'])
             item['files'] = files.get(item['id'], [])
+            if f.get('media_library_id') is not None:
+                for file in item['files']:file['_media_library_id']=f['media_library_id']
             if item['kind'] in {'fans', 'vr'}:
                 from .series import natural_key
                 item['files'].sort(key=lambda file: natural_key(file['path']))
@@ -889,14 +924,19 @@ class Library(CatalogActions):
             items.append(item)
         return items[offset:offset + limit if limit is not None else None]
 
-    def filter_options(self, kinds=None, local=True):
+    def filter_options(self, kinds=None, local=True, media_library_id=None):
         """Facets via SQLite JSON1: no per-row Python JSON parsing for large catalogs."""
         conditions, kind_args = [], []
         if local:
             conditions.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
+        if media_library_id is not None:
+            from .media_libraries import get
+            get(self,media_library_id)
+            conditions.append('EXISTS(SELECT 1 FROM files f JOIN media_library_files m ON m.file_id=f.id WHERE f.work_id=works.id AND m.library_id=?)')
+            kind_args.append(media_library_id)
         if kinds is not None:
             conditions.append('kind IN (' + ','.join('?' for _ in kinds) + ')')
-            kind_args = list(kinds)
+            kind_args.extend(kinds)
         suffix = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
         tags = {row[0] for row in self.db.execute(
             'SELECT DISTINCT json_each.value FROM works, json_each(works.metadata,\'$.tags\')' + suffix, kind_args)}
@@ -928,14 +968,14 @@ class Library(CatalogActions):
         self.set_setting('queue', queue)
         return queue['ids'][queue['index']] if queue['index'] < len(queue['ids']) else None
 
-    def resume_file(self, work_id):
+    def resume_file(self, work_id, media_library_id=None):
         from .continuation import resume_target
-        return resume_target(self, self.work(work_id))
+        return resume_target(self, self.work(work_id,media_library_id) if media_library_id is not None else self.work(work_id))
 
-    def actresses(self, minimum=0, order='average'):
+    def actresses(self, minimum=0, order='average', media_library_id=None):
         actors = {}
         # Stable external IDs and overlapping aliases merge identities; movie actors with unknown gender use the female default.
-        for item in self.query({'kinds': ['movie']}):
+        for item in self.query({'kinds': ['movie'],**({'media_library_id':media_library_id} if media_library_id is not None else {})}):
             for actor in item['metadata'].get('actors', []):
                 if actor.get('gender') != 'female':
                     continue

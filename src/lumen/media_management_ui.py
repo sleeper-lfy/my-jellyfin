@@ -252,6 +252,8 @@ class MediaManagement(QDialog):
         exports.layout().insertWidget(exports.layout().count()-1,self.export_kind)
         self.action(exports,'选择分类并预览 NFO 导出…',self.export_nfo)
         self.tabs.addTab(exports._scroll,'导入导出')
+        from .media_libraries_ui import MediaLibrariesPanel
+        self.media_libraries=MediaLibrariesPanel(window);self.tabs.addTab(self.media_libraries,'自定义媒体库')
         close=QPushButton('关闭');close.clicked.connect(self.close);outer.addWidget(close)
     def page(self,text):
         container=QScrollArea();container.setWidgetResizable(True);container.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -281,8 +283,9 @@ class MediaManagement(QDialog):
             finally:self._allow_close=False
         else:event.ignore()
     def select(self,section=None):
-        index={'directories':0,'sources':1,'repair':2,'organize':3,'export':4}.get(section,0);self.tabs.setCurrentIndex(index)
+        index={'directories':0,'sources':1,'repair':2,'organize':3,'export':4,'libraries':5}.get(section,0);self.tabs.setCurrentIndex(index)
         if index==0:self.directories.selection_changed()
+        if index==5:self.media_libraries.reload(getattr(self.window,'media_library_id',None))
 
 
 def show_media_management(window,section=None):

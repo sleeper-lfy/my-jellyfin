@@ -15,6 +15,7 @@
 | `beauty.py` / `shaders/beauty-core.glsl` | 校验逐视频美颜设置、生成 libmpv 着色器，与 Android OES 通道共享肤色估计和双边平滑核心 |
 | `ui.py` / `home.py` / `settings.py` / `theme.py` | 页面、海报绘制、详情、设置、线程任务和统一视觉规范 |
 | `catalog.py` / `catalog_ui.py` | 媒体库排序、观看状态、批量操作、队列编辑、校验后目录重定位、移出条目与全屏剧照 |
+| `media_libraries.py` / `media_libraries_ui.py` | 自定义库配置、多目录监听、规则隔离、旧目录显式迁移与 PC 管理；Android 只读选择 |
 | `browse.py` / `actor_ui.py` | 后台页面快照、推荐与发现入口、演员头像候选确认和更新 |
 | `actor_batch.py` / `actor_batch_ui.py` / `actor_portrait.py` | 按插件批量唯一匹配头像、后台结果报告、本地拖图缓存与关联资料事务更新 |
 | `discovery_catalog.py` / `discovery_search.py` / `discovery_ui.py` / `discovery_images.py` | 完整发现资料筛选排序、受限后台站点搜索、明确来源能力和可见封面懒加载 |
@@ -34,6 +35,8 @@ SQLite `user_version` 标记 schema 版本。旧库升级先备份，再在单�
 `works` 是电影/整剧/其他视频实体；`favorite` 为唯一的喜欢／收藏状态，与 `disliked` 互斥；`liked` 保留旧版兼容，API 作为收藏别名，推荐不重复加权。旧独立喜欢一次性合并，旧备份先在副本上迁移；`files` 保存版本、季集、路径、校验和和恢复位置。`name_keys` 保存历史标题/别名索引，`external_ids` 保存带类型的外部唯一标识。`sources` 保存插件/来源内编号/完整网址/独立评分/更新时间/站点收录时间。`sessions` 是每次播放的实际时间，`activity` 按本地日归档实际观看秒数。`tasks` 记录导入、匹配、整理和刮削结果。`settings` 保存队列和插件/分区配置；`lists` 保存智能片单筛选表达式。
 
 随机队列是作品 ID 的 SystemRandom 洗牌，完整筛选结果一次参与、无偏好权重，索引持久化，末尾停播。电视剧恢复优先未完成且有位置的集，否则第一未完成集。整剧所有集完成后从第一集开始。
+
+schema 3 增加 `media_libraries`（名称、固定类型、目录与独立自动化配置）和 `media_library_files`（文件 ID 到库 ID 的唯一归属）。文件路径移动不改变归属；作品身份、元数据与个人偏好沿用共享模型，文件进度仍逐文件保存。查询、筛选、详情、随机队列与播放携带可选 `media_library_id`，文件操作也限制到该范围。入库任务按作品和库共同标识，并保存规则快照；确认一库的匹配不确认其他库任务。LAN 暴露库名称、类型和数量，不暴露本机目录或配置，不提供手机管理写入入口。详见[配置、迁移与共享边界](media-libraries.md)。
 
 推荐通过个人评分、收藏、想看、负反馈、封顶观看时间构建标签/女演员偏好。显式评分权重大于观看时间；同一电视剧多集累计仅提供封顶一个观看信号。每第五位可插入一个无既有偏好的探索作品。不会将推荐权重传入随机模块。
 

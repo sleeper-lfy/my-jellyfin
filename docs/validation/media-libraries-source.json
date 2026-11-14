@@ -1,0 +1,223 @@
+{
+  "status": "source_verified_unreleased",
+  "verified_at": "2026-11-14T04:18:33.785068+00:00",
+  "base_commit": "ac3a0ad2b2dccc743d985b8046a2edcf1f22c109",
+  "version": "0.4.22",
+  "android_version_code": 41,
+  "schema_version": 3,
+  "scope": [
+    "PC managed named media libraries: one fixed type and multiple directories",
+    "Independent providers, fallback order, watch controls and organization naming per library",
+    "Explicit atomic migration of legacy effective directory rules with backup restore compatibility",
+    "File membership persists through moves; browse, progress actions, playback and current-list shuffle honor library scope",
+    "Android authenticated read-only library selection with native Material 3 chips",
+    "Mixed playback queues remain playable; one-library match confirmation does not release other pipelines"
+  ],
+  "python": {
+    "command": ".venv/bin/python -m pytest -q --junitxml=<local report>",
+    "tests": 1036,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "passed": 1033,
+    "skipped_tests": [
+      {
+        "name": "tests.test_desktop_updates::test_powershell_upgrade_helper_parses_without_executing_it",
+        "reason": "Windows PowerShell parser is checked by Windows CI"
+      },
+      {
+        "name": "tests.test_mpv::test_real_libmpv_decode_seek_tracks_and_end",
+        "reason": "Set LUMEN_REQUIRE_MPV=1 when the libmpv runtime is installed"
+      },
+      {
+        "name": "tests.test_subtitle_appearance::test_real_mpv_removes_ass_box_pixels_without_switching_track_or_restarting",
+        "reason": "Set LUMEN_REQUIRE_MPV=1 when the libmpv runtime is installed"
+      }
+    ],
+    "report_sha256": "6c53e4f243d3610b7fba3c02c2516804c8a1b6172785fba748d1f6b7d1f36a84",
+    "report_warning": "One existing record_property test emits a pytest xunit2 report-format warning; no application test failure.",
+    "syntax_check": "compileall src/lumen and scripts/capture-media-libraries-preview.py passed",
+    "final_api_supplement": {
+      "command": ".venv/bin/python -m pytest -q tests/test_media_libraries_server.py --junitxml=<local report>",
+      "reason": "Final direct queue route allowlist added library scope; full regression was already running. Focused rerun verifies positive and invalid IDs on the final source.",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "report_sha256": "61b0c192335446584e76da6d668252802cdba7587f95ddfb57d0f242013057d8"
+    }
+  },
+  "android": {
+    "command": "python scripts/build-android-cloud.py :app:testDebugUnitTest :app:lintDebug :app:assembleDebug",
+    "tests": {
+      "tests": 266,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": 62,
+    "lint": {
+      "Fatal": 0,
+      "Error": 0,
+      "Warning": 89,
+      "Information": 0
+    },
+    "new_library_suite": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "local_debug_build": "passed",
+    "apk_published": false,
+    "test_report_sha256": {
+      "TEST-net.lumen.media.ActionStyleIntegrationTest.xml": "8e719554cb81d2c505c8af09a39b0a811e3dd3b5e0ce938cbeddf5cea2712545",
+      "TEST-net.lumen.media.AndroidLayoutRegressionTest.xml": "e67c5ef7df8fe9884102f07071e6ac96c93d1821459c281a0c9ea95edc37cbda",
+      "TEST-net.lumen.media.ApprovedUiTest.xml": "486376d6c497a98f0c275f95e8b601fd249655fc600fdbad73910efe1a18f35f",
+      "TEST-net.lumen.media.BeautySettingsTest.xml": "97a35d0718fd63c313bb39a6db32376eed1537c6e80b5d0deb89cb396f2d5291",
+      "TEST-net.lumen.media.BiliAuxiliaryPagesTest.xml": "5eb21b2860c74c861f3f2c177509c1ffc8cd8141e07919364ead0105ca96c0b0",
+      "TEST-net.lumen.media.BiliMainPagesTest.xml": "7d2f421af3f9325ee210ae9a6a970fc38382480ce4f5969fa8b7c249c165621d",
+      "TEST-net.lumen.media.BrowseScopeTest.xml": "20bbbcd8d1d6192c033edcd675470fe752ff0783402cf8e8dbd748d65e98bdd2",
+      "TEST-net.lumen.media.BrowseUiTest.xml": "9d869be1728843d0eb23b865d23b1593bb7da240a4f1b785b3cc13baea77f02d",
+      "TEST-net.lumen.media.CompactActionPagesTest.xml": "ddbc9baf9beb74b5a6b41092ad41ca5f7c76a6e52742f58b0504c2183c584e8f",
+      "TEST-net.lumen.media.ConnectionLibraryRowTest.xml": "ad64e80bd58cf6d6a3cf989822eebe8c503e8b87f593b8d5ce3b6ce29ba87b31",
+      "TEST-net.lumen.media.ContinueHomeTest.xml": "fc1ef70047c1ac7dcfa71e4317c0f0fe9b0d6b31c5cc9826768b10cae416db69",
+      "TEST-net.lumen.media.ControllerBindingsTest.xml": "a5d7c1e1e6cf2504bf040af67aa0ba2303e9eeef74320044c5aca8de970da1c9",
+      "TEST-net.lumen.media.DialogActionStateTest.xml": "0a577f67dd78f75af1fb153cbe970bb517b358d8732547dce9457f94c8a84452",
+      "TEST-net.lumen.media.DiscoveryAppThemeTest.xml": "9ad425ef7ffea680adefb51acbeab82c2a641b768956a646ec59025e95bd4086",
+      "TEST-net.lumen.media.DiscoveryBrowseTest.xml": "07f58315a2aa426e08d7a508bbc78e9cc89c2edb9128b2a116f7957f94fe897e",
+      "TEST-net.lumen.media.DiscoveryComposeUiTest.xml": "52fd0417dfd2273ec860827a79374c4c199caba6fa5be09cc190ead3e304fe2f",
+      "TEST-net.lumen.media.DiscoveryCoordinatorTest.xml": "f8dccc9a9ecb3d7661a07d10a725e7a206caac698fa43c4ee6f4824be0917a13",
+      "TEST-net.lumen.media.DiscoveryFilterBottomSheetTest.xml": "faeb3b252bdf4738add374b6bf9d7b3c4d582bf2008793b4b12ba9a2954a5066",
+      "TEST-net.lumen.media.DiscoveryImageLoaderTest.xml": "0ba2c2f4266c2464c9c196fb19d56abd1219bfc1500de57684b33b4765f25024",
+      "TEST-net.lumen.media.DiscoveryVisualRefinementTest.xml": "dc079dcc00722abfcd7b5ef841d424241bf3ae9f8a03d3da7116c227c1037544",
+      "TEST-net.lumen.media.EpisodeControllerTest.xml": "43d7ec9d060adb0d9a0343467d6f9c7dee3b21fa904113102019221c2ebf0a93",
+      "TEST-net.lumen.media.ExternalPlayerUiTest.xml": "3539ce54eb8c4e0cb5ab5e4881f87843fabe663b7c5e08e9ca81935c4a477590",
+      "TEST-net.lumen.media.ExternalVideoIntentTest.xml": "10bc933efdcfc74b28c90ff129c007092ee046dfb3522ade32211882d5c0238b",
+      "TEST-net.lumen.media.GitHubUpdatesTest.xml": "a22c79e08739163c9e1cef0007608f33cf36903aa456d13a57d662e71ea1ee11",
+      "TEST-net.lumen.media.GlobalShuffleTest.xml": "fdbf945e7930ef343246b7e92c7e27e1534b8ee8024dfa8103492ec05e57ce26",
+      "TEST-net.lumen.media.HoldGestureUiTest.xml": "79099ae0fd29ba381128c726dbdf4338337fa4048399570679cabebea76d7203",
+      "TEST-net.lumen.media.HoldSpeedTest.xml": "88f5434b618e9b7e332222c72a6fc1984953f06a02c02845b4d06f7b8c5a3ca3",
+      "TEST-net.lumen.media.ImageRequestsTest.xml": "70a855127a05fd272a81a0cd667b68a9916475b3dfc6d42aa69bcd9503813bca",
+      "TEST-net.lumen.media.LibraryFilterBottomSheetTest.xml": "bd616b76014141b345e16051eda3b5b7c55363e9fe0c875884cd4ff6c8ba8b27",
+      "TEST-net.lumen.media.MediaDesignTest.xml": "50572b7c4b6d198c0f5e2b431ddfc611afe586d925101eaf9235e92f6b68817d",
+      "TEST-net.lumen.media.MediaPreviewTest.xml": "f216fc590ec0628e823015ab0c50f28b78187e77a1983560436c93152ab0ee4d",
+      "TEST-net.lumen.media.MediaToolsTest.xml": "f1f3e4c4bebd0c78c790c7111fa9ce42d102c81c105b3436315dadc72fd6e88b",
+      "TEST-net.lumen.media.MobileAlignmentTest.xml": "1f11f51aee04e28a12d199ba927b2906d363d4461f749137a30f13bb376a5de3",
+      "TEST-net.lumen.media.NamedMediaLibrariesTest.xml": "9e7bac8bb617f3c07f3ed72c80004153fbccd61676bb2e8e07c08de0a5196d55",
+      "TEST-net.lumen.media.NativeMaterialThemeParityTest.xml": "c0d02c3bb76bb6a0cf622e9ceba921516b2e442a3197cc163892a6d4c97bf8c5",
+      "TEST-net.lumen.media.NavigationLayoutTest.xml": "03e497c68f0c5dac2e21c8973a0d18c5cb1067320d463ebf24b7a8efe81f3382",
+      "TEST-net.lumen.media.PictureViewerTest.xml": "43b130b8deec6ea3a7e3fa00ffb8d9afd1a2e44044f14d705c6ff41206b9450e",
+      "TEST-net.lumen.media.PlaybackBridgeTest.xml": "eef4bba8a5b3dd8a4d5a9e6b9ebd92407d67a0926ccd90daca7514fd511a1302",
+      "TEST-net.lumen.media.PlaybackDecoderPolicyTest.xml": "b1a75877c61a2e6159c13c08dcaa6376341feba82872daca8bf761990fc20bde",
+      "TEST-net.lumen.media.PlaybackMeasurementsTest.xml": "b5543dd311fcae3044f16eb90b885819c9bd9559c96369a6a5b3625278fbcd32",
+      "TEST-net.lumen.media.PlaybackNoticeUiTest.xml": "989febab5733090c44c06b60de9ff10ffd94ea0b6147a78746a1151e03fc4854",
+      "TEST-net.lumen.media.PlaybackPolicyTest.xml": "ff63cc3b218715042af7183941d0bd36af315f2f9f699a525494ccb95517d7b0",
+      "TEST-net.lumen.media.PlayerChromeBilibiliTest.xml": "607d604abfe2ffcea39c550b8df3cd3e994540a177c68b98ba137bcdf4540700",
+      "TEST-net.lumen.media.PlayerPersonalPreviewTest.xml": "32c41def8a864d003d595b5e326a888b2ed1395b2a321f8742d1c9e18e5f0b28",
+      "TEST-net.lumen.media.PlayerPersonalTest.xml": "d2bddccfe17c0259a7f3cbf10f44de12922b427be37d7a452a22fd2a2942a557",
+      "TEST-net.lumen.media.PlayerResponsiveLayoutTest.xml": "5afaf6004dba11bb6e2a3c4ef40786594b49a90f3a159ded6eb47e8e8f8af330",
+      "TEST-net.lumen.media.PlayerUiTest.xml": "78062a71c4a43c37c4dea50539dda854526326b9a90999434f2f265c33ef46a6",
+      "TEST-net.lumen.media.PosterPresentationTest.xml": "d0f4be9b61a7198feb0b86cdea04ecf178e732cd7e8fa1660f2e7a5c6564e275",
+      "TEST-net.lumen.media.RecentPosterModeTest.xml": "731a224532929178722d55564b795454cb115ca493591a0c785f376aa9eed8ab",
+      "TEST-net.lumen.media.SearchDropdownLayoutTest.xml": "77113b42634cdd8aec5d39e5a714c72d34afc8646111f73a370cc0c0f8644eb0",
+      "TEST-net.lumen.media.SeekGestureTest.xml": "6c8feedef108998a6274e629b6b9d5dc702506a0264926595db3f107486feaf8",
+      "TEST-net.lumen.media.ServerDiscoveryTest.xml": "0a1e7b1c0a53b1580a5c68be8b1ad7a5c9cf263dc911549c2cfc0cb14913200e",
+      "TEST-net.lumen.media.SubtitleAppearanceTest.xml": "701e06ebb20980b119b8bcb2e34677d79a605f01df18cbe6cf2a09a01f89c348",
+      "TEST-net.lumen.media.TaskCenterTest.xml": "4de3978da7a951d00a84d46eb20afa309c679e0ad6055af2db5fbcf4b21cd8f8",
+      "TEST-net.lumen.media.UpdateChannelTest.xml": "c4b8af502e5d81ed3a7af2b3981b33fe148856249b9c14be8174ab090f1c1146",
+      "TEST-net.lumen.media.VideoNavigatorTest.xml": "bb0c89632fe29a97b330a756eacf7ce21b536ca83f324e1b72120268b434df2b",
+      "TEST-net.lumen.media.VideoReadCacheTest.xml": "3ccbe6f20c564571797818f592dbdd2c8cd7b784bc510f47baaeeef5508e1c49",
+      "TEST-net.lumen.media.VrMotionFilterTest.xml": "c14bedcb453c0d1e497cb75ce40c172f235655f163769b85953f4919fcfa4ff6",
+      "TEST-net.lumen.media.VrPreferencePatchTest.xml": "5c6fca30e01aeaab4b0576c68b28f8890ff630c20ee7825207bd2fd0925b79e3",
+      "TEST-net.lumen.media.VrProjectionTest.xml": "56825f7230038719d5d837b5991a6453f704777f7483792b926eb671d87bcf4b",
+      "TEST-net.lumen.media.ui.DesignSystemPreviewTest.xml": "040c0af75a01963e4d9ff43c55884b4233cc0b07206c6c27aa42af8284892869",
+      "TEST-net.lumen.media.ui.DesignSystemTest.xml": "35876a3f5e66bacdf1618906c13cbd9aee453b4a2db3a54a205b295a2a8cc985"
+    }
+  },
+  "screenshots": [
+    {
+      "file": "docs/screenshots/media-libraries/android-library-selector-320.png",
+      "bytes": 6280,
+      "sha256": "b98fe92e23b427801f8f07b9b73e7f87725879139c58701c61fd9a15b9d10be0",
+      "source": "Robolectric native rendering of real Activity with synthetic fixtures"
+    },
+    {
+      "file": "docs/screenshots/media-libraries/android-named-library-393.png",
+      "bytes": 35846,
+      "sha256": "ecd353a3e4625c086e45def292bfc0c580503f43f08d58cfa83f9f94bdb0adf3",
+      "source": "Robolectric native rendering of real Activity with synthetic fixtures"
+    },
+    {
+      "file": "docs/screenshots/media-libraries/pc-config-rules.png",
+      "bytes": 118122,
+      "sha256": "6c9f1e830593fade4626df0bb185e6e4beff4d3ad8376e2b2f63c76c574a54f4",
+      "source": "Qt runtime on Linux with isolated synthetic catalog"
+    },
+    {
+      "file": "docs/screenshots/media-libraries/pc-config.png",
+      "bytes": 83220,
+      "sha256": "33d4e878781cc49e7ab2346aecf2387bfe7073bea4640274a31fd88c85cd536f",
+      "source": "Qt runtime on Linux with isolated synthetic catalog"
+    },
+    {
+      "file": "docs/screenshots/media-libraries/pc-home.png",
+      "bytes": 106812,
+      "sha256": "448a6b91c6a9292bbb26f4df38b00a0b6a41431e6655890c178328912c849a12",
+      "source": "Qt runtime on Linux with isolated synthetic catalog"
+    },
+    {
+      "file": "docs/screenshots/media-libraries/pc-library.png",
+      "bytes": 96062,
+      "sha256": "633e7d3eb73c28ae4e7de9cfbc00ab3aca8dedc5c02c8b8ccf16104154c01529",
+      "source": "Qt runtime on Linux with isolated synthetic catalog"
+    },
+    {
+      "file": "docs/screenshots/media-libraries/pc-manager.png",
+      "bytes": 83840,
+      "sha256": "ef6cdb064b7a992c7f9297a332adaa0ea0512aa6a92bbcc81e0961758f4a69d4",
+      "source": "Qt runtime on Linux with isolated synthetic catalog"
+    }
+  ],
+  "source_files_sha256": {
+    "android/app/build.gradle": "f3d9a409427b70c306d16d378fb95a334dae9fb7d1a4aa6f05d3fc3f217d9aef",
+    "android/app/src/main/java/net/lumen/media/MainActivity.java": "bad89e1f861f71a1d759d28403ab9316e53bbf7745d59695e413735d5c6fc6e8",
+    "android/app/src/main/java/net/lumen/media/MediaLibrarySelector.java": "fbae917f89f91daf7943e1332059aaedbe7a371be8eb236c5d95b554d77497f1",
+    "android/app/src/main/java/net/lumen/media/PlayerActivity.java": "64ca43355d26951472bdda4f1a0c557a9afc57d35a90e3a44ab86570f1fe2a8e",
+    "android/app/src/main/res/values/media_libraries_strings.xml": "d7446d4a9be8d874919c54caac746d6180d102ec565d6734955169f207cbf556",
+    "android/app/src/test/java/net/lumen/media/NamedMediaLibrariesTest.java": "7c395c2d80a4327ece5ae54205027548681ddbf87d6e4d08636725a0e570e060",
+    "pyproject.toml": "62fb3e2f100bd0596c2937847332895895216199ff145be82bfb332a1df40dcc",
+    "scripts/capture-media-libraries-preview.py": "ce7e2ef4a321d9e5567dacb35b200282361c611a4b3a9742866cdfb5c50928b6",
+    "src/lumen/__init__.py": "c2b015cfc2e8245f68fca3a08d840f1dc04619bfcb72ca6753b0d32cf5cb4677",
+    "src/lumen/background_service.py": "a6f12812337ce20cfaaa514ef5eadfb296ff05bd123bf4d2b0d10ef2e42f1d1e",
+    "src/lumen/backup.py": "7e033b53e3ca2bcafe65583af599de67c02d3fb7db490bac96704e267f172b3e",
+    "src/lumen/browse.py": "c6fc22c073595493fc07aab9735d9605d91ceec055da409af0e20d3905529bd6",
+    "src/lumen/catalog.py": "21bf9d542d03c759136750651835b478a1ae9a0d2dd0e076d5eef1a02d4606bc",
+    "src/lumen/catalog_ui.py": "9dec3d430bef17402a86224e642fb5d6556888b796ce816fff7c2a24f4ba3210",
+    "src/lumen/core.py": "4e7da31f7241ca27496f6d10390ab6902154186bbcaf9a7c764dec14bb027c9e",
+    "src/lumen/directory_sync.py": "debfe2cabd757c0ad511b73226da8d26073b16416e84a4d148b1dffb726a7821",
+    "src/lumen/files.py": "0ab83e773ef300dcdb94274cee0ff7a70f4faa9ff5ddccdfd6a0277f5c797ec0",
+    "src/lumen/home.py": "c12d7c9eb359ec9f61f8e478a6f3d211932962e4d9800e2a39714d14c42bd49a",
+    "src/lumen/ingestion.py": "f21e1c5db4e81ff301cbeadc0402ef2f7c7fd8e5e2df6bea1ca1812a53ead476",
+    "src/lumen/library_tools_ui.py": "f50023267d04df70612194b2e6d88e672e6441bb0cea60f3c745befecc01e609",
+    "src/lumen/matching.py": "f977e1b3b0bc9cbe9ee50543419a21be9aaeed593b62a9f37f0e18bba4611181",
+    "src/lumen/media_libraries.py": "4c9b692d0ee5a1c43ef1ea04f10df467509f073027c134334aed9d7962045af6",
+    "src/lumen/media_libraries_ui.py": "e48572ab6c5743dd9bcd8399cfda2b177d273cdf972617ecfe4273f5b4a1dc6b",
+    "src/lumen/media_management_ui.py": "d6e423761d916dbdd3dcdc93cd8e4ecea769d22bdc8889cccd20787e05b4b857",
+    "src/lumen/media_tools.py": "2f254e5cf206201578a93025acab28ace299df9fb96649b1ae92bfbfc40afde2",
+    "src/lumen/migrations.py": "3fb30aaff8de06465b27274cc917198f97ee67365fcb167737d58728b5e1b482",
+    "src/lumen/organize_ui.py": "e5305a96a2473a2ac084f428545e99bba0392634fa86f74dbb6a2dfbe32bf1ad",
+    "src/lumen/player.py": "926fa3f1f0fc74cc709560d9ff19d491965a33c8c5140a81e8d81b5d68be14d9",
+    "src/lumen/server.py": "646ca3b823164948ebb3c85c65a41f333e2989c143f1586387028f610a0056ad",
+    "src/lumen/ui.py": "8c139a11acda512ef5aeae8960433e52f38d7be5ce11dd97caea6c975813a77e"
+  },
+  "boundaries": [
+    "Existing work metadata and personal favorites/ratings remain shared across libraries; progress and organization are file scoped",
+    "Library selection is organizational scope, not per-library authorization",
+    "Saving rules preserves snapshots of already queued automation tasks",
+    "Windows native directory picker and Android physical-device LAN integration require manual device verification"
+  ],
+  "tag_created": false,
+  "release_published": false,
+  "source_commit_ci_policy": "[skip ci]"
+}

@@ -563,7 +563,8 @@ public final class PlayerActivity extends Activity {
         final int ticket=++generation;setNavigationPending(true);
         network.execute(()->{
             try {
-                JSONObject data=api.get("/api/works/"+workId);long selected=fileId>0?fileId:data.optLong("resume_file_id");
+                long scope=queueMode?getSharedPreferences("queue",0).getLong("media_library_id",getIntent().getLongExtra("media_library_id",0)):getIntent().getLongExtra("media_library_id",0);
+                JSONObject data=api.get("/api/works/"+workId+(scope>0?"?media_library_id="+scope:""));long selected=fileId>0?fileId:data.optLong("resume_file_id");
                 JSONArray files=data.getJSONArray("files");if(fileId<0&&files.length()>0)selected=files.getJSONObject(files.length()-1).getLong("id");JSONObject chosen=null;
                 for(int i=0;i<files.length();i++)if(files.getJSONObject(i).getLong("id")==selected)chosen=files.getJSONObject(i);
                 if(chosen==null&&fileId==0&&files.length()>0){chosen=files.getJSONObject(0);selected=chosen.getLong("id");}

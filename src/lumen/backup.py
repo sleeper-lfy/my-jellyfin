@@ -22,7 +22,9 @@ def restore_database(library, path):
         missing=set(expected)-set(actual)
         legacy_works=expected['works'].replace(', liked INTEGER NOT NULL DEFAULT 0 CHECK(liked IN (0,1))','')
         migrate_liked=actual.get('works')==legacy_works and legacy_works!=expected['works']
-        if set(actual)-set(expected) or missing-{'bookmarks','playback_preferences'} or any(actual[name]!=expected[name] and not (name=='works' and migrate_liked) for name in actual):
+        allowed_missing={'bookmarks','playback_preferences'}
+        if schema_version<3:allowed_missing.update({'media_libraries','media_library_files','sqlite_sequence'})
+        if set(actual)-set(expected) or missing-allowed_missing or any(actual[name]!=expected[name] and not (name=='works' and migrate_liked) for name in actual):
             raise ValueError('备份格式或版本不兼容')
         migrate_unified=not source.execute("SELECT 1 FROM settings WHERE key='personal_unified_v1'").fetchone()
         if schema_version<SCHEMA_VERSION or missing or migrate_liked or migrate_unified:

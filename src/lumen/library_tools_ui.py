@@ -123,6 +123,11 @@ class LibraryTools(QDialog):
         index=self.selected_index()
         if index>=0:self.folders.pop(index);self.reload()
     def save(self):
+        from .media_libraries import list_libraries, overlaps
+        for item in list_libraries(self.library):
+            paths=[r['path'] for r in item['config']['roots']]+([item['config']['destination']] if item['config']['destination'] else [])
+            if any(overlaps(str(Path(row['path']).resolve()),path) for row in self.folders for path in paths):
+                self.sync_status.setText('目录与自定义媒体库“'+item['name']+'”重叠，请在媒体库管理中配置。');return
         for row in self.folders:row['settle_seconds']=self.quiet.value()
         old=self.library.setting('watched_folders',[])
         moving=[row for row in self.folders if row.get('enabled',True) and row['kind'] in {'movie','series','vr'} and row.get('destination',self.library.setting('partition:'+row['kind'],{}).get('destination',''))]

@@ -37,8 +37,8 @@ def scan_directories(library,configs,progress=None,cancelled=None,clock=time.tim
             batch=library.import_folder(root,kind,progress,fast=True,candidates=ready,cancelled=cancelled) if ready else {'imported':0,'errors':[]}
             result['imported']+=batch['imported'];result['updated']+=batch.get('nfo_updated',0);result['errors'].extend(batch['errors'])
             rule=library.setting('partition:'+kind,{})
-            for work in library.query({'kinds':[kind],'folder':str(root)}):
-                enqueue(library,work,config.get('plugin',rule.get('plugin','')),config.get('destination',rule.get('destination','')))
+            for work in library.query({'kinds':[kind],'folder':str(root),**({'media_library_id':config['media_library_id']} if 'media_library_id' in config else {})}):
+                enqueue(library,work,config.get('plugin',rule.get('plugin','')),config.get('destination',rule.get('destination','')), **({'fallback_plugins':config['fallback_plugins'],'media_library_id':config['media_library_id'],'naming_rule':config['naming']} if 'media_library_id' in config else {}))
             # Only a complete, readable directory scan may propose missing records.
             rows=library.db.execute('SELECT f.id,f.work_id,f.path,w.title FROM files f JOIN works w ON w.id=f.work_id WHERE w.kind=?',(kind,)).fetchall()
             missing=[]

@@ -10,7 +10,8 @@ def load_view(library,request):
         all_items=library.query({'local':False})
         from .continuation import continue_works
         continuing={item['id']:item for item in continue_works(library)}
-        return {'home':[continuing.get(item['id'],item) for item in all_items if item['files']],
+        from .media_libraries import home_cards
+        return {'media_libraries':home_cards(library),'home':[continuing.get(item['id'],item) for item in all_items if item['files']],
                 'recommendations':library.recommendations(items=all_items)}
     if section=='home' and tab==1:
         from .continuation import continue_works
@@ -20,10 +21,10 @@ def load_view(library,request):
         return {'stats':library.stats(),'report':library.annual_report(request.get('year',datetime.now().year)) if tab==4 else None,
                 'history':[dict(row) for row in library.db.execute('SELECT s.started,s.watched,w.title FROM sessions s JOIN files f ON s.file_id=f.id JOIN works w ON w.id=f.work_id ORDER BY s.started DESC LIMIT 200')] if tab==7 else []}
     if section=='movie' and tab==1:
-        return {'items':library.actresses(request['actor_min'],request['actor_sort'])}
+        return {'items':library.actresses(request['actor_min'],request['actor_sort'],request['filters'].get('media_library_id'))}
     if section=='recommend':
-        selected={item['id'] for item in library.query(request['filters'])}
-        return {'items':[item for item in library.recommendations() if item['id'] in selected]}
+        selected={item['id']:item for item in library.query(request['filters'])}
+        return {'items':[selected[item['id']] for item in library.recommendations() if item['id'] in selected]}
     if section=='discover':
         from .discovery_catalog import query_discovery,discovery_facets
         filters={**request['filters'],**({'watchlist':True} if tab==2 else {})}
@@ -31,7 +32,7 @@ def load_view(library,request):
                                        category=request.get('category',''),tag_query=request.get('tag_query','')),
                 'facets':discovery_facets(library)}
     result={'items':library.query(request['filters'])}
-    if section=='other':result['tree']=library.query({'kinds':['other']})
+    if section=='other':result['tree']=library.query({'kinds':['other'],**({'media_library_id':request['filters']['media_library_id']} if request['filters'].get('media_library_id') is not None else {})})
     return result
 
 

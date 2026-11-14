@@ -63,7 +63,8 @@ def match_conflict(library, plugin, candidate, work_id):
 
 
 def apply_match(library, plugin, operation, candidate, work_id, *, cancelled=None, force=False,
-                interactive=False, resolution=None, snapshot=None):
+                interactive=False, resolution=None, snapshot=None, media_library_id=None):
+    if media_library_id is not None:library.work(work_id,media_library_id)
     manager = Plugins(library)
     from .metadata_health import overwrite_snapshot, overwrite_metadata
     if snapshot is not None and overwrite_snapshot(library, work_id)!=snapshot:
@@ -96,7 +97,7 @@ def apply_match(library, plugin, operation, candidate, work_id, *, cancelled=Non
     else:
         result = manager.merge(plugin['id'], candidate, work_id, replace_nfo=True, cancelled=cancelled)
     from .ingestion import confirm
-    confirm(library, work_id)
+    confirm(library, work_id, media_library_id)
     return result
 
 

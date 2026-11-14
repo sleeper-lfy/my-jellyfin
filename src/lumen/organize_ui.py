@@ -61,12 +61,21 @@ class Organizer(QDialog):
     def __init__(self, window, work_id):
         super().__init__(window); self.window = window; self.work_id = work_id
         self.setWindowTitle('整理命名与预览'); self.resize(1000, 700)
-        self.work = window.library.work(work_id); self.plan = None; self.page = 0; self.generation = 0; self.closed = False
+        self.media_library_id=getattr(window,'media_library_id',None)
+        self.library_rule=None
+        if self.media_library_id is None:
+            from .media_libraries import work_libraries
+            owners=work_libraries(window.library,work_id)
+            if len(owners)==1:self.media_library_id=owners[0]
+        if self.media_library_id is not None:
+            from .media_libraries import get
+            self.library_rule=get(window.library,self.media_library_id)['config']
+        self.work = window.library.work(work_id,self.media_library_id) if self.media_library_id is not None else window.library.work(work_id); self.plan = None; self.page = 0; self.generation = 0; self.closed = False
         layout = QVBoxLayout(self)
         scope=QLabel('当前影片：'+self.work['title']);scope.setWordWrap(True);scope.setToolTip(self.work['title']);scope.setMaximumHeight(48);layout.addWidget(scope)
         settings=QScrollArea();settings.setObjectName('organizerSettings');settings.setWidgetResizable(True);settings.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);settings.setMinimumHeight(120);settings.setMaximumHeight(280)
         body=QWidget();content=QVBoxLayout(body);settings.setWidget(body);layout.addWidget(settings)
-        self.target = QLineEdit(window.library.setting('partition:' + self.work['kind'], {}).get('destination', ''))
+        self.target = QLineEdit((self.library_rule or window.library.setting('partition:' + self.work['kind'], {})).get('destination', ''))
         self.target.setObjectName('organizeTarget'); self.target.setPlaceholderText('选择整理目标根目录')
         row = QHBoxLayout(); row.addWidget(self.target)
         choose = QPushButton('选择目标…'); row.addWidget(choose); content.addLayout(row)
@@ -76,9 +85,11 @@ class Organizer(QDialog):
             if path: self.target.setText(path); self.reload_rule()
         choose.clicked.connect(browse)
         initial = load_rule(window.library, self.work['kind'], self.target.text()) if self.target.text() else window.library.setting(rule_key(self.work['kind']), {'folder':'','filename':''})
+        if self.library_rule is not None:initial=self.library_rule['naming']
         self.fields = RuleFields(content, initial)
         reload = QPushButton('读取目标目录 / 分类默认规则'); reload.clicked.connect(self.reload_rule); content.addWidget(reload)
         self.remember = QCheckBox('保存为目标目录的共用模板');self.remember.setToolTip('此后的作品整理到同一个目标目录时，也会使用这份模板。');content.addWidget(self.remember)
+        if self.library_rule is not None:self.remember.setText('保存为当前媒体库的命名模板')
         self.status = QLabel('先预览，核对全部文件的新路径，再确认执行。原文件会在复制校验成功后删除。'); self.status.setWordWrap(True); layout.addWidget(self.status)
         self.table = QTableWidget(0, 2); self.table.setHorizontalHeaderLabels(['原路径', '目标路径'])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -100,7 +111,7 @@ class Organizer(QDialog):
         self.page_label.setText('尚未生成预览'); self.previous.setEnabled(False); self.next.setEnabled(False)
     def reload_rule(self):
         if not self.target.text().strip(): return
-        try: rule = load_rule(self.window.library, self.work['kind'], self.target.text().strip())
+        try: rule = self.library_rule['naming'] if self.library_rule is not None else load_rule(self.window.library, self.work['kind'], self.target.text().strip())
         except ValueError as error: self.status.setText(str(error)); return
         self.fields.folder.setText(rule['folder']); self.fields.filename.setText(rule['filename'])
     def build(self):
@@ -111,7 +122,7 @@ class Organizer(QDialog):
         self.invalidate(); generation = self.generation; work_id = self.work_id
         self.status.setText('正在后台检查目标路径并校验源文件，尚未移动文件…')
         def prepare(lib, progress):
-            try: return {'plan': plan_move(lib, work_id, target, rule=rule,cancelled=getattr(progress,'cancelled',None))}
+            try: return {'plan': plan_move(lib, work_id, target, rule=rule,cancelled=getattr(progress,'cancelled',None),**({'media_library_id':self.media_library_id} if self.media_library_id is not None else {}))}
             except (ValueError, OSError) as error: return {'error': str(error)}
         def ready(result):
             if self.closed or generation != self.generation or not self.isVisible(): return
@@ -134,7 +145,11 @@ class Organizer(QDialog):
         if not self.plan: return
         plan = self.plan; work_id = self.work_id
         if self.remember.isChecked():
-            try: save_rule(self.window.library, self.work['kind'], self.fields.value(), self.target.text().strip())
+            try:
+                if self.media_library_id is not None:
+                    from .media_libraries import get,save
+                    item=get(self.window.library,self.media_library_id);save(self.window.library,item['name'],item['kind'],{**item['config'],'naming':self.fields.value()},self.media_library_id)
+                else:save_rule(self.window.library, self.work['kind'], self.fields.value(), self.target.text().strip())
             except ValueError as error: self.status.setText(str(error)); return
         window=self.window
         self.accept()
@@ -146,6 +161,10 @@ def show_organizer(details):
     existing = getattr(window, 'organizer_dialog', None)
     if existing is not None:
         existing.show(); existing.raise_(); existing.activateWindow(); return existing
+    from .media_libraries import work_libraries
+    if getattr(window,'media_library_id',None) is None and len(work_libraries(window.library,details.work_id))>1:
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(window,'选择整理范围','此作品分属多个媒体库，请从要整理的媒体库打开影片后再整理。');return
     dialog = Organizer(window, details.work_id); window.organizer_dialog = dialog
     dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
     dialog.finished.connect(lambda _:setattr(window,'organizer_dialog',None))

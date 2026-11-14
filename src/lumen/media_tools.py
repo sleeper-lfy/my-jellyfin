@@ -98,7 +98,8 @@ def delete_bookmark(library,bookmark_id):
 def watch_folders(library,progress=None,clock=time.time,cancelled=None):
     from .nfo import sidecar_signature
     result = {'imported':0,'updated':0,'waiting':0,'offline':[],'errors':[]}
-    for config in library.setting('watched_folders',[]):
+    from .media_libraries import configs
+    for config in configs(library):
         check_cancelled(cancelled)
         if not config.get('enabled',True): continue
         root = Path(config['path']).resolve()
@@ -125,16 +126,16 @@ def watch_folders(library,progress=None,clock=time.time,cancelled=None):
             batch = library.import_folder(root,config['kind'],progress,fast=True,cancelled=cancelled,candidates=ready)
             result['imported']+=batch['imported'];result['updated']+=batch.get('nfo_updated',0)
             result['errors'].extend(batch['errors'])
-            from .ingestion import enqueue
+            from .ingestion import enqueue, task_identifier
             rule = library.setting('partition:' + config['kind'], {})
             plugin = config.get('plugin', rule.get('plugin', ''))
             destination = config.get('destination', rule.get('destination', ''))
             ready_paths = {str(path) for path in ready}
-            for work in library.query({'kinds': [config['kind']], 'folder': str(root)}):
+            for work in library.query({'kinds': [config['kind']], 'folder': str(root),**({'media_library_id':config['media_library_id']} if 'media_library_id' in config else {})}):
                 if any(file['path'] in ready_paths for file in work['files']):
                     # A new file in an existing multi-part work needs a fresh organize pass.
-                    old = library.db.execute('SELECT status FROM tasks WHERE id=?', ('ingest-' + str(work['id']),)).fetchone()
-                    enqueue(library, work, plugin, destination, force=bool(old and old['status'] == 'done'))
+                    old = library.db.execute('SELECT status FROM tasks WHERE id=?', (task_identifier(work['id'],config.get('media_library_id')),)).fetchone()
+                    enqueue(library, work, plugin, destination, force=bool(old and old['status'] == 'done'), **({'fallback_plugins':config['fallback_plugins'],'media_library_id':config['media_library_id'],'naming_rule':config['naming']} if 'media_library_id' in config else {}))
             failed = {error['path'] for error in batch['errors']}
             for path in ready:
                 if str(path) not in failed: state[str(path)]['imported']=state[str(path)]['signature']

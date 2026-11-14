@@ -26,11 +26,14 @@ def sort_items(items, field='added', descending=True):
 
 def validate_filters(filters):
     if not isinstance(filters,dict):raise ValueError('无效筛选条件')
+    if 'media_library_id' in filters:
+        from .media_libraries import identifier
+        identifier(filters['media_library_id'])
     list_keys={'kinds','tags_all','tags_any','tags_not','ids'}
     string_keys={'query','actor','folder','sort','watch_state','watched'}
     numeric={'year_min','year_max','rating_min','rating_max'}
     boolean={'favorite','watchlist','disliked','local','continue','female_cast','descending'}
-    if not filters.keys()<=list_keys|string_keys|numeric|boolean:raise ValueError('未知筛选字段')
+    if not filters.keys()<=list_keys|string_keys|{'media_library_id'}|numeric|boolean:raise ValueError('未知筛选字段')
     for k,v in filters.items():
         if k in list_keys and (not isinstance(v,list) or len(v)>1000 or any((type(x) is not int if k=='ids' else not isinstance(x,str)) for x in v)):raise ValueError('无效筛选列表')
         if k in string_keys and (not isinstance(v,str) or len(v)>2000):raise ValueError('无效筛选文本')
@@ -41,10 +44,10 @@ def validate_filters(filters):
 
 
 class CatalogActions:
-    def set_watched(self, work_id, state, file_id=None):
+    def set_watched(self, work_id, state, file_id=None, media_library_id=None):
         if not isinstance(state,str) or state not in {'completed','unwatched','reset'}: raise ValueError('无效观看状态')
         if file_id is not None and type(file_id) is not int:raise ValueError('无效视频编号')
-        work=self.work(work_id)
+        work=self.work(work_id,media_library_id) if media_library_id is not None else self.work(work_id)
         files=[f for f in work['files'] if file_id is None or f['id']==file_id]
         if not files: raise ValueError('视频不存在')
         with self.db:
@@ -53,11 +56,11 @@ class CatalogActions:
                 self._stamp_file_state(f['id'])
         # Session/activity rows remain real viewing records, never fabricated.
 
-    def batch_catalog(self, ids, action, value=None):
+    def batch_catalog(self, ids, action, value=None, media_library_id=None):
         if not isinstance(ids,list) or any(type(i) is not int for i in ids):raise ValueError('无效作品编号')
         ids=list(dict.fromkeys(ids))
         if not ids or len(ids)>1000: raise ValueError('请选择 1–1000 部作品')
-        works=[self.work(i) for i in ids]
+        works=[self.work(i,media_library_id) if media_library_id is not None else self.work(i) for i in ids]
         if action not in {'favorite','watchlist','completed','unwatched','tags'}:raise ValueError('无效批量操作')
         if action=='tags' and (not isinstance(value,list) or any(not isinstance(t,str) or len(t)>100 for t in value)):raise ValueError('无效标签')
         with self.db:
@@ -70,7 +73,7 @@ class CatalogActions:
                     metadata=w['metadata'];metadata['tags']=list(dict.fromkeys([*metadata.get('tags',[]),*value]))
                     self.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata,ensure_ascii=False),w['id']))
                 else:
-                    self.db.execute('UPDATE files SET completed=?,position=0 WHERE work_id=?',(int(action=='completed'),w['id']))
+                    self.db.executemany('UPDATE files SET completed=?,position=0 WHERE id=?',[(int(action=='completed'),f['id']) for f in w['files']])
                     for f in w['files']:self._stamp_file_state(f['id'])
 
     def _stamp_file_state(self,file_id):
@@ -137,4 +140,8 @@ class CatalogActions:
         mode=repeat if repeat is not None else old.get('repeat','off')
         if not isinstance(mode,str) or mode not in {'off','all','one'}:raise ValueError('无效循环模式')
         queue={**old,'ids':ids,'index':ids.index(current) if current in ids else 0,'repeat':mode}
+        filters=old.get('filters') or {};scope=filters.get('media_library_id')
+        if scope is not None:
+            owned={row[0] for row in self.db.execute('SELECT DISTINCT f.work_id FROM files f JOIN media_library_files m ON m.file_id=f.id WHERE m.library_id=?',(scope,))}
+            if not set(ids)<=owned:queue['filters']={key:value for key,value in filters.items() if key!='media_library_id'}
         self.set_setting('queue',queue);return queue

@@ -47,7 +47,7 @@ class MediaTile(QPushButton):
         painter.fillRect(self.rect(),shade)
         painter.setPen(QColor('white'))
         font=QFont('Segoe UI');font.setPixelSize(20);font.setWeight(QFont.Weight.DemiBold);painter.setFont(font)
-        painter.drawText(self.rect().adjusted(12,0,-12,-32),Qt.AlignmentFlag.AlignBottom,self.title)
+        painter.drawText(self.rect().adjusted(12,0,-12,-32),Qt.AlignmentFlag.AlignBottom,painter.fontMetrics().elidedText(self.title,Qt.TextElideMode.ElideRight,self.width()-24))
         painter.setFont(QFont('Segoe UI',10))
         painter.setPen(QColor('#cccccc'))
         painter.drawText(self.rect().adjusted(12,0,-12,-12),Qt.AlignmentFlag.AlignBottom,self.subtitle)
@@ -121,16 +121,37 @@ class HomePage(QScrollArea):
         empty_layout.addWidget(message);row=QHBoxLayout();row.addStretch();row.addWidget(button('添加媒体文件夹',window.import_dialog,True));row.addStretch();empty_layout.addLayout(row)
         self.layout.addWidget(self.empty);self.layout.addStretch()
 
-    def refresh(self,works=None,recommendations=None):
+    def named_shortcuts(self,entries):
+        fingerprint=tuple((entry['id'],entry['name'],entry['kind']) for entry in entries)
+        if getattr(self,'named_fingerprint',())!=fingerprint:
+            while self.shortcuts.row.count():self.shortcuts.row.takeAt(0)
+            for tile in self.tiles.values():tile.setParent(None);tile.deleteLater()
+            self.tiles={};self.shortcuts.tiles=[]
+            if entries:
+                for entry in entries:
+                    key='library:'+str(entry['id']);tile=MediaTile(entry['name'],'',None,lambda checked=False,identifier=entry['id']:self.window.open_media_library(identifier));tile.setObjectName('homeMediaLibrary:'+str(entry['id']));self.tiles[key]=tile;self.shortcuts.add_tile(tile)
+            else:
+                for kind,title in [('movie','电影'),('series','电视剧'),('vr','VR电影'),('fans','Fans'),('other','其他视频')]:
+                    tile=MediaTile(title,'',None,lambda checked=False,kind=kind:self.window.navigate(kind));self.tiles[kind]=tile;self.shortcuts.add_tile(tile)
+            self.named_fingerprint=fingerprint
+        self.named_entries={'library:'+str(e['id']):e for e in entries}
+
+    def refresh(self,works=None,recommendations=None,media_libraries=None):
         from .ui import update_poster_items
         if works is None:
             from .continuation import continue_works
             continuing={item['id']:item for item in continue_works(self.window.library)}
             works=[continuing.get(item['id'],item) for item in self.window.library.query()]
+        if media_libraries is None:
+            from .media_libraries import home_cards
+            media_libraries=home_cards(self.window.library)
+        self.named_shortcuts(media_libraries)
         self.shortcuts.card_width=self.window.library.setting("thumbnail_width",280);self.shortcuts.reflow()
         position=self.verticalScrollBar().value()
-        for kind,tile in self.tiles.items():
-            items=[work for work in works if work['kind']==kind];cover=None
+        work_index={work['id']:work for work in works}
+        for key,tile in self.tiles.items():
+            entry=self.named_entries.get(key);kind=entry['kind'] if entry else key
+            items=[work_index[i] for i in entry['work_ids'] if i in work_index] if entry else [work for work in works if work['kind']==kind];cover=None
             for work in items[:24]:
                 record=self.window.card_data(work,True);cover=record.get('_cover') or record.get('thumbnail')
                 if cover:break

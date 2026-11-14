@@ -42,7 +42,7 @@ def batch_menu(window):
     if not ids:QMessageBox.information(window,'批量操作','先点击“多选”，再选择作品。');return
     menu=QMenu(window)
     def apply(action,value=None):
-        try:window.library.batch_catalog(ids,action,value);window.refresh()
+        try:window.library.batch_catalog(ids,action,value,**({'media_library_id':window.media_library_id} if getattr(window,'media_library_id',None) is not None else {}));window.refresh()
         except Exception as e:QMessageBox.warning(window,'未完成',str(e))
     for title,action,value in [('收藏','favorite',True),('取消收藏','favorite',False),('想看','watchlist',True),('标记已看','completed',None),('标记未看 / 重置进度','unwatched',None)]:
         menu.addAction(title,lambda checked=False,a=action,v=value:apply(a,v))

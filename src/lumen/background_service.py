@@ -233,7 +233,8 @@ class BackgroundService:
         if job == 'media':
             return bool(library.db.execute('SELECT 1 FROM import_cache WHERE pending IN (1,2) LIMIT 1').fetchone())
         if job == 'watch':
-            return (any(isinstance(row, dict) and row.get('enabled', True) for row in library.setting('watched_folders', []))
+            from .media_libraries import configs
+            return (any(isinstance(row, dict) and row.get('enabled', True) for row in configs(library))
                     or bool(library.db.execute("SELECT 1 FROM tasks WHERE kind='ingest' AND status IN ('queued','running','retry') LIMIT 1").fetchone()))
         if job == 'inspect':
             last = library.setting('inspection', {}).get('last', 0)

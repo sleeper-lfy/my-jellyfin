@@ -76,6 +76,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private final java.util.ArrayDeque<NavigationState> navigationHistory=new java.util.ArrayDeque<>();
     private ScrollView browseScroll;
     int restoreOffset=0,restoreScroll=0;
+    boolean mediaLibrariesSupported;
+    long mediaLibraryId;String mediaLibraryName="";
     private TextView browseLoading,catalogCount;
     private LinearLayout continuePanel;
     DiscoveryCoordinator discoveryCoordinator;
@@ -87,6 +89,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String kind,query,tag,actor,year,yearMin,yearMax,ratingMin,tagsAll,tagsAny,tagsNot,sort,watch,list,discoverySort,discoveryProvider,searchTask,searchState,searchMessage,searchErrors,resultIds,resultTag;
         boolean favorites,recommended,discovery,actresses,descending,discoveryDescending,discoveryOnline,watchlistOnly,dislikedOnly,nextSearchFilters;
         String mainPage,actorPhoto,actorPhotoName;
+        long mediaLibraryId;String mediaLibraryName;
         int offset,scroll,detailScroll,gridIndex,gridScroll;
         JSONObject detail;
     }
@@ -100,7 +103,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         discoverySort=getSharedPreferences("discovery",0).getString("sort","discovered");discoveryDescending=getSharedPreferences("discovery",0).getBoolean("descending",true);
         if(!java.util.Arrays.asList(DISCOVERY_SORT_KEYS).contains(discoverySort))discoverySort="discovered";
         Connection connection=Connection.load(this);
-        if(connection==null)showConnection();else {api=new Api(connection);if(state!=null&&state.containsKey("browse"))restoreBrowseState(state.getBundle("browse"));else showLibrary();}
+        if(connection==null)showConnection();else {api=new Api(connection);mediaLibrariesSupported=getSharedPreferences("server_features",0).getBoolean(connection.base,false);refreshLibraryCapabilities();if(state!=null&&state.containsKey("browse"))restoreBrowseState(state.getBundle("browse"));else showLibrary();}
     }
     @Override protected void onStop() {if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);imageRequests.cancelPage();super.onStop();}
     @Override protected void onStart() {super.onStart();if(discoveryCoordinator!=null&&discovery&&detailId==0)discoveryCoordinator.setActive(true);if(api!=null&&root!=null)imageRequests.restore(api,root);}
@@ -121,7 +124,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         state.putBundle("browse",browseState());super.onSaveInstanceState(state);
     }
     private Bundle browseState() {
-        Bundle state=new Bundle();
+        Bundle state=new Bundle();state.putLong("mediaLibraryId",mediaLibraryId);state.putString("mediaLibraryName",mediaLibraryName);
         String[] keys={"kind","query","tag","actor","yearMin","yearMax","ratingMin","tagsAll","tagsAny","tagsNot","sort","watch","list","discoverySort","provider","task","searchState","searchMessage","searchErrors","resultTag"};
         String[] values={kind,query,tagFilter,actorFilter,yearMinFilter,yearMaxFilter,ratingMinFilter,tagsAllFilter,tagsAnyFilter,tagsNotFilter,sortField,watchFilter,savedList,discoverySort,discoveryProvider,discoverySearchTask,discoverySearchState,discoverySearchMessage,discoverySearchErrors,discoveryResultTag};
         for(int i=0;i<keys.length;i++)state.putString(keys[i],values[i]);
@@ -133,6 +136,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return state;
     }
     private void restoreBrowseState(Bundle state) {
+        mediaLibraryId=state.getLong("mediaLibraryId",0);mediaLibraryName=state.getString("mediaLibraryName","");
         if(state==null){showLibrary();return;}
         kind=state.getString("kind","");query=state.getString("query","");tagFilter=state.getString("tag","");actorFilter=state.getString("actor","");
         yearMinFilter=state.getString("yearMin","");yearMaxFilter=state.getString("yearMax","");ratingMinFilter=state.getString("ratingMin","");tagsAllFilter=state.getString("tagsAll","");tagsAnyFilter=state.getString("tagsAny","");tagsNotFilter=state.getString("tagsNot","");
@@ -189,7 +193,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         ArrayAdapter<ServerDiscovery.Server> servers=new ArrayAdapter<>(this,android.R.layout.simple_dropdown_item_1line);address.setAdapter(servers);address.setOnItemClickListener((parent,view,position,id)->address.setText(servers.getItem(position).address,false));panel.addView(SearchDropdown.row(address,getString(R.string.connection_dropdown_options)));
         panel.addView(BiliMainUi.section(this,"访问密钥"));EditText token=new EditText(this);token.setSingleLine(true);token.setHint("电脑端访问密钥");token.setContentDescription("访问密钥");token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);if(saved!=null)token.setText(saved.token);MediaStyle.field(token);panel.addView(token,new LinearLayout.LayoutParams(-1,dp(48)));
         TextView status=text("",13,MUTED);panel.addView(status);Button connect=button("连接服务器",()->{
-            try{Connection candidate=new Connection(address.getText().toString(),token.getText().toString());Api client=new Api(candidate);status.setText("正在连接…");request(()->client.get("/api/info"),info->{if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");candidate.save(this);api=client;connectionReturn=null;utilityPage="";pictures.evictAll();resetBrowseFilters();mainPage="home";showLibrary();},error->status.setText("连接失败："+error+"\n请检查电脑服务、地址和访问密钥，然后重试。"));}catch(Exception error){status.setText(error.getMessage());}
+            try{Connection candidate=new Connection(address.getText().toString(),token.getText().toString());Api client=new Api(candidate);status.setText("正在连接…");request(()->client.get("/api/info"),info->{if(info.optInt("api_version")!=1)throw new Exception("服务端协议版本不兼容");candidate.save(this);api=client;mediaLibrariesSupported=info.optBoolean("media_libraries");getSharedPreferences("server_features",0).edit().putBoolean(client.connection.base,mediaLibrariesSupported).apply();connectionReturn=null;utilityPage="";pictures.evictAll();resetBrowseFilters();mainPage="home";showLibrary();},error->status.setText("连接失败："+error+"\n请检查电脑服务、地址和访问密钥，然后重试。"));}catch(Exception error){status.setText(error.getMessage());}
         });MediaStyle.button(connect,true,false,false);panel.addView(connect,new LinearLayout.LayoutParams(-1,-2));
         TextView discoveryStatus=text("正在发现同一局域网内的服务端…",13,MUTED);Button discover=button("发现服务器",()->{});BiliMainUi.lightAction(discover,"server",false);panel.addView(discover);panel.addView(BiliMainUi.section(this,"已发现服务器"));panel.addView(discoveryStatus);LinearLayout found=BiliMainUi.group(this);panel.addView(BiliMainUi.groupCard(this,found));
         Runnable scan=()->{final int ticket=generation;discover.setEnabled(false);servers.clear();found.removeAllViews();discoveryStatus.setText("正在发现同一局域网内的服务端…");network.execute(()->{String failure="";try{ServerDiscovery.scan(server->runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){servers.add(server);servers.notifyDataSetChanged();found.addView(new ConnectionLibraryRow(this,server.name,server.address,R.drawable.design_system_remote,()->{address.setText(server.address,false);discoveryStatus.setText("已选择 "+server.name);}));discoveryStatus.setText("发现 "+servers.getCount()+" 个服务端");}}));}catch(Exception error){failure="发现失败，可手动输入地址";}final String problem=failure;runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){discover.setEnabled(true);discoveryStatus.setText(!problem.isEmpty()?problem:servers.isEmpty()?"未发现服务端。可重试或手动输入；请检查电脑服务和防火墙 UDP 8098。":"发现 "+servers.getCount()+" 个服务端，点击选择");}});});};discover.setOnClickListener(v->scan.run());scan.run();
@@ -208,7 +212,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void showTasks(){if(api!=null)TaskCenter.show(this,api);}
     private void addToPhoneQueue(long workId){
-        try{android.content.SharedPreferences prefs=getSharedPreferences("queue",0);JSONArray ids=new JSONArray(prefs.getString("ids","[]"));boolean found=false;for(int i=0;i<ids.length();i++)if(ids.optLong(i)==workId)found=true;if(!found)ids.put(workId);prefs.edit().putString("ids",ids.toString()).apply();message("已加入手机播放队列");}catch(Exception error){message(error.getMessage());}
+        try{android.content.SharedPreferences prefs=getSharedPreferences("queue",0);JSONArray ids=new JSONArray(prefs.getString("ids","[]"));long scope=ids.length()==0?mediaLibraryId:prefs.getLong("media_library_id",0);if(scope!=mediaLibraryId)scope=0;boolean found=false;for(int i=0;i<ids.length();i++)if(ids.optLong(i)==workId)found=true;if(!found)ids.put(workId);prefs.edit().putString("ids",ids.toString()).putLong("media_library_id",scope).apply();message("已加入手机播放队列");}catch(Exception error){message(error.getMessage());}
     }
     private void restartCurrent(long workId,long fileId){
         if(fileId<=0){message("没有可播放的视频");return;}
@@ -228,6 +232,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         actions.addView(text("电脑端任务",16,MUTED));actions.addView(button("此影片的电脑任务",()->{dialog.dismiss();TaskCenter.show(this,api,workId);}));dialog.show();MediaStyle.sheet(dialog);
     }
     private void resetBrowseFilters(){
+        mediaLibraryId=0;mediaLibraryName="";
         kind="";query="";tagFilter="";actorFilter="";yearMinFilter="";yearMaxFilter="";ratingMinFilter="";tagsAllFilter="";tagsAnyFilter="";tagsNotFilter="";watchFilter="";savedList="";
         favorites=false;watchlistOnly=false;dislikedOnly=false;recommended=false;discovery=false;actresses=false;navigationHistory.clear();clearDiscoverySearch();
     }
@@ -273,6 +278,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
     }
     private void openCollection(boolean watchlist){resetBrowseFilters();mainPage="mine";watchlistOnly=watchlist;favorites=!watchlist;showLibrary();}
+    String mediaLibraryQuery(){return mediaLibraryId>0?"&media_library_id="+mediaLibraryId:"";}
+    private void refreshLibraryCapabilities(){
+        Api client=api;network.execute(()->{try{boolean supported=client.get("/api/info").optBoolean("media_libraries");runOnUiThread(()->{if(isDestroyed()||api!=client)return;boolean changed=mediaLibrariesSupported!=supported;mediaLibrariesSupported=supported;getSharedPreferences("server_features",0).edit().putBoolean(client.connection.base,supported).apply();if(changed&&detailId==0&&!mineLanding&&utilityPage.isEmpty()&&!discovery)showLibrary();});}catch(Exception ignored){}});
+    }
+    private void addMediaLibraries(){
+        if(!mediaLibrariesSupported)return;
+        LinearLayout container=new LinearLayout(this);root.addView(container,new LinearLayout.LayoutParams(-1,-2));
+        request(()->api.get("/api/media-libraries"),reply->{
+            JSONArray items=reply.optJSONArray("items");if(items==null||items.length()==0){if(mediaLibraryId>0){mediaLibraryId=0;mediaLibraryName="";showLibrary();}return;}
+            boolean found=mediaLibraryId==0;for(int i=0;i<items.length();i++)if(items.optJSONObject(i)!=null&&items.optJSONObject(i).optLong("id")==mediaLibraryId)found=true;
+            if(!found){resetBrowseFilters();mainPage="library";showLibrary();return;}
+            container.addView(MediaLibrarySelector.create(this,items,mediaLibraryId,(id,name,type)->{resetBrowseFilters();mainPage="library";mediaLibraryId=id;mediaLibraryName=name;kind=type;showLibrary();},this::showLibrary),new LinearLayout.LayoutParams(-1,-2));
+        },error->container.setVisibility(View.GONE));
+    }
     private void browseCategories(){
         String[] labels={"全部","电影","剧集","VR","Fans","其他","女演员"},types={"","movie","series","vr","fans","other","actresses"};
         int selected=actresses?6:Math.max(0,java.util.Arrays.asList(types).indexOf(kind));
@@ -284,7 +303,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     void showLibrary() {
         if(discovery){showDiscoveryPage();return;}
-        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();utilityPage="";if(!mainPage.equals("home"))header(actresses?"女演员":!actorFilter.isEmpty()?"演员作品":favorites?"收藏":watchlistOnly?"想看":!savedList.isEmpty()?savedList:"媒体库",false);
+        generation++;catalogCount=null;mineLanding=false;browseRoot=null;continuePanel=null;detailId=0;renderedDetailId=0;detailScroll=null;browseLoading=null;offset=0;restoreOffset=0;restoreScroll=0;browsePositions.clear();browseRecords.clear();base();utilityPage="";if(!mainPage.equals("home"))header(actresses?"女演员":!actorFilter.isEmpty()?"演员作品":favorites?"收藏":watchlistOnly?"想看":!savedList.isEmpty()?savedList:mediaLibraryId>0?mediaLibraryName:"媒体库",false);
         boolean home=mainPage.equals("home")&&kind.isEmpty()&&!favorites&&!watchlistOnly&&!dislikedOnly&&!recommended&&!discovery&&!actresses&&query.isEmpty()&&tagFilter.isEmpty()&&actorFilter.isEmpty()&&yearMinFilter.isEmpty()&&yearMaxFilter.isEmpty()&&ratingMinFilter.isEmpty()&&tagsAllFilter.isEmpty()&&tagsAnyFilter.isEmpty()&&tagsNotFilter.isEmpty()&&watchFilter.isEmpty()&&savedList.isEmpty();
         LinearLayout searchRow=MediaStyle.row(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);searchRow.setPadding(dp(16),0,dp(16),dp(8));if(mainPage.equals("home")){TextView brand=text("Lumen",22,BLUE);brand.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);searchRow.addView(brand);}
         EditText search=new EditText(this);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint(discovery?"按影片名称搜索":actresses?"搜索女演员":"搜索媒体库");search.setContentDescription(discovery?"发现影片名称搜索":actresses?"女演员搜索":"媒体库搜索");search.setSingleLine(true);search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
@@ -296,7 +315,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         int count=(watchFilter.isEmpty()?0:1)+(savedList.isEmpty()?0:1)+(activeTag.isEmpty()?0:1)+(actorFilter.isEmpty()?0:1)+(yearMinFilter.isEmpty()?0:1)+(yearMaxFilter.isEmpty()?0:1)+(ratingMinFilter.isEmpty()?0:1)+(tagsAllFilter.isEmpty()?0:1)+(tagsAnyFilter.isEmpty()?0:1)+(tagsNotFilter.isEmpty()?0:1)+(favorites?1:0)+(watchlistOnly?1:0)+(dislikedOnly?1:0);
         Button filters=button("筛选"+(count>0?" · "+count:""),this::showFilters);filters.setContentDescription("筛选媒体库");MediaStyle.quiet(filters,"filter","筛选媒体库"+(count>0?"，已选 "+count+" 项":""));searchRow.addView(filters,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(searchRow);
         if(mainPage.equals("home")){LinearLayout feed=MediaStyle.row(this);feed.setPadding(dp(16),0,dp(16),0);feed.addView(BiliMainUi.tabs(this,new String[]{"推荐","最近"},recommended?0:1,index->{boolean next=index==0;if(next==recommended)return;resetBrowseFilters();mainPage="home";recommended=next;showLibrary();}),new LinearLayout.LayoutParams(0,-2,1));feed.addView(globalShuffleButton());root.addView(feed);}
-        if(!mainPage.equals("home")&&!discovery&&!favorites&&!watchlistOnly&&savedList.isEmpty()&&actorFilter.isEmpty())browseCategories();
+        if(!discovery&&!favorites&&!watchlistOnly&&savedList.isEmpty()&&actorFilter.isEmpty()){addMediaLibraries();if(!mainPage.equals("home")&&mediaLibraryId==0)browseCategories();}
         ScrollView scroll=new ScrollView(this);browseScroll=scroll;scroll.setOnScrollChangeListener((View.OnScrollChangeListener)(v,x,y,oldX,oldY)->imageRequests.prioritizeVisible());content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(8),dp(16),dp(16));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         ChipLayout selectedFilters=MediaStyle.actionFlow(this);selectedFilters.setTag("activeFilters");selectedFilters.setPadding(0,dp(4),0,dp(8));
         if(!activeTag.isEmpty())selectedFilters.addView(filterChip(activeTag,()->{if(discovery&&discoveryOnline)discoveryResultTag="";else tagFilter="";showLibrary();}));
@@ -372,7 +391,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String path=recommended?"/api/recommendations?":discovery?"/api/discover?":"/api/works?";
         boolean onlineResult=discovery&&discoveryOnline;
         String ids="";if(onlineResult){java.util.ArrayList<String> selected=new java.util.ArrayList<>();if(discoveryResultIds!=null)for(int i=0;i<discoveryResultIds.length();i++)selected.add(Long.toString(discoveryResultIds.optLong(i)));ids="&ids="+android.text.TextUtils.join(",",selected);}
-        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&watchlist="+watchlistOnly+(dislikedOnly?"&disliked=true":"")+"&q="+android.net.Uri.encode(onlineResult?"":query)+(discovery?"&tag_q=":"&tag=")+android.net.Uri.encode(onlineResult?discoveryResultTag:tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year_min="+android.net.Uri.encode(yearMinFilter)+"&year_max="+android.net.Uri.encode(yearMaxFilter)+"&rating_min="+android.net.Uri.encode(ratingMinFilter)+"&tags_all="+android.net.Uri.encode(tagsAllFilter)+"&tags_any="+android.net.Uri.encode(tagsAnyFilter)+"&tags_not="+android.net.Uri.encode(tagsNotFilter)+"&sort="+(discovery?discoverySort:sortField)+"&direction="+((discovery?discoveryDescending:sortDescending)?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList)+ids;
+        return path+"offset="+offset+"&limit=30&kind="+kind+"&favorite="+favorites+"&watchlist="+watchlistOnly+(dislikedOnly?"&disliked=true":"")+"&q="+android.net.Uri.encode(onlineResult?"":query)+(discovery?"&tag_q=":"&tag=")+android.net.Uri.encode(onlineResult?discoveryResultTag:tagFilter)+"&actor="+android.net.Uri.encode(actorFilter)+"&year_min="+android.net.Uri.encode(yearMinFilter)+"&year_max="+android.net.Uri.encode(yearMaxFilter)+"&rating_min="+android.net.Uri.encode(ratingMinFilter)+"&tags_all="+android.net.Uri.encode(tagsAllFilter)+"&tags_any="+android.net.Uri.encode(tagsAnyFilter)+"&tags_not="+android.net.Uri.encode(tagsNotFilter)+"&sort="+(discovery?discoverySort:sortField)+"&direction="+((discovery?discoveryDescending:sortDescending)?"desc":"asc")+"&watch_state="+watchFilter+"&list="+android.net.Uri.encode(savedList)+ids+mediaLibraryQuery();
     }
     void saveDiscoverySort(){getSharedPreferences("discovery",0).edit().putString("sort",discoverySort).putBoolean("descending",discoveryDescending).apply();}
     void clearDiscoverySearch(){
@@ -500,7 +519,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             tag.setText("");actor.setText("");multiTag.setText("");anyTags.setText("");notTags.setText("");yearFrom.setText("");yearTo.setText("");rating.setText("");watching[0]=0;refreshWatch.run();wanted.setChecked(false);collection.setChecked(false);disliked.setChecked(false);
         });
         dialog.show();
-        request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)+"&discover="+discovery),options->{
+        request(()->api.get("/api/filters?kind="+android.net.Uri.encode(kind)+"&discover="+discovery+mediaLibraryQuery()),options->{
             if(!dialog.isShowing())return;
             JSONArray suggested=options.optJSONArray("tags");if(suggested!=null)for(int i=0;i<Math.min(6,suggested.length());i++){String value=suggested.optString(i);tagSuggestions.addView(BiliMainUi.suggestionChip(this,value,()->tag.setText(value)));}
             AutoCompleteTextView[] inputs={tag,actor,multiTag,yearFrom,yearTo,anyTags,notTags};String[] keys={"tags","actors","tags","years","years","tags","tags"};
@@ -549,7 +568,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void loadActresses() {
         TextView loading=text("正在读取女演员墙…",14,MUTED);browseLoading=loading;content.addView(loading);
-        String path="/api/actresses?minimum=0&sort=average"+(query.isEmpty()?"":"&q="+android.net.Uri.encode(query));
+        String path="/api/actresses?minimum=0&sort=average"+mediaLibraryQuery()+(query.isEmpty()?"":"&q="+android.net.Uri.encode(query));
         request(()->api.get(path),result->{
             content.removeView(loading);if(browseLoading==loading)browseLoading=null;
             JSONArray items=result.getJSONArray("items");
@@ -579,7 +598,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(detailId==0){browseRoot=root;if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);}
         generation++;detailId=id;
         Api client=api;long version=personalReadVersion(client);
-        request(()->client.get("/api/works/"+id),work->{mergePersonalRead(client,id,version,work);renderDetail(work);});
+        request(()->client.get("/api/works/"+id+(mediaLibraryId>0?"?media_library_id="+mediaLibraryId:"")),work->{mergePersonalRead(client,id,version,work);renderDetail(work);});
     }
     private void renderDetail(JSONObject work) throws Exception {
         int previousScroll=renderedDetailId==work.optLong("id")&&detailScroll!=null?detailScroll.getScrollY():0;
@@ -740,7 +759,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
     private void filterMetadata(String field,String value){
-        NavigationState state=new NavigationState();
+        NavigationState state=new NavigationState();state.mediaLibraryId=mediaLibraryId;state.mediaLibraryName=mediaLibraryName;
         state.kind=kind;state.query=query;state.tag=tagFilter;state.actor=actorFilter;state.yearMin=yearMinFilter;state.yearMax=yearMaxFilter;state.ratingMin=ratingMinFilter;state.tagsAll=tagsAllFilter;
         state.tagsAny=tagsAnyFilter;state.tagsNot=tagsNotFilter;state.sort=sortField;state.watch=watchFilter;state.list=savedList;state.descending=sortDescending;
         state.discoverySort=discoverySort;state.discoveryDescending=discoveryDescending;
@@ -756,6 +775,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void restoreNavigation(){
         NavigationState state=navigationHistory.removeLast();actorPhoto=state.actorPhoto==null?"":state.actorPhoto;actorPhotoName=state.actorPhotoName==null?"":state.actorPhotoName;
+        mediaLibraryId=state.mediaLibraryId;mediaLibraryName=state.mediaLibraryName==null?"":state.mediaLibraryName;
         kind=state.kind;query=state.query;tagFilter=state.tag;actorFilter=state.actor;yearMinFilter=state.yearMin;yearMaxFilter=state.yearMax;ratingMinFilter=state.ratingMin;tagsAllFilter=state.tagsAll;
         tagsAnyFilter=state.tagsAny==null?"":state.tagsAny;tagsNotFilter=state.tagsNot==null?"":state.tagsNot;sortField=state.sort;watchFilter=state.watch;savedList=state.list;sortDescending=state.descending;
         discoverySort=state.discoverySort;discoveryDescending=state.discoveryDescending;
@@ -836,7 +856,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void watchAction(long workId,Long fileId){
         showDialog(new AlertDialog.Builder(this).setTitle("观看状态").setItems(fileId==null?new String[]{"标记已看","标记未看 / 重置进度"}:new String[]{"标记已看","标记未看 / 重置进度","从头播放"},(d,index)->{
             try{JSONObject payload=new JSONObject().put("state",index==0?"completed":"unwatched");if(fileId!=null)payload.put("file_id",fileId);else if(index==2)payload.put("file_id",detail.optLong("resume_file_id"));
-                request(()->api.post("/api/works/"+workId+"/watched",payload),ok->{if(index==2){startPlayer(fileId!=null?fileId:detail.optLong("resume_file_id"),false);}else openDetail(workId);});
+                request(()->api.post("/api/works/"+workId+"/watched"+(mediaLibraryId>0?"?media_library_id="+mediaLibraryId:""),payload),ok->{if(index==2){startPlayer(fileId!=null?fileId:detail.optLong("resume_file_id"),false);}else openDetail(workId);});
             }catch(Exception e){message(e.getMessage());}
         }));
     }
@@ -882,7 +902,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 });
                 java.util.function.IntConsumer change=action->{
                     if(!currentQueue.getAsBoolean()||values.isEmpty())return;int index=Math.max(0,Math.min(selected[0],values.size()-1));long current=values.get(Math.max(0,Math.min(prefs.getInt("index",0),values.size()-1)));
-                    if(action==0){prefs.edit().putInt("index",index).apply();Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",values.get(index));intent.putExtra("queue",true);startActivity(intent);return;}
+                    if(action==0){prefs.edit().putInt("index",index).apply();Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",values.get(index));intent.putExtra("queue",true);intent.putExtra("media_library_id",prefs.getLong("media_library_id",0));startActivity(intent);return;}
                     if(action==3)values.remove(index);else {int target=action==1?index-1:index+1;if(target<0||target>=values.size())return;java.util.Collections.swap(values,index,target);selected[0]=target;}
                     String updated=new JSONArray(values).toString();prefs.edit().putString("ids",updated).putInt("index",Math.max(0,values.indexOf(current))).apply();expected[0]=updated;render.run();
                 };
@@ -965,7 +985,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         startActivity(playerIntent(fileId,queue));
     }
     private Intent playerIntent(long fileId,boolean queue){
-        Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);
+        Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);intent.putExtra("media_library_id",mediaLibraryId);
         intent.putExtra("browse_path",listPath().replaceFirst("offset=[0-9]+&limit=30&",""));
         intent.putExtra("browse_position",browsePositions.getOrDefault(detailId,-1));return intent;
     }
@@ -1002,8 +1022,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },result->{
             if(client!=api||attempt!=shuffleRequest)return;
             JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message(getString(R.string.global_shuffle_empty));return;}
-            Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);
-            getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).apply();startActivity(intent);
+            Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);intent.putExtra("media_library_id",0L);
+            getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).putLong("media_library_id",0).apply();startActivity(intent);
         },error->{
             if(client!=api||attempt!=shuffleRequest)return;
             String explanation=error!=null&&error.contains("404")?getString(R.string.global_shuffle_update_required):getString(R.string.global_shuffle_failed,error);
@@ -1013,12 +1033,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     void shuffle() {
         final Api client=api;if(client==null)return;
         final int attempt=++shuffleRequest;
-        final String scope=listPath();
+        final String scope=listPath();final long libraryScope=mediaLibraryId;
         request(()->client.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope)),result->{
             if(client!=api||attempt!=shuffleRequest)return;
             JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message("当前列表没有可播放的本地视频");return;}
-            getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).apply();
-            Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);startActivity(intent);
+            getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).putLong("media_library_id",libraryScope).apply();
+            Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);intent.putExtra("media_library_id",libraryScope);startActivity(intent);
         },error->{
             if(client!=api||attempt!=shuffleRequest)return;
             String explanation=error!=null&&error.contains("404")?"当前电脑版本不支持按列表随机播放，请更新电脑端后重试。":"无法生成当前列表的播放队列："+error;

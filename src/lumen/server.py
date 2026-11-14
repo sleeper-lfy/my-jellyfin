@@ -279,7 +279,12 @@ class LanServer:
                             raise ApiError(413,'请求内容大小无效')
                         body = json.loads(self.rfile.read(length))
                         if not isinstance(body,dict): raise ApiError(400,'请求内容须为对象')
+                    if self.command == 'POST' and path.startswith('/api/media-libraries'):
+                        raise ApiError(403,'媒体库配置仅可在电脑端修改')
                     if self.command in {'GET','HEAD'}:
+                        if path == '/api/media-libraries':
+                            from .media_libraries import list_libraries
+                            return self.send_json(200,{'items':list_libraries(library,public=True)})
                         if path == '/api/discovery/providers':
                             from .discovery_search import search_providers
                             return self.send_json(200, {'items': search_providers(library)})
@@ -312,7 +317,7 @@ class LanServer:
                             if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'截图不在缓存内')
                             return self.send_file(target,'image/jpeg')
                         if path == '/api/info':
-                            return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now()})
+                            return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now(),'media_libraries':True})
                         if path == '/api/tasks':
                             return self.send_json(200, public_tasks(library, query))
                         if path == '/api/filters':
@@ -321,7 +326,7 @@ class LanServer:
                             if discovered:
                                 from .discovery_catalog import discovery_facets
                                 return self.send_json(200,discovery_facets(library,filters.get('kinds')))
-                            return self.send_json(200, library.filter_options(filters.get('kinds')))
+                            return self.send_json(200, library.filter_options(filters.get('kinds'),media_library_id=filters.get('media_library_id')))
                         if path == '/api/continue':
                             from .continuation import continue_works
                             limit=max(1,min(100,int(query.get('limit',['24'])[0])))
@@ -334,7 +339,7 @@ class LanServer:
                             if sort not in {'average', 'count', 'rated', 'name'}:raise ApiError(400, '无效排序')
                             needle = query.get('q', [''])[0].casefold().strip()
                             result = []
-                            for actress in library.actresses(minimum=minimum, order=sort):
+                            for actress in library.actresses(minimum=minimum, order=sort,media_library_id=self.media_id(query)):
                                 if needle and needle not in actress['name'].casefold():continue
                                 photo = None
                                 for work_id in actress.get('work_ids', []):
@@ -380,7 +385,8 @@ class LanServer:
                             return self.send_file(target,'image/jpeg')
                         match = re.fullmatch(r'/api/works/(\d+)(/cover)?',path)
                         if match:
-                            work = library.work(int(match[1]))
+                            scope=self.media_id(query)
+                            work = library.work(int(match[1]),scope) if scope is not None else library.work(int(match[1]))
                             if match[2]:
                                 poster_only = work['kind'] in {'movie','vr'}
                                 from .artwork import poster_path, PosterPathError
@@ -408,9 +414,9 @@ class LanServer:
                                 if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'封面路径不在缓存内')
                                 return self.send_file(target,'image/jpeg')
                             result=public_work(work,True,library=library)
-                            rows=library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=? ORDER BY b.file_id,b.position LIMIT 300',(work['id'],))
+                            rows=library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=?'+(' AND f.id IN (SELECT file_id FROM media_library_files WHERE library_id=?)' if scope is not None else '')+' ORDER BY b.file_id,b.position LIMIT 300',(work['id'],scope) if scope is not None else (work['id'],))
                             result['bookmarks']=[{**{key:row[key] for key in row.keys() if key!='image'},'image':f"/api/bookmarks/{row['id']}/image" if row['image'] else None} for row in rows]
-                            target=library.resume_file(work['id']) if work['files'] else None
+                            target=library.resume_file(work['id'],media_library_id=scope) if work['files'] else None
                             result['resume_file_id']=target['id'] if target else None
                             if target:
                                 from .continuation import describe
@@ -532,10 +538,10 @@ class LanServer:
                             return self.send_json(200,{'ok':True,'result':merged,'work':public_work(library.work(merged['work_id']),detail=True,library=library)})
                         match=re.fullmatch(r'/api/works/(\d+)/watched',path)
                         if match:
-                            library.set_watched(int(match[1]),body.get('state'),body.get('file_id'))
+                            library.set_watched(int(match[1]),body.get('state'),body.get('file_id'),media_library_id=self.media_id(query))
                             return self.send_json(200,{'ok':True})
                         if path == '/api/queue':
-                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','disliked','tag','actor','year_min','year_max','rating_min','tags_all','tags_any','tags_not','sort','direction','watch_state'}})
+                            filters=self.filters({k:[str(v)] for k,v in body.items() if k in {'kind','q','favorite','watchlist','disliked','tag','actor','year_min','year_max','rating_min','tags_all','tags_any','tags_not','sort','direction','watch_state','media_library_id'}})
                             ids=[w['id'] for w in library.query(filters)]
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
@@ -551,7 +557,7 @@ class LanServer:
                             parameters = parse_qs(browse.query,keep_blank_values=True,max_num_fields=40)
                             allowed = {'offset','limit','kind','q','favorite','watchlist','disliked','tag','actor','year',
                                        'year_min','year_max','rating_min','tags_all','tags_any','tags_not','sort','direction','watch_state',
-                                       'list','ids','source','category','tag_q'}
+                                       'list','ids','source','category','tag_q','media_library_id'}
                             if not parameters.keys() <= allowed or any(len(values)!=1 for values in parameters.values()):
                                 raise ApiError(400,'无效媒体列表参数')
                             # The full matching collection is used, regardless of the visible page.
@@ -633,12 +639,22 @@ class LanServer:
                     items = library.query(filters)
                 if saved_ids is not None:items = [work for work in items if work['id'] in saved_ids]
                 if path == '/api/recommendations':
-                    selected = {work['id'] for work in items}
-                    items = [work for work in library.recommendations() if work['id'] in selected]
+                    selected = {work['id']:work for work in items}
+                    items = [selected[work['id']] for work in library.recommendations() if work['id'] in selected]
                 return items
+
+            def media_id(self,query):
+                raw=query.get('media_library_id',[''])[0]
+                if raw=='':return None
+                try:value=int(raw)
+                except (ValueError,TypeError):raise ApiError(400,'无效媒体库编号')
+                if value<1:raise ApiError(400,'无效媒体库编号')
+                return value
 
             def filters(self,query,discovery=False):
                 filters={'query':query.get('q',[''])[0]}
+                scope=self.media_id(query)
+                if scope is not None:filters['media_library_id']=scope
                 kind=query.get('kind',[''])[0]
                 if kind:
                     if kind not in {'movie','series','other','vr','fans'}:raise ApiError(400,'无效媒体类型')
