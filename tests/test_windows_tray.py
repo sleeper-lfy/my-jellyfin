@@ -135,6 +135,7 @@ class FakeWin32:
         return 1
 
     def TrackPopupMenu(self, menu, *args):
+        self.calls.append(("popup",))
         return next(self.choices, 0)
 
     def DestroyMenu(self, menu):
@@ -187,6 +188,53 @@ def test_cancelling_exit_keeps_the_icon_and_accepts_later_open_actions(monkeypat
     assert actions == ["exit requested", "open"]
     assert ("post", tray.WM_CLOSE) not in fake.calls, "only the supervisor may commit shutdown"
     assert fake.calls.count(("notify", tray.NIM_DELETE)) == 1
+
+
+@pytest.mark.parametrize('notification',[tray.WM_RBUTTONUP,tray.WM_CONTEXTMENU])
+def test_dismissing_popup_with_stale_win32_error_keeps_tray_usable(monkeypatch,notification):
+    fake=FakeWin32([
+        (tray.WM_TRAYICON,0,notification|(1<<16)),
+        (tray.WM_COMMAND,tray.MENU_OPEN,0),
+        (tray.WM_TRAYICON,0,notification|(1<<16)),
+        (tray.WM_CLOSE,0,0),
+    ])
+    native(monkeypatch,fake);monkeypatch.setattr(tray,'_last_error',lambda:1400)
+    actions=[]
+    tray.WindowsTray(lambda:actions.append('open'),lambda:actions.append('exit')).run()
+    assert actions==['open'] and fake.calls.count(('popup',))==2
+    assert fake.calls.count(('destroy_menu',))==2
+    assert fake.calls.count(('notify',tray.NIM_DELETE))==1
+
+
+def test_reentrant_context_notification_opens_only_one_popup(monkeypatch):
+    fake=FakeWin32([(tray.WM_TRAYICON,0,tray.WM_CONTEXTMENU|(1<<16)),(tray.WM_CLOSE,0,0)])
+    native(monkeypatch,fake);popups=[];actions=[]
+    def popup(*args):
+        popups.append(True)
+        if len(popups)==1:
+            fake.proc(fake.hwnd,tray.WM_TRAYICON,0,tray.WM_CONTEXTMENU|(1<<16))
+            return tray.MENU_OPEN
+        return 0
+    monkeypatch.setattr(fake,'TrackPopupMenu',popup)
+    tray.WindowsTray(lambda:actions.append('open'),lambda:actions.append('exit')).run()
+    assert len(popups)==1 and actions==['open']
+
+
+def test_transient_popup_failure_keeps_icon_and_later_open_available(monkeypatch,caplog):
+    fake=FakeWin32([
+        (tray.WM_TRAYICON,0,tray.WM_CONTEXTMENU|(1<<16)),
+        (tray.WM_TRAYICON,0,tray.WM_LBUTTONDBLCLK|(1<<16)),
+        (tray.WM_TRAYICON,0,tray.WM_CONTEXTMENU|(1<<16)),
+        (tray.WM_CLOSE,0,0),
+    ])
+    native(monkeypatch,fake);created=[];actions=[]
+    def create_menu():
+        created.append(True);return 0 if len(created)==1 else fake.menu
+    monkeypatch.setattr(fake,'CreatePopupMenu',create_menu)
+    tray.WindowsTray(lambda:actions.append('open'),lambda:actions.append('exit')).run()
+    assert actions==['open'] and len(created)==2
+    assert fake.calls.count(('notify',tray.NIM_ADD))==1
+    assert 'CreatePopupMenu' in caplog.text
 
 
 def test_explorer_restart_readds_the_icon_and_sets_its_version(monkeypatch):

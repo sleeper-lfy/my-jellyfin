@@ -1,0 +1,92 @@
+{
+  "status": "source_verified_release_preparation",
+  "verified_at": "2026-11-14T09:20:55.123821+00:00",
+  "base_commit": "854fade7ac99dc742a931929582e4f6e3fe7bfd7",
+  "version": "0.4.23",
+  "android_version_code": 42,
+  "fixes": [
+    "Dismissed tray popup ignores stale Win32 errors",
+    "Defer and coalesce popup requests outside WNDPROC",
+    "Transient popup failures retain the tray and background service",
+    "Visible startup/background page with separate opt-in silent startup",
+    "Only cold tray startup observes preference; relaunch opens existing owner; startup registration remains background"
+  ],
+  "python": {
+    "command": ".venv/bin/python -m pytest -q -o junit_family=legacy --junitxml=<local report>",
+    "tests": 1054,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "passed": 1051,
+    "report_sha256": "962a5f65074b1e464473593417ec60e0aecb6a3a6ad3358090e0a73ffcbc21f0",
+    "skipped_tests": [
+      {
+        "name": "tests.test_desktop_updates::test_powershell_upgrade_helper_parses_without_executing_it",
+        "reason": "Windows PowerShell parser is checked by Windows CI"
+      },
+      {
+        "name": "tests.test_mpv::test_real_libmpv_decode_seek_tracks_and_end",
+        "reason": "Set LUMEN_REQUIRE_MPV=1 when the libmpv runtime is installed"
+      },
+      {
+        "name": "tests.test_subtitle_appearance::test_real_mpv_removes_ass_box_pixels_without_switching_track_or_restarting",
+        "reason": "Set LUMEN_REQUIRE_MPV=1 when the libmpv runtime is installed"
+      }
+    ]
+  },
+  "targeted": {
+    "tests": 128,
+    "failed": 0,
+    "tray_before_fix": {
+      "passed": 10,
+      "failed": 4
+    },
+    "tray_after_fix": {
+      "passed": 14,
+      "failed": 0
+    },
+    "final_settings_ui_tests": 1,
+    "final_ui_scope": "Startup persistence, independent login registration and rollback with real Settings/StartupSettings widgets; host excludes unused media backend. Final dialog default width verified by focused UI rerun."
+  },
+  "android": {
+    "command": "python scripts/build-android-cloud.py :app:testDebugUnitTest :app:lintDebug :app:assembleDebug",
+    "tests": {
+      "tests": 266,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "Fatal": 0,
+      "Error": 0,
+      "Warning": 89
+    },
+    "build": "success",
+    "persistent_signing": "Checked in publication workflow"
+  },
+  "source_files_sha256": {
+    "android/app/build.gradle": "fcc44a1a471cfd6888be88d356a79368dfcef03308d21ca60e33ddff88531c2e",
+    "pyproject.toml": "2d83733c4172e3c073d898deef505938dd1a78363a9eb1875ac22a6ddddea01e",
+    "src/lumen/__init__.py": "b34b853d5f3e23004f3f0cfe05aa4d67cdd92d75e31077c81eda2e12dc6e6ccf",
+    "src/lumen/desktop_runtime.py": "35509df0d72f1e384f7b71379b4a8fe0cf44a72a97d2cd49a121f010044d9166",
+    "src/lumen/settings.py": "6ab39446b132b102b0b88fb3dc50db2f66f09db585927faad8376e07fa9b132e",
+    "src/lumen/startup.py": "86bb80a3ecd102642fb46e2fff1d03ef9b509d9f8759fb73ee29562635c84e70",
+    "src/lumen/startup_ui.py": "d00fefb43371fc540fd296ca6d3b6d4cd3e6e5444ff51bbf793a947e628f6eb0",
+    "src/lumen/windows_tray.py": "d6c06bb9c31510be20ba834ab818ac79955c297a813f2232c27fbd7d8398b821",
+    "tests/test_desktop_runtime.py": "f8b8cc9fa7eff6e7924508b83c627d24fd64feda58cebbd44a30ce8d7409516c",
+    "tests/test_startup.py": "b76c66ad854a0fbdac57d51d833a56e2829135b613a51f17897ae8faf5dac5fd",
+    "tests/test_windows_tray.py": "25124e788f7402359b6d04014f551d5667d634ec9db753d4f78cb5f434aa3e8b"
+  },
+  "screenshots": [
+    {
+      "file": "docs/screenshots/windows-startup-0.4.23.png",
+      "sha256": "e4886fb9db2990f5d4820515f11c7e93ca0f9786e766174e4cab11b7182e7ee0",
+      "source": "Real StartupSettings panel in Linux preview container; temporary database and simulated Windows registration"
+    }
+  ],
+  "limitations": [
+    "Native Windows hidden-area mouse interaction and login behavior need physical-device verification",
+    "Linux Qt-free and backend tests do not replace Windows installed-process acceptance",
+    "Published installer integrity and signature evidence are separate from source verification"
+  ]
+}

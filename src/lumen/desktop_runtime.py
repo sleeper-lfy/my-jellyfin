@@ -9,6 +9,7 @@ from pathlib import Path
 import queue
 import secrets
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -382,7 +383,13 @@ class DesktopRuntime:
             except Exception: logging.exception('LAN did not start; desktop remains available')
             self._serve_control()
             if self.use_tray: self._start_tray()
-            if self.open_window: self._launch()
+            show_window=self.open_window
+            if show_window and self.use_tray:
+                from .startup import silent_start_enabled
+                try:show_window=not silent_start_enabled(self.directory)
+                except (OSError,ValueError,sqlite3.Error):
+                    logging.exception('Cannot read silent startup preference; opening the main window')
+            if show_window: self._launch()
             while not self.stopping.is_set():
                 try:
                     action, fields, response = self.events.get(timeout=.2)

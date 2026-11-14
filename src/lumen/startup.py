@@ -11,6 +11,15 @@ import sys
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 RUN_VALUE = 'Lumen'
 MAX_COMMAND_LENGTH = 260
+SILENT_START_SETTING = 'desktop_start_silently'
+
+
+def silent_start_enabled(directory):
+    """Read the initialized local preference without loading Qt or retaining a DB."""
+    from .core import Library
+    library=Library(directory,initialize=False,timeout=.15)
+    try:return library.setting(SILENT_START_SETTING,False) is True
+    finally:library.close()
 
 
 class StartupError(ValueError):

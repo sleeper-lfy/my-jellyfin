@@ -211,7 +211,7 @@ def test_missing_wrong_executable_and_overlong_commands_are_rejected(installatio
 
 def test_settings_checkbox_restores_actual_registry_state_after_write_failure(installation, monkeypatch):
     from PySide6.QtWidgets import QApplication, QCheckBox, QDialog, QLabel
-    from lumen.settings import Settings
+    from lumen.startup_ui import StartupSettings
 
     application = QApplication.instance() or QApplication([])
     _, directory, registry = installation
@@ -219,11 +219,11 @@ def test_settings_checkbox_restores_actual_registry_state_after_write_failure(in
     dialog.library = SimpleNamespace(directory=directory)
     dialog.startup = QCheckBox(dialog)
     dialog.startup_status = QLabel(dialog)
-    dialog.refresh_startup = lambda: Settings.refresh_startup(dialog)
+    dialog.refresh_startup = lambda: StartupSettings.refresh_startup(dialog)
     warnings = []
-    monkeypatch.setattr('lumen.settings.QMessageBox.warning', lambda *args: warnings.append(args[1:]))
+    monkeypatch.setattr('lumen.startup_ui.QMessageBox.warning', lambda *args: warnings.append(args[1:]))
     dialog.refresh_startup()
-    dialog.startup.toggled.connect(lambda enabled: Settings.change_startup(dialog, enabled))
+    dialog.startup.toggled.connect(lambda enabled: StartupSettings.change_startup(dialog, enabled))
     registry.fail_write = True
     dialog.startup.setChecked(True)
     assert not dialog.startup.isChecked() and dialog.startup.isEnabled()
@@ -241,3 +241,52 @@ def test_settings_checkbox_restores_actual_registry_state_after_write_failure(in
     assert '无法读取' in dialog.startup_status.text() and len(warnings) == 3
     dialog.close()
     application.processEvents()
+
+
+@pytest.mark.parametrize('value,expected',[(True,True),(False,False),('false',False),('true',False),(1,False),(None,False)])
+def test_silent_preference_is_persistent_and_only_boolean_true_hides_window(library,value,expected):
+    library.set_setting(startup.SILENT_START_SETTING,value)
+    assert startup.silent_start_enabled(library.directory) is expected
+
+
+def test_silent_start_read_does_not_load_qt_or_image_toolkits(library):
+    import os,sys
+    from pathlib import Path
+    library.set_setting(startup.SILENT_START_SETTING,True)
+    code='import sys; from lumen.startup import silent_start_enabled; assert silent_start_enabled(sys.argv[1]); assert not any(name.startswith(("PySide6","PIL")) for name in sys.modules)'
+    result=subprocess.run([sys.executable,'-c',code,str(library.directory)],env={**os.environ,'PYTHONPATH':str(Path(__file__).parents[1]/'src')},capture_output=True,text=True,timeout=10)
+    assert result.returncode==0,result.stderr
+
+
+def test_startup_page_is_visible_and_silent_mode_is_independent_of_login_registration(installation,qapp,monkeypatch):
+    import sqlite3
+    from PySide6.QtWidgets import QTabWidget,QWidget
+    from lumen.core import Library
+    from lumen.settings import Settings
+    _,directory,registry=installation
+    # Settings needs a host and database; this flow does not need a video/audio
+    # backend. Other UI regressions still exercise the actual MainWindow.
+    window=QWidget();window.library=Library(directory);window.lan_server=None
+    window.updater=lambda:SimpleNamespace(panel=lambda parent:QWidget(parent))
+    dialog=Settings(window)
+    try:
+        tabs=dialog.findChild(QTabWidget);assert tabs.tabText(0)=='启动与后台'
+        panel=dialog.startup_page
+        assert panel.silent_startup.isEnabled() and not panel.silent_startup.isChecked()
+        panel.silent_startup.setChecked(True)
+        assert startup.silent_start_enabled(directory) and not registry.values
+        panel.startup.setChecked(True)
+        assert startup.status(directory).enabled and startup.silent_start_enabled(directory)
+        reloaded=Settings(window)
+        try:assert reloaded.startup_page.silent_startup.isChecked() and reloaded.startup_page.startup.isChecked()
+        finally:reloaded.close()
+        original=window.library.set_setting;errors=[]
+        def save(key,value):
+            if key==startup.SILENT_START_SETTING:raise sqlite3.OperationalError('database is locked')
+            return original(key,value)
+        monkeypatch.setattr(window.library,'set_setting',save)
+        monkeypatch.setattr('lumen.startup_ui.QMessageBox.warning',lambda *args:errors.append(args[-1]))
+        panel.silent_startup.setChecked(False)
+        assert panel.silent_startup.isChecked() and startup.silent_start_enabled(directory)
+        assert errors==['database is locked'] and startup.status(directory).enabled
+    finally:dialog.close();window.close();window.library.close();qapp.processEvents()

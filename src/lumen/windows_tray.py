@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import deque
 import ctypes
+import logging
 from pathlib import Path
 import sys
 import threading
@@ -95,12 +96,6 @@ def _last_error() -> int:
     return reader() if reader else 0
 
 
-def _clear_error() -> None:
-    writer = getattr(ctypes, "set_last_error", None)
-    if writer:
-        writer(0)
-
-
 def _failure(operation: str) -> OSError:
     code = _last_error()
     return OSError(code, f"{operation} failed" if not code else f"{operation} failed (Win32 {code})")
@@ -170,6 +165,7 @@ class WindowsTray:
         self._taskbar_created = 0
         self._icon_data: NOTIFYICONDATAW | None = None
         self._icon_added = False
+        self._menu_pending = False
 
     def stop(self) -> None:
         """Wake and close the loop from any thread, including before startup."""
@@ -203,6 +199,25 @@ class WindowsTray:
         elif command == MENU_EXIT:
             self._queue(self._on_exit)
 
+    def _request_menu(self) -> None:
+        # TrackPopupMenu pumps messages itself. Defer the popup outside WNDPROC
+        # and coalesce duplicate/reentrant Shell context notifications.
+        if self._menu_pending or self._stop_requested.is_set():
+            return
+        self._menu_pending = True
+        self._queue(self._show_menu)
+
+    def _show_menu(self) -> None:
+        try:
+            if not self._stop_requested.is_set():
+                self._menu(self._hwnd)
+        except OSError:
+            # A transient menu error must not stop LAN/watching or remove the
+            # tray. Startup/registration failures retain their fatal handling.
+            logging.getLogger(__name__).warning('Cannot open Windows tray menu',exc_info=True)
+        finally:
+            self._menu_pending = False
+
     def _menu(self, hwnd: int) -> None:
         api = self._api
         menu = api.CreatePopupMenu()
@@ -220,12 +235,12 @@ class WindowsTray:
                 raise _failure("GetCursorPos")
             # Windows may deny foreground activation; the menu still works.
             api.SetForegroundWindow(hwnd)
-            _clear_error()
             command = api.TrackPopupMenu(menu, 0x0100 | 0x0080 | 0x0002,
                 point.x, point.y, 0, hwnd, None)
-            if not command and _last_error():
-                raise _failure("TrackPopupMenu")
-            self._dispatch_menu(command)
+            # With TPM_RETURNCMD zero also means normal dismissal. The nested
+            # message loop may leave an unrelated LastError even on cancellation.
+            if command and not self._stop_requested.is_set():
+                self._dispatch_menu(command)
         finally:
             api.DestroyMenu(menu)
             # Required by Shell's popup-menu dismissal behavior.
@@ -240,7 +255,7 @@ class WindowsTray:
         if message == WM_TRAYICON:
             event = lparam & 0xFFFF  # Works with NOTIFYICON_VERSION_4 packing.
             if event in (WM_RBUTTONUP, WM_CONTEXTMENU):
-                self._menu(hwnd)
+                self._request_menu()
             elif event in (WM_LBUTTONDBLCLK, NIN_KEYSELECT):
                 self._queue(self._on_open)
             return 0

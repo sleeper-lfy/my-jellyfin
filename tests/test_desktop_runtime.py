@@ -83,6 +83,44 @@ def test_owner_survives_gui_close_and_queues_quit_only_for_explicit_exit(tmp_pat
     assert owner._dispatch('poll', {'snapshot': {}})['events'] == ['quit']
 
 
+@pytest.mark.parametrize('use_tray,open_window,silent,expected',[
+    (True,True,True,False),(True,True,False,True),
+    (True,False,False,False),(False,True,True,True),
+])
+def test_cold_start_honors_silent_option_only_when_tray_can_reopen_window(tmp_path,monkeypatch,use_tray,open_window,silent,expected):
+    from lumen import startup,image_isolation
+    monkeypatch.setenv('LUMEN_BACKGROUND_SERVICE','0')
+    monkeypatch.setattr(image_isolation,'_shutdown_event',None)
+    library=Library(tmp_path/'data');library.set_setting(startup.SILENT_START_SETTING,silent);directory=library.directory;library.close()
+    actions=[]
+    class Service:
+        budget=TaskBudget();server=None
+        def start(self):actions.append('service')
+        def tick(self,**kwargs):owner.stopping.set()
+        def stop(self):actions.append('stop')
+    owner=DesktopRuntime(directory,tray=use_tray,open_window=open_window,service=Service())
+    owner.last_refresh=time.monotonic()
+    monkeypatch.setattr(owner,'_serve_control',lambda:actions.append('control'))
+    monkeypatch.setattr(owner,'_start_tray',lambda:actions.append('tray'))
+    monkeypatch.setattr(owner,'_launch',lambda:actions.append('window'))
+    assert owner.run()==0
+    assert ('window' in actions)==expected and ('tray' in actions)==use_tray
+    assert actions[0]=='service' and actions[-1]=='stop'
+
+
+@pytest.mark.parametrize('open_window,command',[(True,'open'),(False,'ping')])
+def test_relaunch_reopens_existing_silent_owner_without_reading_cold_start_preference(tmp_path,monkeypatch,open_window,command):
+    from lumen import desktop_runtime,startup
+    commands=[];owner=DesktopRuntime(tmp_path,tray=True,open_window=open_window)
+    monkeypatch.setattr(owner.lock,'acquire',lambda:False)
+    monkeypatch.setattr(startup,'silent_start_enabled',lambda directory:pytest.fail('already running owner must use explicit open/ping'))
+    class Client:
+        def __init__(self,*args):pass
+        def request(self,value):commands.append(value)
+    monkeypatch.setattr(desktop_runtime,'RuntimeClient',Client)
+    assert owner.run()==0 and commands==[command]
+
+
 def test_actual_background_entry_lan_range_single_instance_and_exit(tmp_path):
     directory = tmp_path / 'data'
     library = Library(directory)
