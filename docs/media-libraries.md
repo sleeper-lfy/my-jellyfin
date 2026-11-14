@@ -1,4 +1,4 @@
-# 自定义媒体库（0.4.22 源码，尚未发布）
+# 自定义媒体库（0.4.22）
 
 一个媒体库对应一个固定类型，可包含多个目录。PC 负责创建、目录监听、刮削来源和整理规则；Android 连接同一台 PC 后选择媒体库浏览、筛选和播放，不提供媒体库配置入口。
 
@@ -56,4 +56,4 @@ PC 沿用 PySide6、现有目录选择器、规则编辑器与后台任务；And
 
 验证包含多目录配置、规则隔离、真实临时文件整理、旧规则分组迁移、备份恢复、库内文件操作、PC 导航与随机队列、认证只读 API、Android 选择／筛选／详情／播放与重建状态。详见[本轮验证记录](validation/media-libraries-source.json)。Windows 原生目录选择器及手机跨端联调仍需真机确认。
 
-本轮仅更新源码，版本 0.4.22／Android versionCode 41；公开下载继续为 0.4.21 Preview 1，未创建新的 Release。
+已在 [0.4.22 Preview 1](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.22-preview.1) 发布双端安装包，Android versionCode 41；建议 PC 与手机同时升级。[公开附件验证](validation/preview-0.4.22-1.json)。

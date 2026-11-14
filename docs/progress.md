@@ -824,3 +824,12 @@ PC 全量 **1033 项通过、3 项平台相关跳过、零失败／错误**，�
 ## 0.4.22 Preview 1 发布准备（2026-11-14）
 
 用户已明确要求发布 Release。沿用既有双端测试预发布流程，标签 `v0.4.22-preview.1`，两端版本 0.4.22／Android code41；使用同一标签源码重新构建 Windows 安装包与原签名 Android APK，并运行完整测试、Windows 安装／卸载验收、APK 签名和摘要检查，通过后才公开附件。不复用旧版安装包，人工设备验收不冒充通过。发布完成后补充公开附件下载核验与当前下载入口。
+
+
+## 0.4.22 Preview 1 已发布
+
+源码 `93ef124db5b7bcb485c534ab5e6d3b906e6c2e06`，标签 `v0.4.22-preview.1`；[构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/43557470684)两端及发布全部成功。Windows **1036 项测试零失败／错误／跳过**，实际安装、启动、工作进程和卸载通过；Android **266 项测试、lint、持久签名及 ZIP 对齐通过**，版本 0.4.22／code41。六个公开附件完整下载后，大小、SHA-256、GitHub 摘要、源码绑定及 APK 原证书再次验证通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.22-preview.1) · [公开验证](validation/preview-0.4.22-1.json)。
+
+无托盘安装版自动验收最高工作集 **37.29 MiB**；真实桌面托盘、登录及大资料库仍需人工确认。
+
+本版提供 PC 管理的命名媒体库、多个目录与独立刮削整理规则，Android 只读选择浏览。旧配置显式迁移及库内文件范围有回归覆盖；作品资料与个人偏好沿用共享模型。Windows 目录选择器、手机局域网联调和 HEVC 4K 流畅度未宣称实机验收通过。README 已同步当前下载。
