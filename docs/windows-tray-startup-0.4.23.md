@@ -29,4 +29,4 @@
 
 静默选项在获得后台实例锁并启动服务后读取，读取后关闭数据库连接，不创建 Qt 界面或保留图片缓存。它只影响支持托盘的首次启动；重复启动仍复用原后台并请求打开窗口，显式 `--background` 继续后台启动，CI／验证入口保留原行为。
 
-包含静默选项持久化、失败回退、独立自启动设置、冷启动、重复启动恢复窗口、后台服务和 GUI 兼容回归。源码验证及发布验证记录会随版本发布更新。真实 Windows 隐藏图标栏、鼠标交互与登录启动仍需设备确认。
+包含静默选项持久化、失败回退、独立自启动设置、冷启动、重复启动恢复窗口、后台服务和 GUI 兼容回归。[源码验证](validation/windows-tray-startup-source.json) · [公开发布验证](validation/preview-0.4.23-1.json) · [0.4.23 Preview 1 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.23-preview.1)。真实 Windows 隐藏图标栏、鼠标交互与登录启动仍需设备确认。

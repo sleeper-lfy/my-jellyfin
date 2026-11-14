@@ -1,0 +1,185 @@
+{
+  "tag": "v0.4.23-preview.1",
+  "source_commit": "89e927a849a034942810ee67c28e493b6937bbcb",
+  "run_url": "https://github.com/sleeper-lfy/my-jellyfin/actions/runs/43580179580",
+  "release_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.23-preview.1",
+  "prerelease": true,
+  "windows_tests": {
+    "tests": 1054,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "d69cc0917762e44761e00ecbf661d56cec2cf3eee5e809312226de29ac324ca8"
+  },
+  "windows_standby": {
+    "format_version": 1,
+    "status": "passed",
+    "started_epoch": 1794648665.6599264,
+    "verified_at": "2026-11-14T09:31:05.659926+00:00",
+    "platform": "win32",
+    "entry": "Lumen.exe --background-no-tray --data-dir <isolated synthetic library>",
+    "executable_sha256": "d0c4a536bb1e63079cde680fd68b76cf65c463886514d5e9b7079265ce8627e5",
+    "tray": false,
+    "native_tray_manual_acceptance": "unverified",
+    "target_bytes": 50000000,
+    "measurement": "Windows PSAPI WorkingSetSize and PrivateUsage, bytes",
+    "limitations": [
+      "No-tray CI entry; native tray icon/menu and Windows login remain manual checks.",
+      "Idle owner only; GUI/playback and active worker descendants are outside samples.",
+      "Memory varies by Windows build, security software and library size; no trimming is used."
+    ],
+    "samples": [
+      {
+        "stage": "cold_idle",
+        "working_set_bytes": 38551552,
+        "private_usage_bytes": 22667264,
+        "module_count": 63,
+        "gui_modules": []
+      },
+      {
+        "stage": "cold_idle",
+        "working_set_bytes": 38551552,
+        "private_usage_bytes": 22667264,
+        "module_count": 63,
+        "gui_modules": []
+      },
+      {
+        "stage": "cold_idle",
+        "working_set_bytes": 38555648,
+        "private_usage_bytes": 22667264,
+        "module_count": 63,
+        "gui_modules": []
+      },
+      {
+        "stage": "after_lan_and_cover",
+        "working_set_bytes": 39219200,
+        "private_usage_bytes": 22892544,
+        "module_count": 63,
+        "gui_modules": []
+      },
+      {
+        "stage": "final_idle",
+        "working_set_bytes": 39223296,
+        "private_usage_bytes": 22892544,
+        "module_count": 63,
+        "gui_modules": []
+      },
+      {
+        "stage": "final_idle",
+        "working_set_bytes": 39223296,
+        "private_usage_bytes": 22892544,
+        "module_count": 63,
+        "gui_modules": []
+      },
+      {
+        "stage": "final_idle",
+        "working_set_bytes": 39223296,
+        "private_usage_bytes": 22892544,
+        "module_count": 63,
+        "gui_modules": []
+      }
+    ],
+    "checks": {
+      "ipc_owner_identity": true,
+      "lan_authentication": true,
+      "lan_catalog": true,
+      "lan_range": true,
+      "isolated_cover": true,
+      "image_worker_entry": true,
+      "background_worker_entry": true,
+      "single_instance": true,
+      "lan_configuration_preserved": true,
+      "clean_exit": true
+    },
+    "max_working_set_bytes": 39223296,
+    "max_private_usage_bytes": 22892544,
+    "working_set_target_met": true,
+    "cold_working_set_target_met": true
+  },
+  "android": {
+    "version": "0.4.23",
+    "version_code": 42,
+    "source_commit": "89e927a849a034942810ee67c28e493b6937bbcb",
+    "sha256": "7ae0ca31ff6001b11f901a7b0a4fbc2059c99a24f55a73a8ac4db0c195fec7e2",
+    "bytes": 62477704,
+    "certificate_sha256": "cccf85baf3acf872d28632ad8a9102b94c3958aa67b5c8385435aafebb60d6b9",
+    "tests": {
+      "tests": 266,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "signature_verified": true,
+    "lint": "passed",
+    "manual_device_checks": "unverified"
+  },
+  "assets": [
+    {
+      "name": "Lumen-Setup-x64.exe",
+      "bytes": 98540717,
+      "sha256": "3f935adfa19494172d618c9d8316f65959c1c634cbf370e8b8a5540a0b3c379d",
+      "github_asset_id": 746983605,
+      "github_digest": "sha256:3f935adfa19494172d618c9d8316f65959c1c634cbf370e8b8a5540a0b3c379d",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.23-preview.1/Lumen-Setup-x64.exe"
+    },
+    {
+      "name": "Lumen-Setup-x64.exe.sha256",
+      "bytes": 86,
+      "sha256": "0dfedaa284345a022fecf772cb365c44dc043ef55a718a5e417945a11ff3f38e",
+      "github_asset_id": 746983602,
+      "github_digest": "sha256:0dfedaa284345a022fecf772cb365c44dc043ef55a718a5e417945a11ff3f38e",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.23-preview.1/Lumen-Setup-x64.exe.sha256"
+    },
+    {
+      "name": "Lumen-android-debug.apk",
+      "bytes": 62477704,
+      "sha256": "7ae0ca31ff6001b11f901a7b0a4fbc2059c99a24f55a73a8ac4db0c195fec7e2",
+      "github_asset_id": 746983604,
+      "github_digest": "sha256:7ae0ca31ff6001b11f901a7b0a4fbc2059c99a24f55a73a8ac4db0c195fec7e2",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.23-preview.1/Lumen-android-debug.apk"
+    },
+    {
+      "name": "Lumen-android-debug.apk.sha256",
+      "bytes": 90,
+      "sha256": "72f3cae30d44b7c04b9bdd45391b4e1175b38cb8569c547e4715b8eda2aa6b09",
+      "github_asset_id": 746983601,
+      "github_digest": "sha256:72f3cae30d44b7c04b9bdd45391b4e1175b38cb8569c547e4715b8eda2aa6b09",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.23-preview.1/Lumen-android-debug.apk.sha256"
+    },
+    {
+      "name": "windows-acceptance.json",
+      "bytes": 4949,
+      "sha256": "ca913db38346c2fe5f48d545511072f775423633d6ac059f6afbcd4d59b653d6",
+      "github_asset_id": 746983603,
+      "github_digest": "sha256:ca913db38346c2fe5f48d545511072f775423633d6ac059f6afbcd4d59b653d6",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.23-preview.1/windows-acceptance.json"
+    },
+    {
+      "name": "android-verification.json",
+      "bytes": 483,
+      "sha256": "5ed092fab0e980018d15cebab07f5cff3751325634f514f19bdbe946103bb9fd",
+      "github_asset_id": 746983628,
+      "github_digest": "sha256:5ed092fab0e980018d15cebab07f5cff3751325634f514f19bdbe946103bb9fd",
+      "public_download_url": "https://github.com/sleeper-lfy/my-jellyfin/releases/download/v0.4.23-preview.1/android-verification.json"
+    }
+  ],
+  "downloaded_apk_signature_verified": true,
+  "downloaded_apk_version_code": 42,
+  "anonymous_full_downloads_verified": true,
+  "manual_device_checks": "unverified",
+  "windows_build": "success",
+  "android_build": "success",
+  "publication": "success",
+  "verified_at": "2026-11-14T09:32:27.818652+00:00",
+  "github_asset_digests_verified": true,
+  "github_source_and_tag_verified": true,
+  "release_id": 445179803,
+  "published_at": "2026-11-14T09:31:51Z",
+  "workflow_run_id": 43580179580,
+  "workflow_run_conclusion": "success",
+  "workflow_jobs": {
+    "android": "success",
+    "windows": "success",
+    "publish": "success"
+  }
+}

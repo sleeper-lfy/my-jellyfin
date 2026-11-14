@@ -47,3 +47,8 @@ PyInstaller 的标准 PySide6 启动钩子原本会提前加载 QtCore；新增�
 无托盘自动验收中，安装版后台最高工作集 **37.31 MiB**（39,120,896 字节），专用提交 **21.64 MiB**；工作集低于 50,000,000 字节目标。未使用工作集压缩或硬内存限制；该结果不替代真实桌面托盘、登录启动及大资料库人工验收。
 
 同一 Windows 安装包的真实后台入口完成 IPC、LAN 鉴权与 Range、封面隔离、图片／后台工作进程、重复实例与退出清理检查，七次采样均未加载 Qt 或 mpv DLL。[公开安装验证](validation/preview-0.4.20-3.json) · [Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.20-preview.3)。
+
+
+## 0.4.23 Preview 1 修复与验证
+
+无托盘安装版自动验收最高工作集 **37.41 MiB**；真实隐藏图标栏、登录与大资料库仍需人工确认。 此版补齐独立静默启动开关，并修复右键取消菜单可能结束托盘的路径。[操作与面板](windows-tray-startup-0.4.23.md) · [公开安装验证](validation/preview-0.4.23-1.json) · [Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.23-preview.1)。
