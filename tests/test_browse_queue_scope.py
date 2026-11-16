@@ -67,6 +67,24 @@ def test_scoped_queue_uses_entire_matching_collection_and_keeps_pc_queue(lan, li
     assert queue(client, '/api/works?tag=Scoped&watch_state=completed').json()['ids'] == []
 
 
+def test_global_queue_does_not_hydrate_every_work_and_preserves_playable_file_checks(lan,library,tmp_path,monkeypatch):
+    client,_,source,_=lan;existing={row[0] for row in library.db.execute('SELECT id FROM works')}
+    series=local_work(library,source,tmp_path,'Series',kind='series')
+    vr=local_work(library,source,tmp_path,'VR',kind='vr')
+    missing=local_work(library,source,tmp_path,'Missing');(tmp_path/f'{missing}.mp4').unlink()
+    outside=local_work(library,source,tmp_path,'Outside')
+    with library.db:library.db.execute('UPDATE files SET root=? WHERE work_id=?',(str(tmp_path/'different'),outside))
+    before=library.setting('queue')
+    def expensive_details(*args,**kwargs):raise AssertionError('Generating global IDs must not load metadata, sources and viewing history for every work')
+    monkeypatch.setattr(Library,'query',expensive_details)
+    response=queue(client,'/api/works');assert response.status_code==200
+    assert set(response.json()['ids'])==existing|{series,vr}
+    assert queue(client,'/api/works?kind=series').json()['ids']==[series]
+    assert queue(client,'/api/works?kind=vr').json()['ids']==[vr]
+    assert queue(client,'/api/works?kind=invalid').status_code==400
+    assert library.setting('queue')==before
+
+
 def test_recommendation_scope_is_shared_by_get_and_random_queue(lan, library, tmp_path, monkeypatch):
     client, _, source, _ = lan
     selected = local_work(library, source, tmp_path, 'Recommended', metadata={'tags': ['A']})

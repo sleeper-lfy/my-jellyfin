@@ -1,0 +1,98 @@
+{
+  "status": "source_verified_release_preparation",
+  "verified_at": "2026-11-16T03:32:18.315728+00:00",
+  "base_commit": "34f6f0934bc98ba294de89cb5baad3e3b160a83a",
+  "version": "0.4.24",
+  "android_version_code": 43,
+  "fixes": [
+    "Release previous decoder, connection and playback session before loading selected file",
+    "Cancel superseded reads; keep settings and session writes serialized",
+    "Season selection and exact displayed episode IDs remain stable across detail refreshes",
+    "Explicit shuffle requests survive page generation changes and run independently of browse workers",
+    "Show cancellable progress, empty result and retry; preserve previous queue on cancellation or error",
+    "Global queue builds IDs without loading every work metadata graph; retain file/root eligibility"
+  ],
+  "python": {
+    "command": "QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q -o junit_family=legacy --junitxml=<local report>",
+    "tests": 1055,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "passed": 1052,
+    "report_sha256": "d056615e4aa3d31a03911b29227e5c19479f00272af88b4ae33ca9558b855d48",
+    "skipped_tests": [
+      {
+        "name": "tests.test_desktop_updates::test_powershell_upgrade_helper_parses_without_executing_it",
+        "reason": "Windows PowerShell parser is checked by Windows CI"
+      },
+      {
+        "name": "tests.test_mpv::test_real_libmpv_decode_seek_tracks_and_end",
+        "reason": "Set LUMEN_REQUIRE_MPV=1 when the libmpv runtime is installed"
+      },
+      {
+        "name": "tests.test_subtitle_appearance::test_real_mpv_removes_ass_box_pixels_without_switching_track_or_restarting",
+        "reason": "Set LUMEN_REQUIRE_MPV=1 when the libmpv runtime is installed"
+      }
+    ]
+  },
+  "android": {
+    "command": "python scripts/build-android-cloud.py :app:lintDebug :app:testDebugUnitTest :app:assembleDebug",
+    "tests": {
+      "tests": 278,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "Warning": 89
+    },
+    "build": "success",
+    "persistent_signing": "Checked in publication workflow"
+  },
+  "regressions": {
+    "android_before_fix": {
+      "tests": 16,
+      "failures": 3
+    },
+    "backend_before_fix": "Global queue test failed when Library.query was forbidden; optimized path passes",
+    "targeted_after_fix": {
+      "android": 24,
+      "backend": 33
+    },
+    "additional_final_case": "Stopped current episode can be selected to restart playback"
+  },
+  "first_python_run": {
+    "passed": 1051,
+    "failed": 1,
+    "skipped": 3,
+    "failure": "Existing task browser test observed 2 timer ticks instead of at least 3 under concurrent Android build; its unchanged test file passed 3 tests on retry; full suite repeated after Android build"
+  },
+  "source_files_sha256": {
+    "android/app/build.gradle": "cefba941285042a93de9381808c75df90dbdd516ee0fae1736260215d7504fdb",
+    "android/app/src/main/java/net/lumen/media/Api.java": "4c12872e7026c65e900216adee24d4c621905e1604400cf7379cda617e35c1f9",
+    "android/app/src/main/java/net/lumen/media/EpisodeLabels.java": "4116aacd2c9d9b0d834e5fee06fb6f996a0382848f781ef8e94dc3f766537ab8",
+    "android/app/src/main/java/net/lumen/media/MainActivity.java": "20b990e27dc1734f2bcecc3da83b28564406c97c7328510ac8d946e26c487757",
+    "android/app/src/main/java/net/lumen/media/PlayerActivity.java": "1b1e454249d816b93798716ec1085fbfe3ea4f37f470158e44a5e1827b3e115f",
+    "android/app/src/main/java/net/lumen/media/ShuffleRequest.java": "04cce66bfe185c4c82e47d7c2f8117778ffabe0d864dc3258a9dbcbe93040a90",
+    "android/app/src/main/res/values/playback_action_strings.xml": "f1f1ad3a03c013610a4650c008382a76fd2a00b61319e434997dcfba98b1efc7",
+    "android/app/src/test/java/net/lumen/media/EpisodeControllerTest.java": "0e0179e8d62a2461438454f3c3e90c5b7f5fd8b149f86015f4b9b3fff95b0b1c",
+    "android/app/src/test/java/net/lumen/media/GlobalShuffleTest.java": "f119dfb3b10c74a56bc70da2a5ff5dc5084230b41c70b586ff786fc506d5c022",
+    "android/app/src/test/java/net/lumen/media/SeriesSelectionTest.java": "852e7f40369bbb3816cf4b691b901d8b444b9fec4fe063313b4d16060fb39982",
+    "pyproject.toml": "20b1cfc9926726800a54bad6593a1cf69149343ad09121ecc82995c4fb38879c",
+    "src/lumen/__init__.py": "f369ef0a050b605f04aaad60e40147a616e290510a47ae105d5e0f1035d7bc34",
+    "src/lumen/server.py": "aad10d95bf44c3d008e207d37594551066a23fd1833ffd6b3dab05a6758d8416",
+    "tests/test_browse_queue_scope.py": "ea645bd1f93895a490b02af2a50d60481181a9ebac995b0709987f2faa435d31"
+  },
+  "screenshots": [
+    {
+      "file": "docs/screenshots/android-episodes-shuffle-0.4.24.png",
+      "sha256": "eb96c4ec7fbad8adacc49b15c0dc5670613070127a1635618ed167cb429b2cf4",
+      "source": "Real MainActivity rendered by Robolectric native graphics at 393x852; isolated fictional series and no user artwork"
+    }
+  ],
+  "limitations": [
+    "Native Android LibVLC playback and Xiaomi 15 HEVC 4K performance require physical-device verification",
+    "Robolectric checks Activity callbacks and real HTTP/bridge lifecycle; it does not execute the native decoder",
+    "Publication verifies both platform artifacts and original APK certificate separately"
+  ]
+}

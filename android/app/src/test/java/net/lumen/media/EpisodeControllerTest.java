@@ -53,6 +53,53 @@ public class EpisodeControllerTest {
         call(activity,"buildPlayerUi",new Class<?>[]{android.content.SharedPreferences.class},activity.getSharedPreferences("playback",0));
         write(activity,"api",new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456")));write(activity,"work",work);write(activity,"file",work.getJSONArray("files").getJSONObject(0));write(activity,"vrEnabled",true);
     }
+
+    @Test public void choosingAnEpisodeClosesThePreviousStreamBeforeReplacingItsFile()throws Exception{
+        JSONObject work=vrWork(30,301,302).put("kind","series");
+        work.getJSONArray("files").getJSONObject(0).put("name","Episode A").put("season",1).put("episode",1);
+        work.getJSONArray("files").getJSONObject(1).put("name","Episode B").put("season",1).put("episode",2);
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> lifecycle=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setBody(request.getPath().startsWith("/api/works/")?work.toString():request.getPath().endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();
+            PlayerActivity activity=lifecycle.get();build(activity,server,work);
+            PlaybackBridge old=new PlaybackBridge(server.url("/").toString().replaceAll("/$",""),"abcdefghijklmnopqrstuvwxyz123456",301);
+            try{
+                write(activity,"bridge",old);call(activity,"chooseFile",new Class<?>[0]);
+                android.app.AlertDialog picker=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+                picker.getListView().performItemClick(null,1,1);shadowOf(Looper.getMainLooper()).idle();waitFile(activity,302);
+                assertTrue("The old streaming connection must be released on episode selection",(boolean)read(old,"closed"));
+                assertEquals(302,((JSONObject)read(activity,"file")).optLong("id"));assertNull(read(activity,"bridge"));
+            }finally{old.close();}
+        }
+    }
+    @Test public void choosingThePlayingEpisodeKeepsItsStreamAndProgress()throws Exception{
+        JSONObject work=vrWork(30,301,302).put("kind","series");
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> life=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.start();PlayerActivity activity=life.get();build(activity,server,work);
+            PlaybackBridge old=new PlaybackBridge(server.url("/").toString().replaceAll("/$",""),"abcdefghijklmnopqrstuvwxyz123456",301);
+            try{
+                write(activity,"bridge",old);write(activity,"resumeMs",120000L);call(activity,"chooseFile",new Class<?>[0]);
+                android.app.AlertDialog picker=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();assertEquals(0,picker.getListView().getCheckedItemPosition());
+                picker.getListView().performItemClick(null,0,0);shadowOf(Looper.getMainLooper()).idle();
+                assertFalse(picker.isShowing());assertSame(old,read(activity,"bridge"));assertFalse((boolean)read(old,"closed"));assertEquals(120000L,read(activity,"resumeMs"));assertEquals(0,server.getRequestCount());
+            }finally{old.close();}
+        }
+    }
+    @Test public void choosingTheStoppedEpisodeCanStartItAgain()throws Exception{
+        JSONObject work=vrWork(30,301,302).put("kind","series");work.getJSONArray("files").getJSONObject(0).put("completed",1);
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> life=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setBody(request.getPath().startsWith("/api/works/")?work.toString():request.getPath().endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();PlayerActivity activity=life.get();build(activity,server,work);write(activity,"resumeMs",120000L);
+            call(activity,"chooseFile",new Class<?>[0]);org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().getListView().performItemClick(null,0,0);shadowOf(Looper.getMainLooper()).idle();waitFile(activity,301);
+            assertEquals(0L,read(activity,"resumeMs"));assertTrue("A stopped file must be reloaded instead of ignored",server.getRequestCount()>0);
+        }
+    }
+    @Test public void automaticAdvanceClosesAnAlreadyOpenEpisodePicker()throws Exception{
+        JSONObject work=vrWork(30,301,302).put("kind","series");
+        try(MockWebServer server=new MockWebServer();ActivityController<PlayerActivity> life=Robolectric.buildActivity(PlayerActivity.class).create()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){return new MockResponse().setBody(request.getPath().startsWith("/api/works/")?work.toString():request.getPath().endsWith("subtitles")?"{\"items\":[]}":"{}");}});server.start();PlayerActivity activity=life.get();build(activity,server,work);
+            call(activity,"chooseFile",new Class<?>[0]);android.app.AlertDialog picker=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();assertTrue(picker.isShowing());
+            call(activity,"onPlaybackEnded",new Class<?>[0]);waitFile(activity,302);assertFalse(picker.isShowing());assertNull(read(activity,"filePicker"));
+        }
+    }
     @Test public void visibleButtonsAndBluetoothSwitchVrFilesAndThenAdjacentVrWorks()throws Exception{
         JSONObject first=vrWork(30,301,302),second=vrWork(20,201),third=vrWork(10,101);
         JSONArray catalog=new JSONArray().put(new JSONObject().put("id",30)).put(new JSONObject().put("id",20)).put(new JSONObject().put("id",10));

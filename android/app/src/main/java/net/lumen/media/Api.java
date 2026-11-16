@@ -19,8 +19,8 @@ final class Api {
         private volatile HttpURLConnection connection;
         boolean cancelled(){return stopped;}
         void cancel(){stopped=true;HttpURLConnection current=connection;if(current!=null)java.util.concurrent.CompletableFuture.runAsync(current::disconnect);}
-        void attach(HttpURLConnection value)throws Exception{connection=value;if(stopped){value.disconnect();throw new java.io.InterruptedIOException("图片请求已取消");}}
-        void check()throws Exception{if(stopped||Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("图片请求已取消");}
+        void attach(HttpURLConnection value)throws Exception{connection=value;if(stopped){value.disconnect();throw new java.io.InterruptedIOException("请求已取消");}}
+        void check()throws Exception{if(stopped||Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("请求已取消");}
     }
     final Connection connection;
     Api(Connection connection) { this.connection=connection; }
@@ -28,6 +28,7 @@ final class Api {
         return fetch(path,body,maximum,null);
     }
     private byte[] fetch(String path, JSONObject body, int maximum,Cancellation cancellation) throws Exception {
+        if(cancellation!=null)cancellation.check();
         if(!path.startsWith("/api/") || path.contains(".."))throw new Exception("无效服务端路径");
         HttpURLConnection request=(HttpURLConnection)new URL(connection.base+path).openConnection();
         request.setConnectTimeout(6000);request.setReadTimeout(12000);request.setInstanceFollowRedirects(false);
@@ -55,7 +56,9 @@ final class Api {
         } finally {request.disconnect();if(cancellation!=null)cancellation.connection=null;}
     }
     JSONObject get(String path) throws Exception {return new JSONObject(new String(fetch(path,null,4_000_000),StandardCharsets.UTF_8));}
+    JSONObject get(String path,Cancellation cancellation) throws Exception {return new JSONObject(new String(fetch(path,null,4_000_000,cancellation),StandardCharsets.UTF_8));}
     JSONObject post(String path,JSONObject body) throws Exception {return new JSONObject(new String(fetch(path,body,4_000_000),StandardCharsets.UTF_8));}
+    JSONObject post(String path,JSONObject body,Cancellation cancellation) throws Exception {return new JSONObject(new String(fetch(path,body,4_000_000,cancellation),StandardCharsets.UTF_8));}
     Bitmap image(String path) throws Exception {
         return image(path,null);
     }

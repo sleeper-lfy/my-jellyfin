@@ -24,6 +24,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private static final int BG=MediaStyle.BG, BLUE=MediaStyle.ACCENT, MUTED=MediaStyle.MUTED;
     final android.os.Handler downloadUpdates=new android.os.Handler(android.os.Looper.getMainLooper());
     final ExecutorService network=Executors.newFixedThreadPool(4);
+    private ShuffleRequest shuffleRequests;
     private final LruCache<String,Bitmap> pictures=new LruCache<String,Bitmap>(24*1024) {
         @Override protected int sizeOf(String key,Bitmap image){return image.getByteCount()/1024;}
     };
@@ -73,6 +74,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     String discoveryResultTag="";
     private int discoverySubmission=0;
     final java.util.Map<Long,Integer> browsePositions=new java.util.HashMap<>();
+    private final java.util.Map<String,Integer> detailSeasons=new java.util.HashMap<>();
     private final java.util.ArrayDeque<NavigationState> navigationHistory=new java.util.ArrayDeque<>();
     private ScrollView browseScroll;
     int restoreOffset=0,restoreScroll=0;
@@ -105,7 +107,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         Connection connection=Connection.load(this);
         if(connection==null)showConnection();else {api=new Api(connection);mediaLibrariesSupported=getSharedPreferences("server_features",0).getBoolean(connection.base,false);refreshLibraryCapabilities();if(state!=null&&state.containsKey("browse"))restoreBrowseState(state.getBundle("browse"));else showLibrary();}
     }
-    @Override protected void onStop() {if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);imageRequests.cancelPage();super.onStop();}
+    @Override protected void onStop() {if(discoveryCoordinator!=null)discoveryCoordinator.setActive(false);if(shuffleRequests!=null)shuffleRequests.cancel();imageRequests.cancelPage();super.onStop();}
     @Override protected void onStart() {super.onStart();if(discoveryCoordinator!=null&&discovery&&detailId==0)discoveryCoordinator.setActive(true);if(api!=null&&root!=null)imageRequests.restore(api,root);}
     @Override protected void onResume() {
         super.onResume();
@@ -152,7 +154,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(state.getBoolean("mineLanding")){showMine();return;}
         showLibrary();restoreOffset=Math.max(1,state.getInt("offset"));restoreScroll=state.getInt("scroll");
     }
-    @Override protected void onDestroy() {if(navigationBack!=null)navigationBack.remove();if(discoveryCoordinator!=null)discoveryCoordinator.dispose();downloadUpdates.removeCallbacksAndMessages(null);imageRequests.close();network.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy() {if(navigationBack!=null)navigationBack.remove();if(discoveryCoordinator!=null)discoveryCoordinator.dispose();if(shuffleRequests!=null)shuffleRequests.close();downloadUpdates.removeCallbacksAndMessages(null);imageRequests.close();network.shutdownNow();super.onDestroy();}
     private int dp(float value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private TextView text(String value,int size,int color) {
         TextView view=new TextView(this);view.setText(value);view.setTextSize(size);if(size>=20)view.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);view.setTextColor(color);view.setFontFeatureSettings("kern");view.setPadding(0,dp(5),0,dp(5));return view;
@@ -186,6 +188,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
     private void showConnection() {
+        if(shuffleRequests!=null)shuffleRequests.cancel();
         if(api!=null)connectionReturn=api;generation++;utilityPage="connection";mineLanding=false;detailId=0;api=null;navigationHistory.clear();discovery=false;discoveryProvidersLoaded=false;discoveryProviders=new JSONArray();clearDiscoverySearch();base();header("连接管理",connectionReturn!=null);
         LinearLayout panel=BiliMainUi.vertical(this);panel.setPadding(dp(16),dp(8),dp(16),dp(24));ScrollView connectionScroll=new ScrollView(this);connectionScroll.setFillViewport(true);connectionScroll.addView(panel);root.addView(connectionScroll,new LinearLayout.LayoutParams(-1,0,1));
         Connection saved=Connection.load(this);ConnectionLibraryRow current=new ConnectionLibraryRow(this,saved==null?"连接你的家庭媒体库":"当前保存的媒体库",saved==null?"":saved.base,R.drawable.design_system_connections,()->message("手机与电脑连接同一局域网后，填写电脑地址和访问密钥"));current.setTag("currentLibraryRow");panel.addView(BiliMainUi.groupCard(this,current));
@@ -654,16 +657,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         TextView overview=text(work.optString("overview","暂无简介"),15,MUTED);overview.setTag("detailOverview");overview.setMaxLines(4);overview.setEllipsize(android.text.TextUtils.TruncateAt.END);overview.setContentDescription("简介，点击展开或收起");overview.setOnClickListener(v->overview.setMaxLines(overview.getMaxLines()==4?Integer.MAX_VALUE:4));metadataSection.addView(overview);
         JSONArray files=work.getJSONArray("files");page.addView(text(work.optString("kind").equals("series")?"季与集":work.optString("kind").equals("fans")?"作者视频":"视频文件",21,Color.WHITE));
         LinearLayout episodes=MediaStyle.actionColumn(this);episodes.setTag("detailFileActions");
-        android.widget.Spinner seasons=new android.widget.Spinner(this);java.util.ArrayList<Integer> seasonValues=new java.util.ArrayList<>();seasonValues.add(-1);
-        java.util.TreeSet<Integer> available=new java.util.TreeSet<>();for(int j=0;j<files.length();j++)available.add(files.getJSONObject(j).optInt("season",1));seasonValues.addAll(available);
-        java.util.ArrayList<String> seasonNames=new java.util.ArrayList<>();seasonNames.add("全部季");for(int j=1;j<seasonValues.size();j++)seasonNames.add(seasonValues.get(j)==0?"特别篇":"第 "+seasonValues.get(j)+" 季");
-        seasons.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,seasonNames));if(work.optString("kind").equals("series"))page.addView(seasons);page.addView(episodes);
-        seasons.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){int selected=seasonValues.get(pos);for(int j=0;j<episodes.getChildCount();j++){View child=episodes.getChildAt(j);child.setVisibility(selected==-1||Integer.valueOf(selected).equals(child.getTag())?View.VISIBLE:View.GONE);}}});
+        final long renderedLibraryScope=mediaLibraryId;final String seasonKey=(api==null?"":api.connection.base)+":"+renderedLibraryScope+":"+work.optLong("id");
+        java.util.ArrayList<Integer> seasonValues=new java.util.ArrayList<>();seasonValues.add(-1);
+        java.util.TreeSet<Integer> available=new java.util.TreeSet<>();for(int j=0;j<files.length();j++)available.add(EpisodeLabels.season(files.getJSONObject(j)));seasonValues.addAll(available);
+        int previousSeason=detailSeasons.getOrDefault(seasonKey,-1);final int selectedSeason=seasonValues.contains(previousSeason)?previousSeason:-1;
+        if(work.optString("kind").equals("series")){
+            java.util.ArrayList<String> seasonNames=new java.util.ArrayList<>();for(int value:seasonValues)seasonNames.add(EpisodeLabels.season(this,value));
+            SearchDropdown seasons=new SearchDropdown(this);seasons.setTag("detailSeasonSelector");seasons.setInputType(InputType.TYPE_NULL);seasons.setContentDescription(getString(R.string.episode_season_label));
+            seasons.setAdapter(new ArrayAdapter<>(seasons.getContext(),android.R.layout.simple_list_item_1,seasonNames));seasons.setText(EpisodeLabels.season(this,selectedSeason),false);
+            LinearLayout.LayoutParams seasonLayout=new LinearLayout.LayoutParams(-1,-2);seasonLayout.bottomMargin=dp(12);page.addView(SearchDropdown.row(seasons,getString(R.string.episode_season_label)),seasonLayout);
+            seasons.setOnItemClickListener((parent,view,position,id)->{int selected=seasonValues.get(position);detailSeasons.put(seasonKey,selected);filterEpisodeSeason(episodes,selected);});
+        }
+        page.addView(episodes);
         for(int i=0;i<files.length();i++) {
-            JSONObject file=files.getJSONObject(i);long id=file.getLong("id");String name=file.optString("name");
-            if(work.optString("kind").equals("series")&&!file.isNull("season")&&!file.isNull("episode"))name=String.format(java.util.Locale.ROOT,"S%02d E%02d  ·  ",file.optInt("season"),file.optInt("episode"))+name;
-            LinearLayout episode=new LinearLayout(this);episode.setOrientation(LinearLayout.VERTICAL);episode.setTag(file.optInt("season",1));episodes.addView(episode);
-            Button playEpisode=BiliMainUi.settingsRow(this,name+"  ·  "+(int)(file.optDouble("duration")/60)+" 分钟","play",()->startPlayer(id,false));playEpisode.setOnLongClickListener(v->{watchAction(work.optLong("id"),id);return true;});episode.addView(playEpisode);
+            JSONObject file=files.getJSONObject(i);long id=file.getLong("id");String name=EpisodeLabels.file(this,file,work.optString("kind").equals("series"),i+1);
+            LinearLayout episode=new LinearLayout(this);episode.setOrientation(LinearLayout.VERTICAL);episode.setTag(EpisodeLabels.season(file));episodes.addView(episode);
+            Button playEpisode=BiliMainUi.settingsRow(this,name+"  ·  "+(int)(file.optDouble("duration")/60)+" 分钟","play",()->startActivity(playerIntent(work.optLong("id"),id,false,renderedLibraryScope)));playEpisode.setTag("episode:"+id);playEpisode.setOnLongClickListener(v->{watchAction(work.optLong("id"),id);return true;});episode.addView(playEpisode);
             if(!file.optString("overview").isEmpty())episode.addView(text(file.optString("overview"),14,MUTED));
             JSONArray episodeStills=file.optJSONArray("stills");
             if(episodeStills!=null&&episodeStills.length()>0){
@@ -675,6 +684,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 shots.addView(images);episode.addView(shots);
             }
         }
+        filterEpisodeSeason(episodes,selectedSeason);
         page.addView(metadataSection);
         JSONArray bookmarks=work.optJSONArray("bookmarks");
         if(bookmarks!=null&&bookmarks.length()>0){
@@ -984,10 +994,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(fileId<=0){message("没有可播放的视频");return;}
         startActivity(playerIntent(fileId,queue));
     }
+    private void filterEpisodeSeason(LinearLayout episodes,int selected){for(int i=0;i<episodes.getChildCount();i++){View row=episodes.getChildAt(i);row.setVisibility(selected==-1||Integer.valueOf(selected).equals(row.getTag())?View.VISIBLE:View.GONE);}}
     private Intent playerIntent(long fileId,boolean queue){
-        Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",detailId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);intent.putExtra("media_library_id",mediaLibraryId);
+        return playerIntent(detailId,fileId,queue,mediaLibraryId);
+    }
+    private Intent playerIntent(long workId,long fileId,boolean queue,long libraryScope){
+        Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",workId);intent.putExtra("file_id",fileId);intent.putExtra("queue",queue);intent.putExtra("media_library_id",libraryScope);
         intent.putExtra("browse_path",listPath().replaceFirst("offset=[0-9]+&limit=30&",""));
-        intent.putExtra("browse_position",browsePositions.getOrDefault(detailId,-1));return intent;
+        intent.putExtra("browse_position",browsePositions.getOrDefault(workId,-1));return intent;
     }
     private Button globalShuffleButton(){
         Button action=button(getString(R.string.global_shuffle_action),this::showGlobalShuffle);
@@ -1013,36 +1027,32 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void shuffleGlobal(String kindScope){
         final Api client=api;if(client==null)return;
-        final int attempt=++shuffleRequest;
         final String scope="/api/works"+(kindScope.isEmpty()?"":"?kind="+kindScope);
-        request(()->{
-            JSONObject result=client.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope));
-            JSONArray ids=result.getJSONArray("ids");for(int index=0;index<ids.length();index++)if(ids.getLong(index)<=0)throw new Exception(getString(R.string.global_shuffle_invalid_response));
-            return result;
-        },result->{
-            if(client!=api||attempt!=shuffleRequest)return;
-            JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message(getString(R.string.global_shuffle_empty));return;}
-            Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);intent.putExtra("media_library_id",0L);
-            getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).putLong("media_library_id",0).apply();startActivity(intent);
-        },error->{
-            if(client!=api||attempt!=shuffleRequest)return;
-            String explanation=error!=null&&error.contains("404")?getString(R.string.global_shuffle_update_required):getString(R.string.global_shuffle_failed,error);
-            showDialog(new AlertDialog.Builder(this).setTitle(R.string.global_shuffle_failed_title).setMessage(explanation).setPositiveButton(R.string.global_shuffle_close,null));
-        });
+        shuffleQueue(client,scope,0,true);
     }
     void shuffle() {
         final Api client=api;if(client==null)return;
+        shuffleQueue(client,listPath(),mediaLibraryId,false);
+    }
+    private void shuffleQueue(Api client,String scope,long libraryScope,boolean global){
+        if(client!=api)return;
         final int attempt=++shuffleRequest;
-        final String scope=listPath();final long libraryScope=mediaLibraryId;
-        request(()->client.post("/api/queue/from-browse",new JSONObject().put("browse_path",scope)),result->{
+        if(shuffleRequests==null)shuffleRequests=new ShuffleRequest(this);
+        shuffleRequests.start(client,scope,result->{
             if(client!=api||attempt!=shuffleRequest)return;
-            JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){message("当前列表没有可播放的本地视频");return;}
+            JSONArray ids=result.getJSONArray("ids");if(ids.length()==0){
+                android.content.Context themed=new android.view.ContextThemeWrapper(this,R.style.LumenNativeActionsDark);
+                com.google.android.material.snackbar.Snackbar notice=com.google.android.material.snackbar.Snackbar.make(themed,root,getString(global?R.string.global_shuffle_empty:R.string.shuffle_list_empty),com.google.android.material.snackbar.Snackbar.LENGTH_LONG);notice.getView().setTag("shuffleEmpty");notice.show();return;
+            }
             getSharedPreferences("queue",0).edit().putString("ids",ids.toString()).putInt("index",0).putLong("media_library_id",libraryScope).apply();
             Intent intent=new Intent(this,PlayerActivity.class);intent.putExtra("work_id",ids.getLong(0));intent.putExtra("queue",true);intent.putExtra("media_library_id",libraryScope);startActivity(intent);
         },error->{
             if(client!=api||attempt!=shuffleRequest)return;
-            String explanation=error!=null&&error.contains("404")?"当前电脑版本不支持按列表随机播放，请更新电脑端后重试。":"无法生成当前列表的播放队列："+error;
-            showDialog(new AlertDialog.Builder(this).setTitle("未开始随机播放").setMessage(explanation).setPositiveButton("关闭",null));
+            boolean unsupported=error instanceof Api.StatusException&&((Api.StatusException)error).status==404;
+            String reason=error instanceof java.net.SocketTimeoutException?getString(R.string.shuffle_timeout):error instanceof org.json.JSONException?getString(R.string.global_shuffle_invalid_response):error instanceof java.io.IOException&&!(error instanceof Api.StatusException)?getString(R.string.shuffle_connection_failed):error.getMessage();
+            String explanation=unsupported?getString(global?R.string.global_shuffle_update_required:R.string.shuffle_list_update_required):getString(global?R.string.global_shuffle_failed:R.string.shuffle_list_failed,reason);
+            showDialog(new AlertDialog.Builder(this).setTitle(global?R.string.global_shuffle_failed_title:R.string.shuffle_list_failed_title).setMessage(explanation)
+                .setPositiveButton(R.string.shuffle_retry,(dialog,which)->shuffleQueue(client,scope,libraryScope,global)).setNegativeButton(R.string.global_shuffle_close,null));
         });
     }
     private String statsValue(JSONObject stats,String key){return stats.has(key)&&!stats.isNull(key)?Long.toString(stats.optLong(key)):"—";}

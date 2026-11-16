@@ -2,6 +2,7 @@ package net.lumen.media;
 
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Looper;
 import android.view.View;
 import android.widget.TextView;
@@ -80,6 +81,9 @@ public class GlobalShuffleTest {
         waitFor(()->shadowOf(page).peekNextStartedActivity()!=null);Intent intent=shadowOf(page).getNextStartedActivity();
         assertEquals(PlayerActivity.class.getName(),intent.getComponent().getClassName());assertTrue(intent.getBooleanExtra("queue",false));return intent;
     }
+    private void finishQueueWorkers(MainActivity page)throws Exception{
+        ShuffleRequest request=(ShuffleRequest)read(page,"shuffleRequests");request.worker.shutdown();assertTrue(request.worker.awaitTermination(6,TimeUnit.SECONDS));shadowOf(Looper.getMainLooper()).idle();
+    }
     private void conditions(MainActivity page)throws Exception{
         page.kind="vr";page.query="当前片名";page.savedList="只看这份片单";page.tagFilter="标签";page.actorFilter="演员";
         page.yearMinFilter="2020";page.yearMaxFilter="2025";page.ratingMinFilter="8";page.tagsAllFilter="全部A,全部B";
@@ -89,6 +93,61 @@ public class GlobalShuffleTest {
     }
     private String conditionsSnapshot(MainActivity page)throws Exception{
         return page.listPath()+"|"+page.discoveryResultIds+"|"+page.discoveryResultTag+"|"+page.recommended+"|"+page.offset+"|"+read(page,"mainPage");
+    }
+
+    @Test public void configurationRefreshCannotSilentlyDiscardAnExplicitGlobalShuffle()throws Exception{
+        try(Fixture fixture=new Fixture()){
+            MainActivity page=fixture.page;page.showLibrary();fixture.holdFirst=true;
+            confirm(open(page));assertTrue(fixture.firstReceived.await(6,TimeUnit.SECONDS));assertRequest(fixture,"/api/works");
+            page.onConfigurationChanged(new Configuration(page.getResources().getConfiguration()));
+            fixture.releaseFirst.countDown();assertEquals(42,awaitPlayer(page).getLongExtra("work_id",0));
+        }
+    }
+
+    @Test public void pendingShuffleIsVisibleAndCancellationPreservesThePreviousQueue()throws Exception{
+        try(Fixture fixture=new Fixture()){
+            MainActivity page=fixture.page;page.showLibrary();fixture.holdFirst=true;
+            page.getSharedPreferences("queue",0).edit().putString("ids","[9,11]").putInt("index",1).commit();
+            confirm(open(page));assertTrue(fixture.firstReceived.await(6,TimeUnit.SECONDS));assertRequest(fixture,"/api/works");
+            android.app.Dialog progress=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertTrue(progress.isShowing());assertNotNull(progress.getWindow().getDecorView().findViewWithTag("shuffleProgress"));
+            progress.getWindow().getDecorView().findViewWithTag("shuffleCancel").performClick();fixture.releaseFirst.countDown();
+            finishQueueWorkers(page);
+            assertFalse(progress.isShowing());assertEquals("[9,11]",page.getSharedPreferences("queue",0).getString("ids",""));
+            assertEquals(1,page.getSharedPreferences("queue",0).getInt("index",-1));assertNull(shadowOf(page).getNextStartedActivity());
+        }
+    }
+
+    @Test public void cancellationWinsEvenWhenASuccessCallbackIsAlreadyQueued()throws Exception{
+        try(Fixture fixture=new Fixture()){
+            MainActivity page=fixture.page;page.showLibrary();fixture.holdFirst=true;
+            page.getSharedPreferences("queue",0).edit().putString("ids","[9]").commit();page.shuffle();
+            assertTrue(fixture.firstReceived.await(6,TimeUnit.SECONDS));fixture.releaseFirst.countDown();
+            ShuffleRequest action=(ShuffleRequest)read(page,"shuffleRequests");action.worker.shutdown();assertTrue(action.worker.awaitTermination(6,TimeUnit.SECONDS));
+            android.app.Dialog progress=org.robolectric.shadows.ShadowDialog.getLatestDialog();progress.getWindow().getDecorView().findViewWithTag("shuffleCancel").performClick();
+            shadowOf(Looper.getMainLooper()).idle();assertNull(shadowOf(page).getNextStartedActivity());assertEquals("[9]",page.getSharedPreferences("queue",0).getString("ids",""));
+        }
+    }
+
+    @Test public void browseWorkerBacklogCannotBlockTheExplicitPlaybackAction()throws Exception{
+        try(Fixture fixture=new Fixture()){
+            MainActivity page=fixture.page;CountDownLatch entered=new CountDownLatch(4),release=new CountDownLatch(1);
+            try{
+                for(int i=0;i<4;i++)page.network.execute(()->{entered.countDown();try{release.await(6,TimeUnit.SECONDS);}catch(InterruptedException ignored){Thread.currentThread().interrupt();}});
+                assertTrue(entered.await(6,TimeUnit.SECONDS));confirm(open(page));assertRequest(fixture,"/api/works");assertEquals(42,awaitPlayer(page).getLongExtra("work_id",0));
+            }finally{release.countDown();}
+        }
+    }
+
+    @Test public void retryUsesTheOriginalScopeAndOnlySuccessReplacesTheQueue()throws Exception{
+        try(Fixture fixture=new Fixture()){
+            MainActivity page=fixture.page;page.showLibrary();page.getSharedPreferences("queue",0).edit().putString("ids","[9]").commit();fixture.status=503;
+            AlertDialog scope=open(page);choose(scope,2);confirm(scope);assertRequest(fixture,"/api/works?kind=series");
+            waitFor(()->{AlertDialog failure=ShadowAlertDialog.getLatestAlertDialog();return failure!=null&&failure!=scope&&failure.isShowing();});
+            assertEquals("[9]",page.getSharedPreferences("queue",0).getString("ids",""));fixture.status=200;page.kind="vr";
+            ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(Looper.getMainLooper()).idle();
+            assertRequest(fixture,"/api/works?kind=series");assertEquals(42,awaitPlayer(page).getLongExtra("work_id",0));
+        }
     }
 
     @Test public void homeAndMineExposeTheSameScopeDialogAndCancellationSendsNothing()throws Exception{
@@ -139,12 +198,12 @@ public class GlobalShuffleTest {
             int[] statuses={200,404,503,200};String[] replies={"{\"ids\":[]}","{}","{}","{\"ids\":[0]}"};
             for(int index=0;index<statuses.length;index++){
                 fixture.status=statuses[index];fixture.response=replies[index];AlertDialog scope=open(page);confirm(scope);assertRequest(fixture,"/api/works");
-                if(index==0)waitFor(()->page.getString(R.string.global_shuffle_empty).equals(ShadowToast.getTextOfLatestToast()));
+                if(index==0)waitFor(()->page.findViewById(android.R.id.content).findViewWithTag("shuffleEmpty")!=null);
                 else{
                     waitFor(()->{AlertDialog failure=ShadowAlertDialog.getLatestAlertDialog();return failure!=null&&failure!=scope&&failure.isShowing();});
                     AlertDialog failure=ShadowAlertDialog.getLatestAlertDialog();assertEquals(page.getString(R.string.global_shuffle_failed_title),shadowOf(failure).getTitle().toString());
                     if(statuses[index]==404){TextView message=failure.findViewById(android.R.id.message);assertEquals(page.getString(R.string.global_shuffle_update_required),message.getText().toString());assertFalse(message.getText().toString().contains("当前列表"));}
-                    failure.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                    failure.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
                 }
                 assertEquals("[9,11]",page.getSharedPreferences("queue",0).getString("ids",""));assertEquals(1,page.getSharedPreferences("queue",0).getInt("index",-1));assertEquals(2,page.getSharedPreferences("queue",0).getInt("repeat",-1));assertNull(shadowOf(page).getNextStartedActivity());assertTrue(fixture.posts.isEmpty());
             }
@@ -167,7 +226,7 @@ public class GlobalShuffleTest {
             fixture.response="{\"ids\":[42]}";if(globalFirst)page.shuffle();else confirm(open(page));assertRequest(fixture,globalFirst?current:"/api/works");
             assertEquals(42,awaitPlayer(page).getLongExtra("work_id",0));fixture.releaseFirst.countDown();
             // Finish the real HTTP workers before draining their UI callbacks, rather than relying on a sleep.
-            page.network.shutdown();assertTrue(page.network.awaitTermination(6,TimeUnit.SECONDS));shadowOf(Looper.getMainLooper()).idle();
+            finishQueueWorkers(page);
             assertEquals("[42]",page.getSharedPreferences("queue",0).getString("ids",""));assertEquals(0,page.getSharedPreferences("queue",0).getInt("index",-1));assertNull("The stale request must not open a second player",shadowOf(page).getNextStartedActivity());
         }
     }

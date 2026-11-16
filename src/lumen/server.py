@@ -25,6 +25,21 @@ class ApiError(Exception):
         self.status, self.message = status, message
 
 
+def playable_queue_ids(rows):
+    """Queue eligibility needs file locations, not artwork/metadata/history graphs."""
+    ids=[];seen=set();roots={}
+    for work_id,path,root in rows:
+        if work_id in seen:continue
+        try:
+            if root not in roots:roots[root]=Path(root).resolve()
+            target=Path(path).resolve()
+            if target.is_relative_to(roots[root]) and target.is_file():
+                ids.append(work_id);seen.add(work_id)
+        except (OSError,ValueError,RuntimeError):
+            continue
+    return ids
+
+
 def ensure_token(library):
     token = library.setting('lan_token')
     if not token:
@@ -562,17 +577,14 @@ class LanServer:
                                 raise ApiError(400,'无效媒体列表参数')
                             # The full matching collection is used, regardless of the visible page.
                             # This only returns an Android queue; the PC queue remains untouched.
-                            items = self.browse_items(library,browse.path,parameters)
-                            ids = []
-                            for work in items:
-                                for file in work['files']:
-                                    try:
-                                        target = Path(file['path']).resolve()
-                                        playable = target.is_relative_to(Path(file['root']).resolve()) and target.is_file()
-                                    except (OSError,ValueError):
-                                        playable = False
-                                    if playable:
-                                        ids.append(work['id']);break
+                            if browse.path=='/api/works' and parameters.keys()<={'kind'}:
+                                filters=self.filters(parameters);kinds=filters.get('kinds',[])
+                                condition=' WHERE w.kind=?' if kinds else ''
+                                rows=library.db.execute('SELECT f.work_id,f.path,f.root FROM files f JOIN works w ON w.id=f.work_id'+condition,kinds)
+                            else:
+                                items=self.browse_items(library,browse.path,parameters)
+                                rows=((work['id'],file['path'],file['root']) for work in items for file in work['files'])
+                            ids=playable_queue_ids(rows)
                             random.SystemRandom().shuffle(ids)
                             return self.send_json(200,{'ids':ids})
                         match=re.fullmatch(r'/api/works/(\d+)/personal',path)

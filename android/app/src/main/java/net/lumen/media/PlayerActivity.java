@@ -36,6 +36,8 @@ public final class PlayerActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final AtomicBoolean pendingTick=new AtomicBoolean(false);
     private Api api;
+    private Api.Cancellation loadCancellation;
+    private AlertDialog filePicker;
     private boolean externalPlayback=false,externalLoading=false,externalResumed=false,externalPlayWhenResumed=false;
     private ExternalVideoSource externalSource;
     private android.os.CancellationSignal externalResolution;
@@ -264,8 +266,15 @@ public final class PlayerActivity extends Activity {
     private void bookmarkMenu(){if(!requireLibrary("时间点书签"))return;playerOptions("时间点书签",new String[]{"添加当前时间点","查看 / 跳转书签"},new Runnable[]{this::addBookmark,this::showBookmarks});}
     private void chooseFile(){
         if(!requireLibrary("选集 / 文件"))return;
-        if(work==null)return;JSONArray files=work.optJSONArray("files");if(files==null||files.length()==0)return;String[] names=new String[files.length()];for(int i=0;i<names.length;i++)names[i]=files.optJSONObject(i).optString("name","视频 "+(i+1));
-        showDialog(new AlertDialog.Builder(this).setTitle("选集 / 文件").setItems(names,(d,i)->load(work.optLong("id"),files.optJSONObject(i).optLong("id"))).setNegativeButton("取消",null));
+        if(work==null||navigationPending||filePicker!=null&&filePicker.isShowing())return;JSONArray files=work.optJSONArray("files");if(files==null||files.length()==0)return;
+        final long workId=work.optLong("id");String[] names=new String[files.length()];int checked=-1;
+        for(int i=0;i<names.length;i++){JSONObject item=files.optJSONObject(i);names[i]=EpisodeLabels.file(this,item,work.optString("kind").equals("series"),i+1);if(file!=null&&file.optLong("id")==item.optLong("id"))checked=i;}
+        filePicker=showDialog(new AlertDialog.Builder(this).setTitle(R.string.episode_picker_title).setSingleChoiceItems(names,checked,(dialog,index)->{
+            dialog.dismiss();long selected=files.optJSONObject(index).optLong("id");
+            if(file!=null&&work!=null&&work.optLong("id")==workId&&file.optLong("id")==selected&&(player!=null||bridge!=null))return;
+            load(workId,selected);
+        }).setNegativeButton(R.string.global_shuffle_cancel,null));
+        final AlertDialog shown=filePicker;shown.setOnDismissListener(dialog->{if(filePicker==shown)filePicker=null;});
     }
     private void videoTap(){showControls(!controlsVisible);}
     private void cancelHoldSpeed(){handler.removeCallbacks(beginHoldSpeed);boolean wasActive=holdSpeed.active();boolean restored=holdSpeed.end();if(wasActive){showControls(holdControlsVisible);if(!restored&&status!=null)setPlaybackNotice("恢复原速失败，请重新选择播放速度",Notice.WARNING);}}
@@ -557,30 +566,40 @@ public final class PlayerActivity extends Activity {
     }
     private void load(long workId,long fileId) {
         if(!requireLibrary("媒体库载入"))return;
+        if(filePicker!=null)filePicker.dismiss();
+        cancelFileLoad();
         flushPreferences();
+        // Finish the old decoder/session while file still identifies the old
+        // episode. A surviving MediaPlayer prevents startPlayback from switching.
+        stopPlayback(false);
         pauseAfterStyleChange=false;
         desiredWork=workId;desiredFile=fileId;videoOrientation=PlaybackPolicy.UNKNOWN;file=null;refreshPersonal();decoderMode=PlaybackDecoderPolicy.load(getSharedPreferences("playback",0));software=decoderMode==PlaybackDecoderPolicy.SOFTWARE;
-        final int ticket=++generation;setNavigationPending(true);
+        final int ticket=++generation;final Api.Cancellation current=new Api.Cancellation();loadCancellation=current;setNavigationPending(true);
+        setPlaybackNotice(getString(R.string.episode_loading),Notice.LOADING);showControls(true);
         network.execute(()->{
             try {
                 long scope=queueMode?getSharedPreferences("queue",0).getLong("media_library_id",getIntent().getLongExtra("media_library_id",0)):getIntent().getLongExtra("media_library_id",0);
-                JSONObject data=api.get("/api/works/"+workId+(scope>0?"?media_library_id="+scope:""));long selected=fileId>0?fileId:data.optLong("resume_file_id");
+                JSONObject data=api.get("/api/works/"+workId+(scope>0?"?media_library_id="+scope:""),current);long selected=fileId>0?fileId:data.optLong("resume_file_id");
                 JSONArray files=data.getJSONArray("files");if(fileId<0&&files.length()>0)selected=files.getJSONObject(files.length()-1).getLong("id");JSONObject chosen=null;
                 for(int i=0;i<files.length();i++)if(files.getJSONObject(i).getLong("id")==selected)chosen=files.getJSONObject(i);
                 if(chosen==null&&fileId==0&&files.length()>0){chosen=files.getJSONObject(0);selected=chosen.getLong("id");}
                 if(chosen==null)throw new Exception("媒体没有可播放的视频");
-                JSONObject selectedFile=chosen;JSONArray captions=api.get("/api/files/"+selected+"/subtitles").getJSONArray("items");
-                JSONObject savedPreferences=readPreferences(selected);
+                JSONObject selectedFile=chosen;JSONArray captions=api.get("/api/files/"+selected+"/subtitles",current).getJSONArray("items");
+                JSONObject savedPreferences=readPreferences(selected,current);
                 runOnUiThread(()->{
-                    if(isDestroyed()||ticket!=generation)return;
+                    if(isDestroyed()||ticket!=generation||current.cancelled())return;loadCancellation=null;
                     boolean sameWork=work!=null&&work.optLong("id")==data.optLong("id");setNavigationPending(false);work=data;if(!sameWork)setVrEnabled(VrProjection.autoEnable(data.optString("kind")));vrVideo.recenter();file=selectedFile;refreshPersonal();filePreferences=savedPreferences;applyFilePreferences();applyOrientation();showControls(true);subtitles=captions;resumeMs=file.optInt("completed")==1?0:(long)(file.optDouble("position")*1000);
                     if(getIntent().hasExtra("start_position")){resumeMs=Math.max(0,Math.min((long)(getIntent().getDoubleExtra("start_position",0)*1000),durationFromFile()));getIntent().removeExtra("start_position");}
                     title.setText(work.optString("title")+(work.optString("kind").equals("series")?" · S"+file.optInt("season")+" E"+file.optInt("episode"):work.optString("kind").equals("fans")&&!file.optString("name").isEmpty()?" · "+file.optString("name"):""));
                     if(started)startPlayback();
                 });
-            }catch(Exception exception){runOnUiThread(()->{if(ticket==generation){setNavigationPending(false);if(started)error(exception);}});}
+            }catch(Exception exception){runOnUiThread(()->{if(!isDestroyed()&&ticket==generation&&!current.cancelled()){
+                loadCancellation=null;setNavigationPending(false);setPlaybackNotice(getString(R.string.episode_load_failed),Notice.ERROR);showControls(true);
+                if(started)showDialog(new AlertDialog.Builder(this).setTitle(R.string.episode_load_failed).setMessage(exception.getMessage()).setPositiveButton(R.string.episode_retry,(dialog,which)->load(workId,fileId)).setNegativeButton(R.string.episode_return,(dialog,which)->finish()));
+            }});}
         });
     }
+    private void cancelFileLoad(){Api.Cancellation pending=loadCancellation;loadCancellation=null;if(pending!=null)pending.cancel();}
     private void startPlayback() {
         if(player!=null||(!externalPlayback&&file==null)||(externalPlayback&&externalSource==null)||!started||(usesGlVideo()&&vrVideo.videoTexture()==null))return;
         ending=false;sequence=0;seekGuard=2;session=null;
@@ -840,15 +859,15 @@ public final class PlayerActivity extends Activity {
         }).setNegativeButton("取消",null));
     }
     private String preferenceKey(long id){return api.connection.base+"#"+id;}
-    private JSONObject readPreferences(long id){
+    private JSONObject readPreferences(long id,Api.Cancellation cancellation)throws Exception{
         JSONObject local=new JSONObject();try{local=new JSONObject(getSharedPreferences("media-preferences",0).getString(preferenceKey(id),"{}"));}catch(Exception ignored){}
-        try{JSONObject remote=api.get("/api/files/"+id+"/preferences");if(remote.length()>0||local.has("_vr_inherited")){
+        try{JSONObject remote=api.get("/api/files/"+id+"/preferences",cancellation);if(remote.length()>0||local.has("_vr_inherited")){
             JSONObject oldVr=local.optJSONObject("vr"),remoteVr=remote.optJSONObject("vr");
             if(oldVr!=null&&!local.has("_vr_inherited")&&!remote.has("_vr_inherited")){if(remoteVr==null){remoteVr=new JSONObject();remote.put("vr",remoteVr);}for(String key:new String[]{"tracking_sensitivity","tracking_smoothing","tracking_invert_pitch"})if(!remoteVr.has(key)&&oldVr.has(key))remoteVr.put(key,oldVr.get(key));}
             if(!remote.has("beauty")&&local.has("beauty"))remote.put("beauty",local.get("beauty"));
             local=remote;
         }}catch(Exception ignored){/* Per-file local settings also work with older servers. */}
-        return local;
+        cancellation.check();return local;
     }
     private double bounded(JSONObject value,String key,double fallback,double low,double high){double number=value.optDouble(key,fallback);return Double.isFinite(number)?Math.max(low,Math.min(high,number)):fallback;}
     private void applyFilePreferences(){
@@ -1022,12 +1041,12 @@ public final class PlayerActivity extends Activity {
         if(files==null)return false;
         for(int i=0;i<files.length();i++)if(files.optJSONObject(i).optLong("id")==file.optLong("id")) {
             int next=i+direction;if(next<0||next>=files.length())break;
-            long nextId=files.optJSONObject(next).optLong("id");stopPlayback(false);load(work.optLong("id"),nextId);return true;
+            long nextId=files.optJSONObject(next).optLong("id");load(work.optLong("id"),nextId);return true;
         }
         if(!automatic)Toast.makeText(this,direction<0?"已经是第一个视频":"已经是最后一个视频",Toast.LENGTH_SHORT).show();return false;
     }
     private void setNavigationPending(boolean value){
-        navigationPending=value;if(previousVideo!=null)previousVideo.setEnabled(!value&&!externalPlayback);if(nextVideo!=null)nextVideo.setEnabled(!value&&!externalPlayback);
+        navigationPending=value;if(previousVideo!=null)previousVideo.setEnabled(!value&&!externalPlayback);if(nextVideo!=null)nextVideo.setEnabled(!value&&!externalPlayback);if(quickFiles!=null)quickFiles.setEnabled(!value&&!externalPlayback);
     }
     private void stepVideo(int direction){
         if(!requireLibrary("上下部切换"))return;
@@ -1043,7 +1062,7 @@ public final class PlayerActivity extends Activity {
             VideoNavigator.Target target=VideoNavigator.adjacent(api,current,direction,path,hint,()->Thread.currentThread().isInterrupted()||ticket!=generation);
             runOnUiThread(()->{if(isDestroyed()||ticket!=generation)return;setNavigationPending(false);
                 if(target==null){setPlaybackNotice("当前列表没有更多视频",Notice.WARNING);Toast.makeText(this,direction<0?"已经是第一个视频":"已经是最后一个视频",Toast.LENGTH_SHORT).show();return;}
-                browsePosition=target.position;stopPlayback(false);load(target.id,direction<0?-1:0);
+                browsePosition=target.position;load(target.id,direction<0?-1:0);
             });
         }catch(Exception error){runOnUiThread(()->{if(!isDestroyed()&&ticket==generation){setNavigationPending(false);setPlaybackNotice("切换失败："+error.getMessage(),Notice.WARNING);Toast.makeText(this,"无法读取相邻视频，请检查连接后重试",Toast.LENGTH_SHORT).show();}});}});
     }
@@ -1055,7 +1074,7 @@ public final class PlayerActivity extends Activity {
             int next=current+direction;
             if(current>=0&&prefs.getInt("repeat",0)==1&&ids.length()>0)next=(next+ids.length())%ids.length();
             if(current<0||next<0||next>=ids.length()){if(automatic)finish();else Toast.makeText(this,direction<0?"已经是队列第一个视频":"本轮队列已结束",Toast.LENGTH_SHORT).show();return;}
-            prefs.edit().putInt("index",next).apply();stopPlayback(false);load(ids.getLong(next),direction<0?-1:0);
+            prefs.edit().putInt("index",next).apply();load(ids.getLong(next),direction<0?-1:0);
         }catch(Exception exception){error(exception);}
     }
     private void nextWork(boolean automatic) {
@@ -1068,7 +1087,7 @@ public final class PlayerActivity extends Activity {
     @Override protected void onStart(){super.onStart();started=true;if(controller!=null)controller.active(true);if(usesGlVideo()&&vrVideo!=null)vrVideo.onResume();if(externalPlayback){if(externalSource!=null)startPlayback();else loadExternalSource();}else if(api!=null){if(file!=null)startPlayback();else load(desiredWork,desiredFile);}}
     @Override protected void onPause(){if(externalPlayback)externalResumed=false;cancelHoldSpeed();if(controller!=null)controller.active(false);if(player!=null){player.pause();tick(false,false);}super.onPause();}
     @Override protected void onResume(){super.onResume();if(externalPlayback){externalResumed=true;if(externalPlayWhenResumed&&player!=null){externalPlayWhenResumed=false;beginDecoderPlayback();}}if(controller!=null)controller.active(true);if(root!=null){setPlayerImmersive(immersive);showControls(true);}}
-    @Override protected void onStop(){flushPreferences();started=false;generation++;if(externalPlayback){externalLoading=false;externalPlayWhenResumed=false;}setNavigationPending(false);stopPlayback(false);if(externalPlayback)closeExternalSource();if(usesGlVideo()&&vrVideo!=null)vrVideo.onPause();super.onStop();}
+    @Override protected void onStop(){if(filePicker!=null)filePicker.dismiss();flushPreferences();started=false;generation++;cancelFileLoad();if(externalPlayback){externalLoading=false;externalPlayWhenResumed=false;}setNavigationPending(false);stopPlayback(false);if(externalPlayback)closeExternalSource();if(usesGlVideo()&&vrVideo!=null)vrVideo.onPause();super.onStop();}
     @Override protected void onSaveInstanceState(Bundle state){if(externalPlayback)state.putLong("external_position",player==null?resumeMs:positionMs());super.onSaveInstanceState(state);}
-    @Override protected void onDestroy(){if(externalPlayback){generation++;externalLoading=false;if(player!=null)stopPlayback(false);}if(externalPlayback)closeExternalSource();if(controller!=null)controller.release();handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
+    @Override protected void onDestroy(){if(filePicker!=null)filePicker.dismiss();cancelFileLoad();if(externalPlayback){generation++;externalLoading=false;if(player!=null)stopPlayback(false);}if(externalPlayback)closeExternalSource();if(controller!=null)controller.release();handler.removeCallbacksAndMessages(null);network.shutdown();if(vrVideo!=null)vrVideo.release();super.onDestroy();}
 }
