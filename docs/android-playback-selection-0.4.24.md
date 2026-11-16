@@ -12,4 +12,4 @@
 
 随机生成失败时可重试同一范围；没有可播放文件时提示空结果。取消、失败和空结果不会替换已有手机队列，也不会改动电脑队列。旧电脑端缺少所需接口时会提示升级。PC 0.4.24 对全局队列生成只读取必要文件信息，仍检查文件存在与目录范围，建议两端同步升级。
 
-源码验证及公开发布记录会随版本发布更新。自动回归覆盖真实 Activity 事件、受控 HTTP 和实际文件检查；不包含手机原生 LibVLC 硬件解码验收。小米 15 的 HEVC 4K 流畅度仍需设备验证。
+[源码验证](validation/android-episodes-shuffle-source.json) · [公开发布验证](validation/preview-0.4.24-1.json) · [0.4.24 Preview 1 安装包](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.24-preview.1)。自动回归覆盖真实 Activity 事件、受控 HTTP 和实际文件检查；不包含手机原生 LibVLC 硬件解码验收。小米 15 的 HEVC 4K 流畅度仍需设备验证。

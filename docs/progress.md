@@ -859,3 +859,10 @@ PC 全量 **1033 项通过、3 项平台相关跳过、零失败／错误**，�
 详情改用已有 Material 季选择组件，在同一次浏览中按电脑、媒体库及作品保留选季；单集点击绑定实际展示的作品、文件及媒体库。选集列表显示已有季集编号与当前项。全局和当前列表随机请求独立于页面代次与浏览任务，新增可取消的加载面板、空提示和同范围重试，取消、失败和空结果保留旧队列。PC 全局队列路径直接查询必要文件信息，保留文件存在与目录范围检查，以及整剧单一对象、均匀洗牌和电脑队列隔离。
 
 最终本地 PC 全量 **1052 项通过、3 项环境跳过**；Android 全量 **278 项通过**，lint 零错误、89 项警告，构建成功。首轮 PC 的未改动任务页计时断言出现一次波动，单独复测及结束并行构建后的完整重跑均通过。统一升级 **0.4.24／Android code43**，准备标签 `v0.4.24-preview.1`。原生 LibVLC 解码及小米 15 HEVC 4K 流畅度仍需实机确认。[操作与截图](android-playback-selection-0.4.24.md) · [源码验证](validation/android-episodes-shuffle-source.json)。
+
+
+## 0.4.24 Preview 1 已发布
+
+源码 `7c42c862f61b2bbd6f4af1cb6f30edd1e8d16d59`，标签 `v0.4.24-preview.1`；[构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/43798814773)两端及发布全部成功。Windows **1055 项测试零失败／错误／跳过**，同一安装包完成安装、启动、工作进程和卸载验证；Android **278 项测试、lint、持久签名及 ZIP 对齐通过**，版本 0.4.24／code43。六个公开附件完整下载后，大小、SHA-256、GitHub 摘要、源码绑定及 APK 原证书再次验证通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.24-preview.1) · [公开验证](validation/preview-0.4.24-1.json)。
+
+本版修复 Android 选集时旧解码器和连接未释放、随机播放请求被页面刷新丢弃的问题，补充加载／取消／重试反馈，并减少 PC 全局随机队列生成的资料读取。测试覆盖当前集保留进度、结束后重选、自动连播、选季刷新、取消竞态与独立请求通道。原生 Android 解码及小米 15 的 HEVC 4K 流畅度仍需设备确认。
