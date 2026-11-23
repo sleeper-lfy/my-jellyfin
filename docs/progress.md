@@ -866,3 +866,10 @@ PC 全量 **1033 项通过、3 项平台相关跳过、零失败／错误**，�
 源码 `7c42c862f61b2bbd6f4af1cb6f30edd1e8d16d59`，标签 `v0.4.24-preview.1`；[构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/43798814773)两端及发布全部成功。Windows **1055 项测试零失败／错误／跳过**，同一安装包完成安装、启动、工作进程和卸载验证；Android **278 项测试、lint、持久签名及 ZIP 对齐通过**，版本 0.4.24／code43。六个公开附件完整下载后，大小、SHA-256、GitHub 摘要、源码绑定及 APK 原证书再次验证通过。[Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.24-preview.1) · [公开验证](validation/preview-0.4.24-1.json)。
 
 本版修复 Android 选集时旧解码器和连接未释放、随机播放请求被页面刷新丢弃的问题，补充加载／取消／重试反馈，并减少 PC 全局随机队列生成的资料读取。测试覆盖当前集保留进度、结束后重选、自动连播、选季刷新、取消竞态与独立请求通道。原生 Android 解码及小米 15 的 HEVC 4K 流畅度仍需设备确认。
+
+
+## 0.4.25 Preview 1 已发布
+
+发布标签为 `v0.4.25-preview.1`，对应源码 `f5ae92d9d814a18be455c8d7223f921641fe2201`。Windows 1062 项测试和安装、启动、卸载验收通过。Android 279 项测试、lint、原签名及 ZIP 对齐通过，版本为 0.4.25、versionCode 44。六个公开附件均已下载并核对大小、SHA-256、GitHub 摘要和源码提交。[构建](https://github.com/sleeper-lfy/my-jellyfin/actions/runs/45202878497) · [Release](https://github.com/sleeper-lfy/my-jellyfin/releases/tag/v0.4.25-preview.1) · [公开验证](validation/preview-0.4.25-1.json)。
+
+本版按文件隔离自带分类与自定义媒体库，保留全库入口和全局随机。PC 内置 TMDB 普通影视与动漫刮削，启用时需填写自己的 API 读取访问令牌。认证、匹配和解析使用模拟响应验证，真实 TMDB 联网及手机实机交互待设备确认。
