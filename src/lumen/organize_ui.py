@@ -62,12 +62,13 @@ class Organizer(QDialog):
         super().__init__(window); self.window = window; self.work_id = work_id
         self.setWindowTitle('整理命名与预览'); self.resize(1000, 700)
         self.media_library_id=getattr(window,'media_library_id',None)
+        from .media_libraries import BUILTIN_SCOPE
         self.library_rule=None
         if self.media_library_id is None:
             from .media_libraries import work_libraries
             owners=work_libraries(window.library,work_id)
             if len(owners)==1:self.media_library_id=owners[0]
-        if self.media_library_id is not None:
+        if self.media_library_id not in (None, BUILTIN_SCOPE):
             from .media_libraries import get
             self.library_rule=get(window.library,self.media_library_id)['config']
         self.work = window.library.work(work_id,self.media_library_id) if self.media_library_id is not None else window.library.work(work_id); self.plan = None; self.page = 0; self.generation = 0; self.closed = False
@@ -146,7 +147,7 @@ class Organizer(QDialog):
         plan = self.plan; work_id = self.work_id
         if self.remember.isChecked():
             try:
-                if self.media_library_id is not None:
+                if self.library_rule is not None:
                     from .media_libraries import get,save
                     item=get(self.window.library,self.media_library_id);save(self.window.library,item['name'],item['kind'],{**item['config'],'naming':self.fields.value()},self.media_library_id)
                 else:save_rule(self.window.library, self.work['kind'], self.fields.value(), self.target.text().strip())

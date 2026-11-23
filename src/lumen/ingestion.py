@@ -4,9 +4,11 @@ import re
 import time
 import uuid
 import threading
+import unicodedata
 from pathlib import Path
 from .core import check_cancelled, ImportCancelled
 from .plugins import Plugins
+from . import tmdb
 from .files import plan_move, execute_move
 
 
@@ -43,10 +45,33 @@ def work_codes(work):
     return set().union(*(codes(value) for value in values))
 
 
-def choose(work, candidates):
+def source_search(work, plugin_id):
+    if plugin_id == tmdb.ID:
+        return {'query': title_for_search(work), 'kind': work['kind']}
     identifiers = work_codes(work)
     if len(identifiers) > 1:
+        raise NeedsConfirmation('文件含多个编号，请确认作品归组')
+    return {'query': next(iter(identifiers)) if identifiers else work['title']}
+
+
+def title_for_search(work):
+    title = unicodedata.normalize('NFKC', work['title']).strip()
+    if work['year']:
+        year = re.escape(str(work['year']))
+        # Series imports use the full folder name; keep its year for matching.
+        return re.sub(r'\s*(?:\(' + year + r'\)|\[' + year + r'\])$', '', title).strip() or title
+    return title
+
+
+def normalized_title(title):
+    return ' '.join(unicodedata.normalize('NFKC', title).casefold().split())
+
+
+def choose(work, candidates, *, by_title=False):
+    identifiers = set() if by_title else work_codes(work)
+    if len(identifiers) > 1:
         raise NeedsConfirmation('文件含多个编号，请确认作品或分段归组')
+    title = normalized_title(title_for_search(work)) if by_title else work['title'].casefold().strip()
     matches = []
     for candidate in candidates:
         kind = candidate.get('kind', 'movie')
@@ -58,8 +83,12 @@ def choose(work, candidates):
             product=external.get('product_code') or external.get('catalog_number')
             values=[str(product)] if product else [candidate.get('title', ''), candidate.get('id', '')]
             matched = set().union(*(codes(value) for value in values)) == identifiers
+        elif by_title:
+            names = [candidate['title'], *candidate.get('aliases', [])]
+            matched = (title in {normalized_title(name) for name in names}
+                       and (not work['year'] or candidate.get('year') == work['year']))
         else:
-            matched = (candidate['title'].casefold().strip() == work['title'].casefold().strip()
+            matched = (candidate['title'].casefold().strip() == title
                        and (not work['year'] or candidate.get('year') == work['year']))
         if matched:
             matches.append(candidate)

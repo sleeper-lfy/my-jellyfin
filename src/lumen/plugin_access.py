@@ -52,6 +52,8 @@ class PluginHttpError(ValueError):
 
 def check_response(status,headers,body,url):
     host=urlsplit(url).hostname or '来源'
+    if status == 401 and host == 'api.themoviedb.org':
+        raise PluginHttpError(status, 'login_required', host, 'TMDB 读取令牌无效，请在“设置 → 影视刮削”更新。')
     headers={str(key).lower():str(value) for key,value in headers.items()}
     snippet=body[:65536].decode('utf-8','replace').lower()
     challenge=(headers.get('cf-mitigated','').lower()=='challenge' or

@@ -10,6 +10,7 @@ import time
 from urllib.parse import urljoin, urlparse
 import httpx
 from .core import identity, now, check_cancelled, ImportCancelled, media_process
+from . import tmdb
 
 CAPABILITIES = {'search', 'detail', 'discover', 'actors'}
 
@@ -108,6 +109,8 @@ class Plugins:
             raise ValueError('JavSP 本地引擎只能从应用内置副本安装')
         if manifest.get('id') == 'javinizer-go':
             raise ValueError('javinizer-go 是应用内置引擎的保留 ID，不能安装为脚本插件')
+        if manifest.get('id') == tmdb.ID:
+            raise ValueError('TMDB 是应用内置来源，请在“设置 → 影视刮削”配置')
         import re
         if not re.fullmatch(r'[a-z][a-z0-9-]{1,50}', manifest['id']):
             raise ValueError('无效插件 ID')
@@ -132,6 +135,8 @@ class Plugins:
         result = []
         for path in sorted(self.root.glob('*/manifest.json')):
             manifest = json.loads(path.read_text(encoding='utf-8'))
+            if manifest['id'] == tmdb.ID:
+                continue
             manifest['config'] = self.library.setting('plugin:' + manifest['id'], {})
             if manifest['id'] == 'javsp-local':
                 from .javsp_bridge import settings
@@ -145,6 +150,12 @@ class Plugins:
         if native:
             result = [p for p in result if p['id'] != native['id']]
             result.append(native)
+        config = tmdb.settings(self.library)
+        if config.get('token'):
+            folder = self._builtin_plugin_folder(tmdb.ID, {tmdb.ID})
+            manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
+            manifest['config'] = {'enabled': bool(config.get('enabled')), 'base_url': manifest['base_url']}
+            result.append(manifest)
         return sorted(result, key=lambda p: p['config'].get('priority', 100))
 
     def configure(self, plugin_id, config):
@@ -230,6 +241,8 @@ class Plugins:
         return manifest
 
     def uninstall(self, plugin_id):
+        if plugin_id == tmdb.ID:
+            raise ValueError('TMDB 随应用提供，可在“设置 → 影视刮削”停用')
         if plugin_id == 'javinizer-go':
             from .javinizer import save_settings
             config = save_settings(self.library, {'enabled': False})
@@ -241,7 +254,8 @@ class Plugins:
         self.library.set_setting('plugin-access:' + plugin_id, {})
 
     def javascript(self, plugin_id, function, argument):
-        script = (self.root / plugin_id / 'plugin.js').read_text(encoding='utf-8')
+        folder = self._builtin_plugin_folder(tmdb.ID, {tmdb.ID}) if plugin_id == tmdb.ID else self.root / plugin_id
+        script = (folder / 'plugin.js').read_text(encoding='utf-8')
         command = [sys.executable, '--plugin-worker'] if getattr(sys, 'frozen', False) else [sys.executable, '-m', 'lumen.js_worker']
         # File IPC also works in PyInstaller's Windows windowed mode, where stdio is absent.
         import tempfile
@@ -269,6 +283,10 @@ class Plugins:
         parsed = urlparse(url)
         if parsed.scheme not in {'https', 'http'} or parsed.hostname not in plugin['domains'] or parsed.username or parsed.password:
             raise ValueError('插件请求不在声明的网络权限内：' + url[:200])
+        if plugin.get('id') == tmdb.ID:
+            from .plugin_access import origin
+            if origin(url) not in {tmdb.API_ORIGIN, tmdb.IMAGE_ORIGIN}:
+                raise ValueError('TMDB 请求必须使用官方 HTTPS 地址')
 
     @staticmethod
     def _curl_binary():
@@ -299,8 +317,13 @@ class Plugins:
         return self._fetch_httpx(plugin, url, proxy, maximum)
 
     def _request_headers(self,plugin,url,browser=False):
-        from .plugin_access import request_headers
+        from .plugin_access import origin, request_headers
         defaults={key:value for key,value in BROWSER_HEADERS.items() if not browser or key!='User-Agent'}
+        if plugin.get('id') == tmdb.ID:
+            token = tmdb.settings(self.library).get('token')
+            if token and origin(url) == tmdb.API_ORIGIN:
+                defaults.update(Authorization='Bearer ' + token, Accept='application/json')
+            return defaults
         headers=request_headers(self.library,plugin,url,defaults)
         # DMM image CDNs reject requests without a same-site Referer.
         if plugin.get('id')=='javinizer-go' and urlparse(url).hostname in {'pics.dmm.co.jp','awsimgsrc.dmm.com','awsimgsrc.dmm.co.jp','pics.r18.com'}:

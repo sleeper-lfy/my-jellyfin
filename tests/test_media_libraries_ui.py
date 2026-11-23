@@ -94,3 +94,36 @@ def test_scoped_actions_never_choose_or_delete_another_library_copy(qapp,tmp_pat
         assert window.library.work(work_id,b['id'])['files'][0]['completed']==1
         assert len(window.library.work(work_id)['files'])==2
     finally:window.close()
+
+
+def test_builtin_movie_navigation_uses_only_unassigned_copies(qapp,tmp_path,monkeypatch):
+    window = MainWindow(tmp_path/'data')
+    try:
+        builtin = tmp_path/'builtin'; builtin.mkdir()
+        filename = 'Shared.2024.mp4'
+        (builtin/filename).write_bytes(b'builtin copy')
+        window.library.import_folder(builtin,'movie',fast=True)
+        named = tmp_path/'named'; named.mkdir()
+        (named/filename).write_bytes(b'named copy')
+        (named/'Private.2025.mp4').write_bytes(b'private')
+        library = ml.save(window.library,'自定义电影','movie',{'roots':[{'path':str(named)}]})
+        window.library.import_folder(named,'movie',fast=True)
+        window.refresh_media_libraries()
+        window.navigate('movie')
+        assert [work['title'] for work in window.current_items] == ['Shared']
+        assert window.media_library_selector.currentData() == ml.BUILTIN_SCOPE
+        shared_id = window.current_items[0]['id']
+        window.open_details(shared_id,fetch=False)
+        assert [file['path'] for file in window.detail_page.work['files']] == [str(builtin/filename)]
+        opened = []
+        monkeypatch.setattr(window.player,'open_file',opened.append)
+        window.play_work(shared_id)
+        assert opened[0]['path'] == str(builtin/filename)
+        monkeypatch.setattr(QMessageBox,'question',lambda *args:QMessageBox.StandardButton.Yes)
+        window.remove_catalog_work(shared_id)
+        assert not window.library.query({'media_library_id':ml.BUILTIN_SCOPE})
+        assert (builtin/filename).is_file()
+        window.open_media_library(library['id'])
+        assert {work['title'] for work in window.current_items} == {'Shared','Private'}
+        assert window.library.work(shared_id)['files'][0]['path'] == str(named/filename)
+    finally:window.close()

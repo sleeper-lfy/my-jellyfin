@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, Q
  QComboBox, QCheckBox, QSpinBox, QListWidget, QMessageBox, QPlainTextEdit, QScrollArea)
 from .core import tool
 from .plugins import Plugins
+from .tmdb import ID as TMDB_ID
 from .ui import button, label, KINDS
 
 
@@ -17,7 +18,7 @@ class SettingsTabs(QTabWidget):
 
 
 class Settings(QDialog):
-    def __init__(self, window):
+    def __init__(self, window, section=None):
         super().__init__(window)
         self.window, self.library = window, window.library
         self.manager = Plugins(self.library)
@@ -95,6 +96,10 @@ class Settings(QDialog):
         layout.addLayout(config)
         layout.addWidget(button('保存插件配置', self.save_plugin, True))
         tabs.addTab(plugins, '第三方插件')
+        from .tmdb_ui import TmdbSettings
+        tmdb_tab = tabs.addTab(TmdbSettings(self.library), '影视刮削')
+        if section == TMDB_ID:
+            tabs.setCurrentIndex(tmdb_tab)
         media = QWidget();media_layout = QVBoxLayout(media)
         notice=label('媒体目录、分类默认来源、备用顺序、整理目标和命名模板统一在媒体管理中配置。目录详情会显示实际生效规则及继承关系。')
         notice.setWordWrap(True);media_layout.addWidget(notice)
@@ -216,7 +221,7 @@ class Settings(QDialog):
         self.ffmpeg_status.setText('正在后台下载 FFmpeg 组件（约 110MB，仅一次）…')
 
     def reload(self):
-        self.plugins = [p for p in self.manager.installed() if not p.get('engine')]
+        self.plugins = [p for p in self.manager.installed() if not p.get('engine') and p['id'] != TMDB_ID]
         self.list.clear()
         for p in self.plugins:
             self.list.addItem(f"{'●' if p['config'].get('enabled') else '○'} {p['name']}  ·  {p['version']}")

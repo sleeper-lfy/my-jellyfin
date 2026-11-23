@@ -52,18 +52,20 @@ def describe(file, kind):
             'remaining':max(0,duration-position) if duration else None,'label':text}
 
 
-def continue_works(library, limit=24):
+def continue_works(library, limit=24, media_library_id=None):
     """Bound candidate IDs in SQL; fully watched works never return to this shelf."""
     limit=max(1,min(100,int(limit)))
-    rows=library.db.execute('''SELECT w.id,
+    from .media_libraries import scoped_files
+    prefix, parameters = scoped_files(library, media_library_id)
+    rows=library.db.execute(prefix + '''SELECT w.id,
         COALESCE((SELECT MAX(COALESCE(s.ended,s.started)) FROM sessions s JOIN files sf ON sf.id=s.file_id WHERE sf.work_id=w.id),w.added) AS recent
         FROM works w WHERE EXISTS(SELECT 1 FROM files f WHERE f.work_id=w.id AND f.completed=0)
         AND (EXISTS(SELECT 1 FROM files f WHERE f.work_id=w.id AND f.completed=0 AND f.position>0)
              OR (w.kind='series' AND EXISTS(SELECT 1 FROM files f WHERE f.work_id=w.id AND f.completed=1)))
-        ORDER BY recent DESC,w.id DESC LIMIT ?''',(limit,)).fetchall()
+        ORDER BY recent DESC,w.id DESC LIMIT ?''', [*parameters, limit]).fetchall()
     result=[]
     for row in rows:
-        work=library.work(row['id']);target=resume_target(library,work,allow_completed=False)
+        work=library.work(row['id'], media_library_id);target=resume_target(library,work,allow_completed=False)
         if target is None:continue
         resume=describe(target,work['kind'])
         work['_resume']=resume;work['_subtitle']=resume['label'];work['_last_played']=row['recent']

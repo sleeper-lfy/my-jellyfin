@@ -7,6 +7,7 @@
 - Qt FFmpeg backend libraries: the runtime reports FFmpeg 7.1 LGPL v2.1 or later for the tested PySide6 build. External FFmpeg binaries may have additional GPL codecs: inspect the exact build's `ffmpeg -L` and `ffmpeg -buildconf`, retain notices and provide corresponding-source information before public binary distribution. https://ffmpeg.org/legal.html
 - HTTPX, HTTPcore: BSD-3-Clause; AnyIO: MIT; Certifi: MPL-2.0; IDNA: BSD-3-Clause; SocksIO: Apache-2.0; H11: MIT.
 - TVmaze data: CC BY-SA, attribution required. The UI retains TVmaze source links; redistributions of metadata should follow the provider's terms. https://www.tvmaze.com/api
+- TMDB metadata and artwork are provided under the [TMDB API terms](https://www.themoviedb.org/api-terms-of-use). This product uses the TMDB API but is not endorsed or certified by TMDB. The bundled [short blue logo](assets/tmdb-logo.svg) is TMDB's official attribution asset (SHA-256 `8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c`). [TMDB logos and attribution](https://www.themoviedb.org/about/logos-attribution)
 - Internet Archive metadata/images: ownership and reuse rights depend on the item. The app only displays metadata and source links; it does not download video resources.
 
 The build helper collects installed package license files. This is not a claim that every possible FFmpeg binary is redistributable under identical terms. Use verified official/package-manager sources and preserve their build-specific notices. No third-party film images or videos are committed to this repository.

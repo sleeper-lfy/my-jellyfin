@@ -97,7 +97,8 @@ def apply_match(library, plugin, operation, candidate, work_id, *, cancelled=Non
     else:
         result = manager.merge(plugin['id'], candidate, work_id, replace_nfo=True, cancelled=cancelled)
     from .ingestion import confirm
-    confirm(library, work_id, media_library_id)
+    from .media_libraries import BUILTIN_SCOPE
+    confirm(library, work_id, None if media_library_id == BUILTIN_SCOPE else media_library_id)
     return result
 
 

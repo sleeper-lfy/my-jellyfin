@@ -1,0 +1,13 @@
+{
+  "api_version": 1,
+  "id": "tmdb",
+  "name": "TMDB · 电影 / 剧集 / 动漫",
+  "version": "1.0.0",
+  "description": "按片名搜索电影、电视剧及动画作品，优先读取简体中文资料。需要自己的 TMDB API 读取令牌。",
+  "capabilities": ["search", "detail"],
+  "search_filters": ["name"],
+  "media_kinds": ["movie", "series"],
+  "domains": ["api.themoviedb.org", "image.tmdb.org"],
+  "base_url": "https://api.themoviedb.org/3",
+  "input_hint": "输入中文或原文片名，也可粘贴 TMDB 作品详情页链接"
+}

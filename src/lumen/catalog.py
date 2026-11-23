@@ -27,8 +27,9 @@ def sort_items(items, field='added', descending=True):
 def validate_filters(filters):
     if not isinstance(filters,dict):raise ValueError('无效筛选条件')
     if 'media_library_id' in filters:
-        from .media_libraries import identifier
-        identifier(filters['media_library_id'])
+        from .media_libraries import BUILTIN_SCOPE, identifier
+        if filters['media_library_id'] != BUILTIN_SCOPE:
+            identifier(filters['media_library_id'])
     list_keys={'kinds','tags_all','tags_any','tags_not','ids'}
     string_keys={'query','actor','folder','sort','watch_state','watched'}
     numeric={'year_min','year_max','rating_min','rating_max'}
@@ -142,6 +143,11 @@ class CatalogActions:
         queue={**old,'ids':ids,'index':ids.index(current) if current in ids else 0,'repeat':mode}
         filters=old.get('filters') or {};scope=filters.get('media_library_id')
         if scope is not None:
-            owned={row[0] for row in self.db.execute('SELECT DISTINCT f.work_id FROM files f JOIN media_library_files m ON m.file_id=f.id WHERE m.library_id=?',(scope,))}
+            from .media_libraries import scoped_files
+            try:
+                prefix, parameters = scoped_files(self, scope)
+                owned = {row[0] for row in self.db.execute(prefix + 'SELECT DISTINCT work_id FROM files', parameters)}
+            except ValueError:
+                owned = set()
             if not set(ids)<=owned:queue['filters']={key:value for key,value in filters.items() if key!='media_library_id'}
         self.set_setting('queue',queue);return queue

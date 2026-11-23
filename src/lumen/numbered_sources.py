@@ -2,6 +2,7 @@
 import time
 from .core import check_cancelled, ImportCancelled
 from .plugins import Plugins
+from . import tmdb
 
 
 class SourceLookupError(Exception):
@@ -16,10 +17,7 @@ def source_order(primary, fallbacks):
 
 
 def resolve(library, work, primary, fallbacks=None, cancelled=None):
-    from .ingestion import choose, work_codes, NeedsConfirmation
-    identifiers=work_codes(work)
-    if len(identifiers)>1:raise NeedsConfirmation('文件含多个编号，请确认作品归组')
-    query=next(iter(identifiers)) if identifiers else work['title']
+    from .ingestion import choose, source_search, work_codes, NeedsConfirmation
     manager=Plugins(library);installed={p['id']:p for p in manager.installed()}
     attempts=[];pending=[];pending_plugin='';transient=False
     for identifier in source_order(primary,fallbacks or []):
@@ -27,17 +25,21 @@ def resolve(library, work, primary, fallbacks=None, cancelled=None):
         plugin=installed.get(identifier)
         if not plugin or not plugin['config'].get('enabled') or 'search' not in plugin['capabilities']:
             attempts.append({'plugin':identifier,'state':'unavailable','message':'来源未启用或不支持影片搜索'});continue
+        if plugin.get('media_kinds') and work['kind'] not in plugin['media_kinds']:
+            attempts.append({'plugin':identifier,'state':'unavailable','message':'来源不支持此媒体类型'});continue
         candidates=[]
         try:
-            candidates=manager.run(identifier,'search',query=query,**({'cancelled':cancelled} if cancelled else {}))
-            candidate=choose(work,candidates)
+            search=source_search(work,identifier)
+            by_title=identifier==tmdb.ID
+            candidates=manager.run(identifier,'search',**search,**({'cancelled':cancelled} if cancelled else {}))
+            candidate=choose(work,candidates,by_title=by_title)
             if 'detail' in plugin['capabilities']:
                 details=manager.run(identifier,'detail',url=candidate['url'],**({'cancelled':cancelled} if cancelled else {}))
                 exact=[item for item in details if str(item['id'])==str(candidate['id'])]
                 if len(exact)!=1:raise NeedsConfirmation('详情来源标识不一致')
                 candidate=exact[0]
                 # The detailed document cannot change a numbered candidate's identity.
-                if identifiers:choose(work,[candidate])
+                if by_title or work_codes(work):choose(work,[candidate],by_title=by_title)
             attempts.append({'plugin':identifier,'state':'matched','message':'唯一匹配并读取资料'})
             return {'plugin':identifier,'candidate':candidate,'attempts':attempts}
         except ImportCancelled:raise

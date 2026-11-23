@@ -218,13 +218,14 @@ class Library(CatalogActions):
         item['metadata'] = actor_defaults(json.loads(item['metadata']), item['kind'])
         item['liked'] = item['favorite']
         item['locked'] = json.loads(item['locked'])
-        item['files'] = [dict(r) for r in self.db.execute('SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', (work_id,))]
+        from .media_libraries import scoped_files
+        prefix, parameters = scoped_files(self, media_library_id)
+        item['files'] = [dict(r) for r in self.db.execute(
+            prefix + 'SELECT * FROM files WHERE work_id=? ORDER BY season,episode,path', [*parameters, work_id])]
         if media_library_id is not None:
-            from .media_libraries import get
-            get(self,media_library_id)
-            owned={r[0] for r in self.db.execute('SELECT m.file_id FROM media_library_files m JOIN files f ON f.id=m.file_id WHERE m.library_id=? AND f.work_id=?',(media_library_id,work_id))}
-            item['files']=[{**f,'_media_library_id':media_library_id} for f in item['files'] if f['id'] in owned]
             if not item['files']:raise ValueError('作品不在当前媒体库中')
+            for file in item['files']:
+                file['_media_library_id'] = media_library_id
         if item['kind'] in {'fans','vr'}:
             from .series import natural_key
             item['files'].sort(key=lambda file:natural_key(file['path']))
@@ -645,10 +646,10 @@ class Library(CatalogActions):
             if progress: progress(index+1,len(rows),'后台媒体处理完成 · '+file['path'])
         return result
 
-    def refresh_work(self, work_id, progress=None, cancelled=None, skip_roots=None):
+    def refresh_work(self, work_id, progress=None, cancelled=None, skip_roots=None, *, media_library_id=None):
         """Re-scan the folders this work already lives in: recover renames, report
         missing files for confirmation, and import additions through the fast path."""
-        work = self.work(work_id)
+        work = self.work(work_id, media_library_id)
         if not work['files']:raise ValueError('该条目没有本地视频文件')
         kind = work['kind']
         marks = ','.join('?' * len(work['files']))
@@ -670,6 +671,10 @@ class Library(CatalogActions):
         roots = list(dict.fromkeys(roots))
         if skip_roots:roots = [root for root in roots if str(root) not in skip_roots]
         known = {f['path'] for f in work['files']}
+        if media_library_id is not None:
+            from .media_libraries import BUILTIN_SCOPE, list_libraries, owner_for_path
+            libraries = list_libraries(self)
+            known.update(file['path'] for file in self.work(work_id)['files'])
         candidates = []
         for root in roots:
             for candidate in root.rglob('*'):
@@ -677,6 +682,10 @@ class Library(CatalogActions):
                 try:
                     if (candidate.is_file() and not candidate.is_symlink() and candidate.suffix.lower() in VIDEO_EXTENSIONS
                             and root in candidate.resolve().parents and str(candidate) not in known):
+                        if media_library_id is not None:
+                            owner = owner_for_path(self, candidate, kind, libraries)
+                            if (BUILTIN_SCOPE if owner is None else owner) != media_library_id:
+                                continue
                         candidates.append(candidate)
                 except OSError:continue
         # A vanished file that reappeared elsewhere with the same size and sampled
@@ -800,7 +809,6 @@ class Library(CatalogActions):
         decorates the rows that survived."""
         f = filters or {}
         clauses, args = ['1=1'], []
-        if f.get('media_library_id') is not None:clauses.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
         if 'kinds' in f and not f['kinds']:
             return []
         if 'ids' in f:
@@ -819,7 +827,7 @@ class Library(CatalogActions):
             if field in f:
                 clauses.append(f'{field}=?')
                 args.append(int(f[field]))
-        if f.get('local', True):
+        if f.get('local', True) or f.get('media_library_id') is not None:
             clauses.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
         q = (f.get('query') or '').casefold().strip()
         if q:
@@ -884,12 +892,9 @@ class Library(CatalogActions):
         direction = 'DESC' if f.get('descending', True) else 'ASC'
         order = f' ORDER BY ({expression} IS NULL), {expression} {direction}, id ASC'
         where = 'SELECT * FROM works WHERE ' + ' AND '.join(clauses)
-        prefix=''
-        if f.get('media_library_id') is not None:
-            from .media_libraries import get
-            get(self,f['media_library_id'])
-            prefix='WITH files AS (SELECT f.* FROM main.files f JOIN media_library_files m ON m.file_id=f.id WHERE m.library_id=?) '
-            args=[f['media_library_id'],*args]
+        from .media_libraries import scoped_files
+        prefix, scope_args = scoped_files(self, f.get('media_library_id'))
+        args = [*scope_args, *args]
         rows = self.db.execute(prefix + where + order, args).fetchall()
         ids = {row['id'] for row in rows}
         files, sources, watches = {}, {}, {}
@@ -926,28 +931,25 @@ class Library(CatalogActions):
 
     def filter_options(self, kinds=None, local=True, media_library_id=None):
         """Facets via SQLite JSON1: no per-row Python JSON parsing for large catalogs."""
-        conditions, kind_args = [], []
-        if local:
+        from .media_libraries import scoped_files
+        prefix, kind_args = scoped_files(self, media_library_id)
+        conditions = []
+        if local or media_library_id is not None:
             conditions.append('EXISTS(SELECT 1 FROM files WHERE work_id=works.id)')
-        if media_library_id is not None:
-            from .media_libraries import get
-            get(self,media_library_id)
-            conditions.append('EXISTS(SELECT 1 FROM files f JOIN media_library_files m ON m.file_id=f.id WHERE f.work_id=works.id AND m.library_id=?)')
-            kind_args.append(media_library_id)
         if kinds is not None:
             conditions.append('kind IN (' + ','.join('?' for _ in kinds) + ')')
             kind_args.extend(kinds)
         suffix = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
         tags = {row[0] for row in self.db.execute(
-            'SELECT DISTINCT json_each.value FROM works, json_each(works.metadata,\'$.tags\')' + suffix, kind_args)}
+            prefix + 'SELECT DISTINCT json_each.value FROM works, json_each(works.metadata,\'$.tags\')' + suffix, kind_args)}
         actors = {row[0] for row in self.db.execute(
-            'SELECT DISTINCT json_extract(a.value,\'$.name\') FROM works, json_each(works.metadata,\'$.actors\') a' + suffix, kind_args)}
+            prefix + 'SELECT DISTINCT json_extract(a.value,\'$.name\') FROM works, json_each(works.metadata,\'$.actors\') a' + suffix, kind_args)}
         actors |= {row[0] for row in self.db.execute(
-            'SELECT DISTINCT je.value FROM works, json_each(works.metadata,\'$.actors\') a, '
+            prefix + 'SELECT DISTINCT je.value FROM works, json_each(works.metadata,\'$.actors\') a, '
             'json_each(a.value,\'$.aliases\') je' + suffix, kind_args)}
         actors.discard(None)
         years = {row[0] for row in self.db.execute(
-            'SELECT DISTINCT year FROM works WHERE year IS NOT NULL'
+            prefix + 'SELECT DISTINCT year FROM works WHERE year IS NOT NULL'
             + (' AND ' + ' AND '.join(conditions) if conditions else ''), kind_args)}
         return {'tags': sorted(tags, key=str.casefold), 'actors': sorted(actors, key=str.casefold),
                 'years': sorted(years, reverse=True)}

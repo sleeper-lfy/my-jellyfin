@@ -6,17 +6,18 @@ from .core import Library
 
 def load_view(library,request):
     section,tab=request['section'],request['tab']
+    scope = request['filters'].get('media_library_id')
     if section=='home' and tab==0:
-        all_items=library.query({'local':False})
+        all_items=library.query({'local':False, 'media_library_id':scope})
         from .continuation import continue_works
-        continuing={item['id']:item for item in continue_works(library)}
+        continuing={item['id']:item for item in continue_works(library, media_library_id=scope)}
         from .media_libraries import home_cards
         return {'media_libraries':home_cards(library),'home':[continuing.get(item['id'],item) for item in all_items if item['files']],
                 'recommendations':library.recommendations(items=all_items)}
     if section=='home' and tab==1:
         from .continuation import continue_works
         allowed={item['id'] for item in library.query({key:value for key,value in request['filters'].items() if key!='continue'})}
-        return {'items':[item for item in continue_works(library,100) if item['id'] in allowed]}
+        return {'items':[item for item in continue_works(library,100,scope) if item['id'] in allowed]}
     if section=='stats':
         return {'stats':library.stats(),'report':library.annual_report(request.get('year',datetime.now().year)) if tab==4 else None,
                 'history':[dict(row) for row in library.db.execute('SELECT s.started,s.watched,w.title FROM sessions s JOIN files f ON s.file_id=f.id JOIN works w ON w.id=f.work_id ORDER BY s.started DESC LIMIT 200')] if tab==7 else []}

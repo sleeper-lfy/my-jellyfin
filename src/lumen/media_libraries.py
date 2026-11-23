@@ -5,6 +5,7 @@ from pathlib import Path
 from .organize_templates import validate_rule
 
 KINDS = {'movie':'电影','series':'电视剧','vr':'VR 电影','fans':'Fans','other':'其他'}
+BUILTIN_SCOPE = 'builtin'
 
 
 def identifier(value):
@@ -16,6 +17,18 @@ def get(library, library_id):
     row=library.db.execute('SELECT * FROM media_libraries WHERE id=?',(identifier(library_id),)).fetchone()
     if not row:raise ValueError('媒体库不存在或已移除')
     return {**dict(row),'config':json.loads(row['config'])}
+
+
+def scoped_files(library, scope):
+    """Use the same visible files in catalog predicates and playback reads."""
+    if scope is None:
+        return '', []
+    if scope == BUILTIN_SCOPE:
+        return ('WITH files AS (SELECT f.* FROM main.files f WHERE NOT EXISTS '
+                '(SELECT 1 FROM media_library_files m WHERE m.file_id=f.id)) ', [])
+    get(library, scope)
+    return ('WITH files AS (SELECT f.* FROM main.files f JOIN media_library_files m '
+            'ON m.file_id=f.id WHERE m.library_id=?) ', [scope])
 
 
 def list_libraries(library, *, public=False):

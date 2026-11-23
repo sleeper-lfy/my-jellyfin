@@ -18,6 +18,7 @@ import threading
 import time
 import uuid
 from .core import Library, now
+from .media_libraries import BUILTIN_SCOPE, scoped_files
 
 
 class ApiError(Exception):
@@ -332,7 +333,7 @@ class LanServer:
                             if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'截图不在缓存内')
                             return self.send_file(target,'image/jpeg')
                         if path == '/api/info':
-                            return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now(),'media_libraries':True})
+                            return self.send_json(200,{'name':'Lumen','api_version':1,'streaming':'direct','server_time':now(),'media_libraries':True,'builtin_library_scope':True})
                         if path == '/api/tasks':
                             return self.send_json(200, public_tasks(library, query))
                         if path == '/api/filters':
@@ -429,7 +430,9 @@ class LanServer:
                                 if not target.is_relative_to((service.directory/'cache').resolve()):raise ApiError(403,'封面路径不在缓存内')
                                 return self.send_file(target,'image/jpeg')
                             result=public_work(work,True,library=library)
-                            rows=library.db.execute('SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id WHERE f.work_id=?'+(' AND f.id IN (SELECT file_id FROM media_library_files WHERE library_id=?)' if scope is not None else '')+' ORDER BY b.file_id,b.position LIMIT 300',(work['id'],scope) if scope is not None else (work['id'],))
+                            prefix, parameters = scoped_files(library, scope)
+                            rows = library.db.execute(prefix + 'SELECT b.* FROM bookmarks b JOIN files f ON f.id=b.file_id '
+                                                      'WHERE f.work_id=? ORDER BY b.file_id,b.position LIMIT 300', [*parameters, work['id']])
                             result['bookmarks']=[{**{key:row[key] for key in row.keys() if key!='image'},'image':f"/api/bookmarks/{row['id']}/image" if row['image'] else None} for row in rows]
                             target=library.resume_file(work['id'],media_library_id=scope) if work['files'] else None
                             result['resume_file_id']=target['id'] if target else None
@@ -638,6 +641,11 @@ class LanServer:
                     saved = json.loads(row[0])
                     from .catalog import validate_filters
                     validate_filters(saved)
+                    saved_scope = saved.get('media_library_id')
+                    if saved_scope is not None:
+                        if filters.get('media_library_id', saved_scope) != saved_scope:
+                            return []
+                        filters['media_library_id'] = saved_scope
                     saved_ids = {work['id'] for work in library.query({**saved,'local':True})}
                     # Empty/default client controls never erase the saved constraints.
                     # Current filters are intersected rather than merged by field name.
@@ -658,6 +666,7 @@ class LanServer:
             def media_id(self,query):
                 raw=query.get('media_library_id',[''])[0]
                 if raw=='':return None
+                if raw==BUILTIN_SCOPE:return BUILTIN_SCOPE
                 try:value=int(raw)
                 except (ValueError,TypeError):raise ApiError(400,'无效媒体库编号')
                 if value<1:raise ApiError(400,'无效媒体库编号')

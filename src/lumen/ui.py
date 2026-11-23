@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame, QLabe
  QTreeWidgetItem, QSplitter, QTabBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem,
  QHeaderView, QStackedWidget, QProgressBar, QStyledItemDelegate, QStyle, QMenu, QCompleter, QSizePolicy)
 from .core import Library, thumbnail, tool, set_tool_directory, ImportCancelled, check_cancelled
+from .media_libraries import BUILTIN_SCOPE
 from .plugins import Plugins
 from .files import plan_move, execute_move
 from .player import Player
@@ -712,7 +713,7 @@ class Details(QWidget):
         watch_row=QHBoxLayout()
         def mark_episode(state):
             item=self.files.currentItem()
-            if item:self.library.set_watched(self.work_id,state,item.data(Qt.ItemDataRole.UserRole)['id']);self.window.open_details(self.work_id,fetch=False)
+            if item:self.library.set_watched(self.work_id,state,item.data(Qt.ItemDataRole.UserRole)['id'],media_library_id=self.media_library_id);self.window.open_details(self.work_id,fetch=False)
         watch_row.addWidget(button('当前视频标为已看',lambda:mark_episode('completed')));watch_row.addWidget(button('重置当前视频进度',lambda:mark_episode('unwatched')));outer.addLayout(watch_row)
         outer.addWidget(self.files)
         outer.addLayout(metadata_info)
@@ -1106,8 +1107,10 @@ class Details(QWidget):
         return merge_catalog_work(self)
 
     def scrape(self):
+        from . import tmdb
         available = [p for p in Plugins(self.library).installed() if p['config'].get('enabled') and self.work['kind'] in p.get('media_kinds', ['movie','series','vr']) and ('search' in p['capabilities'] or 'detail' in p['capabilities'])]
-        if not available:
+        setup_tmdb = self.work['kind'] in {'movie', 'series'} and not any(p['id'] == tmdb.ID for p in available)
+        if not available and not setup_tmdb:
             QMessageBox.information(self, '刮削插件', '请先在设置 → 按需刮削引擎中安装并启用 Javinizer-Go，或启用支持搜索的站点插件。')
             return
         default = next((index for index, provider in enumerate(available) if self.work['kind'] in {'movie','vr'} and provider['id']=='javinizer-go'), 0)
@@ -1116,17 +1119,27 @@ class Details(QWidget):
         if rule_scope is None:
             owners=work_libraries(self.library,self.work_id)
             if len(owners)==1:rule_scope=owners[0]
-        if rule_scope is not None:
+        if rule_scope not in (None, BUILTIN_SCOPE):
             preferred=get(self.library,rule_scope)['config']['plugin']
             default=next((i for i,p in enumerate(available) if p['id']==preferred),default)
-        name, ok = QInputDialog.getItem(self, '刮削来源', '选择刮削来源', [p['name'] for p in available], default, False)
+        names = [p['name'] for p in available]
+        setup_label = '配置内置 TMDB…'
+        if setup_tmdb:
+            names.append(setup_label)
+        name, ok = QInputDialog.getItem(self, '刮削来源', '选择刮削来源', names, default, False)
         if not ok:
+            return
+        if setup_tmdb and name == setup_label:
+            self.window.settings(tmdb.ID)
             return
         plugin = next(p for p in available if p['name'] == name)
         initial = self.work['title']
         if plugin.get('engine') == 'javinizer-go':
             from .javinizer import work_query
             initial = work_query(self.work)
+        elif plugin['id'] == tmdb.ID:
+            from .ingestion import title_for_search
+            initial = title_for_search(self.work)
         text, ok = QInputDialog.getText(self, '匹配影片', plugin.get('input_hint', '输入关键词或完整详情页 URL'), text=initial)
         if not ok or not text.strip():
             return
@@ -1159,7 +1172,7 @@ class Details(QWidget):
                         accepted=dialog.exec();choice=dialog.choice;dialog.deleteLater()
                         if not accepted:return
                         if choice=='view':
-                            self.window.open_details(conflict['related'][0]['id'],fetch=False);return
+                            self.window.open_global_details(conflict['related'][0]['id'],fetch=False);return
                         if choice=='merge':
                             from .merge_ui import preview_and_merge
                             preview_and_merge(self,[work['id'] for work in conflict['related']]);return
@@ -1173,7 +1186,10 @@ class Details(QWidget):
                 self.window.run_job('保存刮削资料与图片',
                     lambda lib, progress: apply_match(lib, plugin, operation, candidate, work_id, cancelled=progress.cancelled, force=force, interactive=True,media_library_id=rule_scope),
                     saved)
-        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, cancelled=p.cancelled, progress=p, refresh=True, **({'url': text.strip()} if operation == 'detail' else {'query': text.strip()})), complete)
+        parameters = {'url': text} if operation == 'detail' else {'query': text}
+        if plugin['id'] == tmdb.ID:
+            parameters['kind'] = self.work['kind']
+        self.window.run_job('搜索刮削来源', lambda lib, p: Plugins(lib).run(plugin['id'], operation, cancelled=p.cancelled, progress=p, refresh=True, **parameters), complete)
 
 
     def organize(self):
@@ -1182,11 +1198,12 @@ class Details(QWidget):
 
     def refresh_files(self):
         origin=self.work_id
+        scope=self.media_library_id
         def scan(lib, progress):
-            return lib.refresh_work(origin, progress, progress.cancelled)
+            return lib.refresh_work(origin, progress, progress.cancelled, media_library_id=scope)
         def ready(result):
             if not isinstance(result, dict) or result.get('cancelled'):return
-            if self.detail_page is not None and self.detail_page.work_id==origin:self.window.reload_details(origin)
+            if self.window.detail_page is not None and self.window.detail_page.work_id==origin:self.window.reload_details(origin)
             missing=result.get('missing',[]);renamed=result.get('renamed',[]);imported=result.get('imported',0)
             warnings=result.get('errors',[])
             summary=f"新增 {imported} 个 · 恢复重命名 {len(renamed)} 个 · 缺失 {len(missing)} 个"
@@ -1200,7 +1217,7 @@ class Details(QWidget):
                 dialog.button(QMessageBox.StandardButton.Cancel).setText('保留')
                 if dialog.exec()==QMessageBox.StandardButton.Ok:
                     def apply(lib, progress):
-                        work=lib.work(origin);wanted=set(missing)
+                        work=lib.work(origin,scope);wanted=set(missing)
                         return lib.remove_local_records(origin,[f['id'] for f in work['files'] if f['path'] in wanted])
                     def removed(result):
                         if result.get('removed_work'):self.window.back_details();self.window.refresh()
@@ -1548,6 +1565,7 @@ class MainWindow(QMainWindow):
         from .media_libraries import list_libraries
         selected=self.media_library_id;combo=self.media_library_selector
         combo.blockSignals(True);combo.clear();combo.addItem('全部媒体库',None)
+        combo.addItem('自带媒体库', BUILTIN_SCOPE)
         for item in list_libraries(self.library):combo.addItem(item['name']+' · '+str(item['count'])+' 部',item['id'])
         index=combo.findData(selected);combo.setCurrentIndex(max(0,index));combo.blockSignals(False)
         if index<0:self.media_library_id=None
@@ -1555,6 +1573,7 @@ class MainWindow(QMainWindow):
     def select_media_library(self):
         identifier=self.media_library_selector.currentData()
         if identifier is None:self.navigate('home')
+        elif identifier == BUILTIN_SCOPE:self.navigate(self.section if self.section in KINDS else 'movie')
         else:self.open_media_library(identifier)
 
     def open_media_library(self,identifier):
@@ -1759,8 +1778,10 @@ class MainWindow(QMainWindow):
         self.navigation_back.setVisible(bool(self.navigation_history))
         if self.batch_select.isChecked():self.batch_select.setChecked(False)
         self.section, self.subtab = section, 0
-        self.media_library_id=None
-        self.media_library_selector.blockSignals(True);self.media_library_selector.setCurrentIndex(0);self.media_library_selector.blockSignals(False)
+        self.media_library_id = BUILTIN_SCOPE if section in KINDS else None
+        self.media_library_selector.blockSignals(True)
+        self.media_library_selector.setCurrentIndex(self.media_library_selector.findData(self.media_library_id))
+        self.media_library_selector.blockSignals(False)
         self.filters = {}
         self.search.clear()
         self.tabs.blockSignals(True)
@@ -2062,6 +2083,14 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self.details_scroll.verticalScrollBar().setValue(position)
                               if self.detail_page is not None and self.detail_page.work_id == work_id else None)
 
+    def open_global_details(self, work_id, fetch=True):
+        if self.media_library_id is not None:
+            self._remember_navigation()
+            self.navigate('home', preserve_history=True)
+            self.open_details(work_id, fetch=fetch, remember=False)
+        else:
+            self.open_details(work_id, fetch=fetch)
+
     def refresh_source_details(self, work_id, automatic=False):
         if self._closing or self.detail_page is None or self.detail_page.work_id!=work_id:
             return
@@ -2229,7 +2258,22 @@ class MainWindow(QMainWindow):
         file=self.library.resume_file(work_id,media_library_id=self.media_library_id);self.library.set_watched(work_id,'reset',file['id'],media_library_id=self.media_library_id);file['position']=0;self.play_file(file)
 
     def remove_catalog_work(self,work_id):
-        if self.media_library_id is not None:
+        if self.media_library_id == BUILTIN_SCOPE:
+            try:
+                files = self.library.work(work_id, BUILTIN_SCOPE)['files']
+                if QMessageBox.question(self, '仅从自带媒体库移出', '移除自带媒体库的视频及其观看记录？原始文件与自定义库的视频记录会保留。') != QMessageBox.StandardButton.Yes:
+                    return
+                current_ids = {file['id'] for file in self.library.work(work_id, BUILTIN_SCOPE)['files']}
+                ids = [file['id'] for file in files if file['id'] in current_ids]
+                if self.player.file and self.player.file['id'] in ids:self.player.finish();self.player.hide()
+                if len(ids) == len(self.library.work(work_id)['files']):
+                    self.library.remove_catalog(work_id)
+                else:
+                    self.library.remove_local_records(work_id, ids)
+            except ValueError as error:
+                QMessageBox.warning(self, '未移除', str(error));return
+            self.back_details();self.refresh();return
+        elif self.media_library_id is not None:
             if QMessageBox.question(self,'仅从当前媒体库移出','仅移除当前库的归属，保留文件、评分、收藏与观看记录；之后手动重新扫描可能再次加入。')!=QMessageBox.StandardButton.Yes:return
             from .media_libraries import detach_work
             try:detach_work(self.library,self.media_library_id,work_id)
@@ -2347,12 +2391,14 @@ class MainWindow(QMainWindow):
         if existing is not None:existing.raise_();existing.activateWindow();return
         from .background import run_background
         continuing_scope=self.section=='home' and self.subtab==1
+        scope = self.media_library_id
+        kinds = self.effective_filters().get('kinds') if scope is not None else None
         dialog=FilterDialog(self.effective_filters(),self);self._filter_dialog=dialog
         dialog.facet_status.setText('正在读取下拉选项，可直接输入条件…');dialog.facet_status.show()
         local=self.section!='discover';alive=[True]
         def read(job):
             library=Library(self.library.directory,initialize=False)
-            try:return library.filter_options(local=local)
+            try:return library.filter_options(kinds, local=local, media_library_id=scope)
             finally:library.close()
         def loaded(options):
             if alive[0] and not self._closing:dialog.set_options(options)
@@ -2370,6 +2416,8 @@ class MainWindow(QMainWindow):
                     self.navigate('home');self.subtab=1;self.tabs.setCurrentIndex(1);self.heading.setText('继续观看')
                 elif self.section not in {'discover','recommend'}:
                     self.navigate('home');self.subtab=2;self.tabs.setCurrentIndex(2);self.heading.setText('媒体库')
+                self.media_library_id = scope
+                self.refresh_media_libraries()
                 self.filters=filters;self.search.setText(filters.get('query',''))
                 if self.section=='discover':self.discovery_panel.sync_advanced_filters()
                 self.refresh()
@@ -2406,6 +2454,8 @@ class MainWindow(QMainWindow):
             if not item:return
             name=item.text();filters=json.loads(item.data(Qt.ItemDataRole.UserRole));dialog.accept()
             self.navigate('home');self.tabs.setCurrentIndex(2);self.filters=filters;self.search.setText(filters.get('query',''))
+            self.media_library_id = filters.get('media_library_id')
+            self.refresh_media_libraries()
             self.heading.setText('片单 · '+name);self.set_nav_selection('lists');self.refresh()
         def save_current():self.save_list();reload()
         def delete_selected():
@@ -2886,14 +2936,14 @@ class MainWindow(QMainWindow):
                     if accepted and candidate is not None:
                         self.run_job('确认资料并继续自动入库',lambda lib,p:apply_match(lib,plugin,'search',candidate,payload['work_id']))
                 elif task['status'] == 'pending' and payload.get('stage') == 'identify':
-                    self.open_details(payload['work_id'])
+                    self.open_global_details(payload['work_id'])
                 else:
                     payload.update(attempts=0, next_attempt=0)
                     self.library.task(task['id'], 'ingest', 'queued', payload)
                     self.schedule_watched()
             elif task['kind'] == 'match':
                 dialog.accept()
-                self.open_details(payload['work_id'])
+                self.open_global_details(payload['work_id'])
             elif task['kind'] == 'scrape':
                 QMessageBox.information(dialog, '重试刮削', '请在影片详情中重新刮削，或在发现页刷新；搜索结果仍需确认匹配。')
         layout.addWidget(button('恢复 / 重试选中任务', retry, True))
@@ -2995,9 +3045,9 @@ class MainWindow(QMainWindow):
     def check_updates(self):
         self.updater().show();self.desktop_updates.check()
 
-    def settings(self):
+    def settings(self, section=None):
         from .settings import Settings
-        Settings(self).exec()
+        Settings(self, section).exec()
         if self._closing:return
         if self.section=='discover':self.discovery_panel.reload_sources()
         self.refresh()

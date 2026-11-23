@@ -137,7 +137,7 @@ def test_right_click_menus_offer_delete_for_local_works(qapp, tmp_path, monkeypa
         actions = [action.text() for action in window.detail_page.management_menu.actions()]
         assert '删除本地文件…' in actions
 
-        window.open_details(offline, fetch=False)
+        window.open_global_details(offline, fetch=False)
         actions = [action.text() for action in window.detail_page.management_menu.actions()]
         assert '删除本地文件…' not in actions and '仅移出媒体库…' in actions
     finally:

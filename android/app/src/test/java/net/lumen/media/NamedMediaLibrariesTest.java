@@ -82,4 +82,32 @@ public class NamedMediaLibrariesTest {
             assertEquals(2,new JSONArray(activity.getSharedPreferences("queue",0).getString("ids","[]")).length());
         }
     }
+    @Test public void builtinCategoryScopesBrowseDetailsAndPlaybackWhileAllLibrariesStayGlobal()throws Exception{
+        List<String> requests=new CopyOnWriteArrayList<>();
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> life=Robolectric.buildActivity(MainActivity.class).setup()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                requests.add(request.getPath());
+                String body=request.getPath().startsWith("/api/works/7")
+                        ?"{\"id\":7,\"title\":\"Series\",\"kind\":\"series\",\"file_count\":1,\"resume_file_id\":70,\"files\":[{\"id\":70,\"name\":\"episode.mp4\"}],\"tags\":[],\"actors\":[]}"
+                        :"{\"items\":[],\"total\":0}";
+                return new MockResponse().setHeader("Content-Type","application/json").setBody(body);
+            }});
+            server.start();MainActivity page=life.get();
+            page.api=new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456"));
+            set(page,"mainPage","library");page.kind="series";
+            assertFalse(page.listPath().contains("media_library_id="));
+            page.builtinLibraryScopeSupported=true;
+            page.showLibrary();
+            waitFor(()->requests.stream().anyMatch(path->path.startsWith("/api/works?")&&path.contains("kind=series")&&path.contains("media_library_id=builtin")));
+            page.openDetail(7);
+            waitFor(()->requests.contains("/api/works/7?media_library_id=builtin"));
+            waitFor(()->page.findViewById(android.R.id.content).findViewWithTag("episode:70")!=null);
+            page.findViewById(android.R.id.content).findViewWithTag("episode:70").performClick();
+            Intent intent=Shadows.shadowOf(page).getNextStartedActivity();
+            assertEquals(LibraryScope.BUILTIN,intent.getLongExtra("media_library_id",0));
+            assertTrue(intent.getStringExtra("browse_path").contains("media_library_id=builtin"));
+            page.kind="";
+            assertFalse(page.listPath().contains("media_library_id="));
+        }
+    }
 }

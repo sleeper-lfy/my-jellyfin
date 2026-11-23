@@ -127,7 +127,9 @@ class CategoryRules(QWidget):
         kind=self.kind.currentData(); rule=self.library.setting('partition:'+kind,{})
         self.primary.clear(); add_provider_items(self.primary,self.library,rule.get('plugin',''),kind=self.kind.currentData())
         # A source needs search only; the ingestion pipeline skips the detail step for search-only engines.
-        providers={p['id']:p['name'] for p in Plugins(self.library).installed() if p['config'].get('enabled') and 'search' in p['capabilities']}
+        providers={p['id']:p['name'] for p in Plugins(self.library).installed()
+                   if p['config'].get('enabled') and 'search' in p['capabilities']
+                   and (not p.get('media_kinds') or kind in p['media_kinds'])}
         selected=self.library.setting('numbered_fallbacks:'+kind,[]); self.fallbacks.clear()
         for key in dict.fromkeys([*selected,*providers]):
             item=QListWidgetItem(providers.get(key,key+'（当前不可用）')); item.setData(Qt.ItemDataRole.UserRole,key)

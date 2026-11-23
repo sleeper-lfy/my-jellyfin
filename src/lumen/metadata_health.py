@@ -86,7 +86,8 @@ def scan_health(library, work_ids=None, progress=None, cancelled=None, *, includ
 
 
 def _providers(library, work, manager, plugin_ids):
-    enabled={p['id']:p for p in manager.installed() if p['config'].get('enabled')}
+    enabled={p['id']:p for p in manager.installed() if p['config'].get('enabled')
+             and (not p.get('media_kinds') or work['kind'] in p['media_kinds'])}
     associated=[dict(row) for row in library.db.execute('SELECT plugin,source_id,url FROM sources WHERE work_id=?',(work['id'],))]
     if plugin_ids is None:
         rule=library.setting('partition:'+work['kind'],{})
@@ -98,7 +99,12 @@ def _providers(library, work, manager, plugin_ids):
 
 
 def _detail(library, work, manager, plugin, source, *, refresh=False, cancelled=None):
+    from . import tmdb
+    from .ingestion import choose, source_search, work_codes
+    by_title = plugin['id'] == tmdb.ID
     parameters={'cancelled':cancelled,**({'refresh':True} if refresh else {})}
+    if by_title:
+        parameters['kind'] = work['kind']
     if source and 'detail' in plugin['capabilities']:
         records=manager.run(plugin['id'],'detail',url=source['url'],**parameters)
         records=[record for record in records if str(record['id'])==str(source['source_id'])]
@@ -106,20 +112,19 @@ def _detail(library, work, manager, plugin, source, *, refresh=False, cancelled=
         record=records[0]
     else:
         if 'search' not in plugin['capabilities']: raise ValueError('来源不支持影片搜索')
-        from .ingestion import choose, work_codes
-        complete=library.work(work['id']); identifiers=work_codes(complete)
-        if len(identifiers)>1: raise ValueError('影片包含多个编号，请先确认归组')
-        query=next(iter(identifiers)) if identifiers else work['title']
-        record=choose(complete,manager.run(plugin['id'],'search',query=query,**parameters))
+        complete=library.work(work['id'])
+        search=source_search(complete,plugin['id'])
+        records=manager.run(plugin['id'],'search',**(parameters | search))
+        record=choose(complete,records,by_title=by_title)
         if 'detail' in plugin['capabilities']:
             records=manager.run(plugin['id'],'detail',url=record['url'],**parameters)
             exact=[value for value in records if str(value['id'])==str(record['id'])]
             if len(exact)!=1: raise ValueError('详情来源标识不一致')
             record=exact[0]
     validate_metadata(record)
-    from .ingestion import choose, work_codes
-    current=library.work(work['id'])
-    if work_codes(current):choose(current,[record])
+    if not by_title:
+        current=library.work(work['id'])
+        if work_codes(current):choose(current,[record])
     kind=record.get('kind','movie')
     if kind!=work['kind'] and not (kind=='movie' and work['kind']=='vr'): raise ValueError('候选类型不匹配')
     return record
