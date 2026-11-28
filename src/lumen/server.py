@@ -440,8 +440,10 @@ class LanServer:
                                 from .continuation import describe
                                 result['resume']=describe(target,work['kind'])
                             if work['kind'] in {'movie','series','vr'}:
-                                from .downloads import download_folder
+                                from .downloads import download_choices, download_folder
                                 result['download_directory']=str(download_folder(library,work['id']))
+                                result['download_targets']=download_choices(library,work)
+                                result['external_download_pending']=bool(library.setting('external-download-target:' + str(work['id'])))
                             return self.send_json(200,result)
                         match = re.fullmatch(r'/api/files/(\d+)/stills/(\d+)',path)
                         if match:
@@ -537,7 +539,8 @@ class LanServer:
                                 directory=body.get('directory','')
                                 if not isinstance(directory,str): raise ApiError(400,'目录须为文本')
                                 return self.send_json(200,{'directory':set_download_folder(library,work_id,directory)})
-                            task_id=service.downloads.submit(work_id,body.get('index'),action='import' if match[2]=='import-downloads' else 'download')
+                            task_id=service.downloads.submit(work_id,body.get('index'),action='import' if match[2]=='import-downloads' else 'download',
+                                                             kind=body.get('kind'),media_library_id=body.get('media_library_id'))
                             return self.send_json(202,{'task_id':task_id})
                         if path == '/api/lists':
                             name=body.get('name','')

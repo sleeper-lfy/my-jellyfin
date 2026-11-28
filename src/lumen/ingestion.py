@@ -74,7 +74,7 @@ def choose(work, candidates, *, by_title=False):
     title = normalized_title(title_for_search(work)) if by_title else work['title'].casefold().strip()
     matches = []
     for candidate in candidates:
-        kind = candidate.get('kind', 'movie')
+        kind = candidate.get('kind', work['kind'])
         if kind != work['kind'] and not (work['kind'] == 'vr' and kind == 'movie'):
             continue
         if identifiers:

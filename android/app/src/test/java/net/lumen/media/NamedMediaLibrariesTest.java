@@ -110,4 +110,38 @@ public class NamedMediaLibrariesTest {
             assertFalse(page.listPath().contains("media_library_id="));
         }
     }
+
+    @Test public void downloadFromDiscoverySendsTheChosenCategoryAndNamedLibrary()throws Exception{
+        java.util.concurrent.atomic.AtomicReference<org.json.JSONObject> posted = new java.util.concurrent.atomic.AtomicReference<>();
+        try(MockWebServer server=new MockWebServer();ActivityController<MainActivity> life=Robolectric.buildActivity(MainActivity.class).setup()){
+            server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+                try {
+                    if ("POST".equals(request.getMethod()) && "/api/works/7/downloads".equals(request.getPath())) {
+                        posted.set(new org.json.JSONObject(request.getBody().readUtf8()));
+                        return new MockResponse().setBody("{\"task_id\":\"sample-task\"}");
+                    }
+                    if ("/api/works/7".equals(request.getPath())) return new MockResponse().setBody(
+                            "{\"id\":7,\"title\":\"山海记\",\"kind\":\"movie\",\"files\":[],\"download_url\":[{\"description\":\"下载样例\"}],"
+                                    + "\"download_targets\":[{\"kind\":\"movie\",\"label\":\"自带电影\",\"media_library_id\":\"builtin\"},"
+                                    + "{\"kind\":\"series\",\"label\":\"家庭剧集\",\"media_library_id\":6}]}");
+                    return new MockResponse().setBody("{\"status\":\"queued\"}");
+                } catch(Exception error) {throw new AssertionError(error);}
+            }});
+            server.start();MainActivity page=life.get();
+            page.api=new Api(new Connection(server.url("/").toString(),"abcdefghijklmnopqrstuvwxyz123456"));
+            page.discovery=true;page.openDetail(7);
+            View content=page.findViewById(android.R.id.content);
+            waitFor(()->content.findViewWithTag("detailDownloadActions")!=null);
+            ((ViewGroup)content.findViewWithTag("detailDownloadActions")).getChildAt(0).performClick();
+            android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("选择入库分类",Shadows.shadowOf(dialog).getTitle());
+            assertNull(posted.get());
+            dialog.getListView().performItemClick(null,1,1);
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            waitFor(()->posted.get()!=null);
+            assertEquals(0,posted.get().getInt("index"));
+            assertEquals("series",posted.get().getString("kind"));
+            assertEquals(6,posted.get().getLong("media_library_id"));
+        }
+    }
 }

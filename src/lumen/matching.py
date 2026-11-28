@@ -63,7 +63,7 @@ def match_conflict(library, plugin, candidate, work_id):
 
 
 def apply_match(library, plugin, operation, candidate, work_id, *, cancelled=None, force=False,
-                interactive=False, resolution=None, snapshot=None, media_library_id=None):
+                interactive=False, resolution=None, snapshot=None, media_library_id=None, confirmed_kind=False):
     if media_library_id is not None:library.work(work_id,media_library_id)
     manager = Plugins(library)
     from .metadata_health import overwrite_snapshot, overwrite_metadata
@@ -77,6 +77,15 @@ def apply_match(library, plugin, operation, candidate, work_id, *, cancelled=Non
         if len(exact) != 1:
             raise ValueError('详情来源标识与所选候选不匹配，未更新资料')
         candidate = exact[0]
+    from .plugins import match_media_kind, validate_metadata
+    validate_metadata(candidate)
+    kind = snapshot[0]['kind']
+    aligned = match_media_kind(library, plugin['id'], candidate, work_id, kind, confirmed=confirmed_kind)
+    if aligned is None:
+        if interactive:
+            return {'type_conflict': kind, 'candidate': candidate, 'snapshot': snapshot, 'work_id': work_id}
+        raise ValueError('候选分类与本地作品不同，请使用单片刮削确认')
+    candidate = aligned
     if resolution == 'keep':
         candidate = copy.deepcopy(candidate)
         current = dict(library.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)))

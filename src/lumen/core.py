@@ -322,25 +322,35 @@ class Library(CatalogActions):
         item = self.work(work_id)
         if kind not in {'movie', 'vr'} or item['kind'] not in {'movie', 'vr'}:
             raise ValueError('仅支持普通电影与 VR电影之间切换')
+        with self.db:
+            self._set_film_kind(item, kind)
+
+    def _set_film_kind(self, item, kind):
+        """Update kind and identity indexes inside the caller's transaction."""
         if item['kind'] == kind:
             return
+        work_id = item['id']
+        keys = self._check_film_kind(item, kind)
+        self.db.execute('UPDATE works SET kind=?,identity=? WHERE id=?',(kind,identity(item['title'],item['year'],kind),work_id))
+        self.db.execute('DELETE FROM name_keys WHERE work_id=?',(work_id,))
+        self.db.executemany('INSERT INTO name_keys VALUES (?,?)',[(key,work_id) for key in keys])
+        self.db.execute('UPDATE external_ids SET kind=? WHERE work_id=?',(kind,work_id))
+
+    def _check_film_kind(self, item, kind):
+        work_id = item['id']
         if self.db.execute('SELECT 1 FROM media_library_files m JOIN files f ON f.id=m.file_id JOIN media_libraries l ON l.id=m.library_id WHERE f.work_id=? AND l.kind!=?',(work_id,kind)).fetchone():
             raise ValueError('作品属于固定类型的媒体库，不能直接更改分类，请先核对媒体库归属')
         titles = [item['title'], *item['metadata'].get('aliases', [])]
         keys = {identity(title, item['year'], kind) for title in titles}
-        with self.db:
-            for key in keys:
-                existing = self.db.execute('SELECT work_id FROM name_keys WHERE key=?', (key,)).fetchone()
-                if existing and existing[0] != work_id:
-                    raise ValueError('目标分类已有同名作品，请先核对重复项')
-            for external in self.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)).fetchall():
-                existing = self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?', (kind,*external)).fetchone()
-                if existing and existing[0] != work_id:
-                    raise ValueError('目标分类已有相同外部标识，请先核对重复项')
-            self.db.execute('UPDATE works SET kind=?,identity=? WHERE id=?',(kind,identity(item['title'],item['year'],kind),work_id))
-            self.db.execute('DELETE FROM name_keys WHERE work_id=?',(work_id,))
-            self.db.executemany('INSERT INTO name_keys VALUES (?,?)',[(key,work_id) for key in keys])
-            self.db.execute('UPDATE external_ids SET kind=? WHERE work_id=?',(kind,work_id))
+        for key in keys:
+            existing = self.db.execute('SELECT work_id FROM name_keys WHERE key=? UNION SELECT id FROM works WHERE identity=?', (key,key))
+            if any(row[0] != work_id for row in existing):
+                raise ValueError('目标分类已有同名作品，请先核对重复项')
+        for external in self.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(work_id,)).fetchall():
+            existing = self.db.execute('SELECT work_id FROM external_ids WHERE kind=? AND namespace=? AND value=?', (kind,*external)).fetchone()
+            if existing and existing[0] != work_id:
+                raise ValueError('目标分类已有相同外部标识，请先核对重复项')
+        return keys
 
     def merge_fans_folders(self, work_ids, target_id, creator=None):
         from .fans import merge_folders

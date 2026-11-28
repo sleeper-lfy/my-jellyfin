@@ -12,6 +12,33 @@ from test_matching import wait
 from test_javinizer import raw
 
 
+@pytest.mark.parametrize('force',[False, True])
+def test_explicit_scrape_can_keep_local_classification_after_type_conflict(library,force):
+    manager=manager_for(library)
+    work_id=add_work(library,'Local series',kind='series')
+    library.update_personal(work_id,rating=9,favorite=True)
+    record={'id':'film-source','title':'Updated show','kind':'movie','year':2024,'url':'http://localhost/work'}
+    plugin=manager.installed()[0]
+    result=apply_match(library,plugin,'detail',record,work_id,force=force,interactive=True)
+    assert result['type_conflict']=='series' and library.work(work_id)['title']=='Local series'
+    apply_match(library,plugin,'detail',result['candidate'],work_id,force=force,interactive=True,
+                snapshot=result['snapshot'],confirmed_kind=True)
+    work=library.work(work_id)
+    assert (work['title'],work['kind'],work['rating'],work['favorite'])==('Updated show','series',9,1)
+    assert manager.merge(plugin['id'],{**record,'title':'Refreshed again'},work_id)==work_id
+    assert library.work(work_id)['kind']=='series'
+
+
+def test_unspecified_plugin_type_uses_the_local_series_kind(library):
+    from lumen.ingestion import choose
+    manager=manager_for(library)
+    work_id=add_work(library,'Local series',kind='series')
+    record={'id':'untyped-source','title':'Local series','year':2024,'url':'http://localhost/work'}
+    assert choose(library.work(work_id), [record]) == record
+    assert apply_match(library,manager.installed()[0],'detail',record,work_id,interactive=True)==work_id
+    assert library.work(work_id)['kind']=='series'
+
+
 def test_historical_external_id_aliases_do_not_block_repeated_scraping(library):
     manager=manager_for(library)
     identifier=add_work(library,'IPX-535')

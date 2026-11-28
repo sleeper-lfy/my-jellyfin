@@ -741,23 +741,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         work.put("download_directory",result.getString("directory"));directory.setText("保存到电脑："+result.getString("directory"));
                     })).setNegativeButton("取消",null));
             }));
-            TextView status=text("HTTP 下载完成后自动加入当前影视资料；磁力由电脑端配置的外部下载器处理。",13,MUTED);page.addView(status);
+            TextView status=text(getString(R.string.download_destination_help),13,MUTED);page.addView(status);
             LinearLayout downloadActions=MediaStyle.actionColumn(this);downloadActions.setTag("detailDownloadActions");page.addView(downloadActions);
             for(int i=0;i<downloads.length();i++){
                 JSONObject entry=downloads.optJSONObject(i);if(entry==null)continue;final int index=i;
-                downloadActions.addView(button(entry.optString("description","下载"),()->request(
-                    ()->api.post("/api/works/"+work.optLong("id")+"/downloads",new JSONObject().put("index",index)),result->{
-                        String task=result.getString("task_id");status.setText("已加入电脑端下载队列…");
-                        getSharedPreferences("download-tasks",0).edit().putString(Long.toString(work.optLong("id")),task).apply();
-                        pollDownload(task,work.optLong("id"),status,generation);
-                    })));
+                downloadActions.addView(button(entry.optString("description","下载"),()->chooseDownloadTarget(work,index,status)));
             }
-            downloadActions.addView(button("外部下载完成，检查文件并入库",()->request(
-                ()->api.post("/api/works/"+work.optLong("id")+"/import-downloads",new JSONObject().put("check",true)),result->{
-                    String taskId=result.getString("task_id");
-                    getSharedPreferences("download-tasks",0).edit().putString(Long.toString(work.optLong("id")),taskId).apply();
-                    pollDownload(taskId,work.optLong("id"),status,generation);
-                })));
+            downloadActions.addView(button("外部下载完成，检查文件并入库",()->chooseDownloadTarget(work,-1,status)));
 
             String task=getSharedPreferences("download-tasks",0).getString(Long.toString(work.optLong("id")),"");
             if(!task.isEmpty())pollDownload(task,work.optLong("id"),status,generation);
@@ -769,6 +759,43 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             page.addView(button(source.optString("site")+"  ↗",()->{PrivateBrowserActivity.open(this,url);}));
         }
     }
+    private void chooseDownloadTarget(JSONObject work,int index,TextView status) {
+        boolean importing = index < 0;
+        JSONArray choices = work.optJSONArray("download_targets");
+        long workId = work.optLong("id");
+        if (choices == null || choices.length() == 0 || importing && work.optBoolean("external_download_pending")) {
+            submitDownload(workId,index,status,null);
+            return;
+        }
+        String[] labels = new String[choices.length()];
+        int[] selected = {0};
+        long scope = browseLibraryScope();
+        for (int i=0;i<choices.length();i++) {
+            JSONObject choice = choices.optJSONObject(i);
+            labels[i] = choice.optString("label");
+            if (choice.optString("kind").equals(work.optString("kind")) &&
+                    LibraryScope.read(choice) == (scope == 0 ? LibraryScope.BUILTIN : scope)) selected[0] = i;
+        }
+        showDialog(new AlertDialog.Builder(this).setTitle(R.string.download_destination_title)
+                .setSingleChoiceItems(labels,selected[0],(dialog,which)->selected[0]=which)
+                .setPositiveButton(importing?R.string.download_destination_import:R.string.download_destination_confirm,
+                        (dialog,which)->submitDownload(workId,index,status,choices.optJSONObject(selected[0])))
+                .setNegativeButton(R.string.global_shuffle_cancel,null));
+    }
+    private void submitDownload(long workId,int index,TextView status,JSONObject target) {
+        boolean importing = index < 0;
+        String path = "/api/works/" + workId + (importing ? "/import-downloads" : "/downloads");
+        request(()->{
+            JSONObject payload = importing ? new JSONObject().put("check",true) : new JSONObject().put("index",index);
+            if (target != null) payload.put("kind",target.getString("kind")).put("media_library_id",target.get("media_library_id"));
+            return api.post(path,payload);
+        },result->{
+            String task = result.getString("task_id");
+            status.setText("已加入电脑端下载队列…");
+            getSharedPreferences("download-tasks",0).edit().putString(Long.toString(workId),task).apply();
+            pollDownload(task,workId,status,generation);
+        });
+    }
     private void pollDownload(String task,long workId,TextView status,int ticket){
         if(isDestroyed()||generation!=ticket||detailId!=workId)return;
         request(()->api.get("/api/downloads/"+task),state->{
@@ -779,6 +806,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 message(errors!=null&&errors.length()>0?"检查完成，部分文件尚未入库，请确认下载器已完成下载":"下载文件已加入影视库");openDetail(workId);return;
             }
             if(phase.equals("external")){
+                if(detail!=null&&detail.optLong("id")==workId)detail.put("external_download_pending",true);
                 String directory=result==null?"":result.optString("directory");
                 status.setText("已交给电脑端下载器，目录："+directory+(result!=null&&!result.optBoolean("directory_sent")?"\n"+result.optString("message"):"")+"\n外部下载完成后，点击下方检查入库。");return;
             }

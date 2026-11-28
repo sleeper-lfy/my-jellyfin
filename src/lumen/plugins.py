@@ -60,6 +60,18 @@ def validate_actor(item):
                 raise ValueError('演员来源及头像须为完整 HTTP(S) URL')
 
 
+def match_media_kind(library, plugin_id, record, work_id, kind, *, confirmed=False):
+    """Keep a deliberately assigned local type for updates of the same source."""
+    source_kind = record.get('kind', kind)
+    if source_kind == kind or {source_kind, kind} == {'movie', 'vr'} or confirmed:
+        return {**record, 'kind': kind}
+    owner = library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?',
+                               (plugin_id, str(record['id']))).fetchone()
+    if owner and owner[0] == work_id:
+        return {**record, 'kind': kind}
+    return None
+
+
 def validate_metadata(item):
     if not isinstance(item, dict) or not isinstance(item.get('title'), str) or not item['title'].strip() or not item.get('id'):
         raise ValueError('元数据缺少 title / id')
@@ -662,10 +674,14 @@ class Plugins:
         existing = self.library.db.execute('SELECT work_id FROM sources WHERE plugin=? AND source_id=?', (plugin_id, str(metadata['id']))).fetchone()
         if existing and self.library.work(existing[0])['kind'] in {'other', 'fans'}:
             raise ValueError('该来源关联其他视频或 Fans 作品，不执行影视刮削')
-        kind = metadata.get('kind', 'movie')
         target_id = work_id or (existing[0] if existing else None)
-        if target_id and self.library.work(target_id)['kind']=='vr' and kind=='movie':
-            kind='vr';metadata={**metadata,'kind':'vr'}
+        if target_id:
+            target_kind = self.library.work(target_id)['kind']
+            aligned = match_media_kind(self.library, plugin_id, metadata, target_id, target_kind)
+            if aligned is None:
+                raise ValueError('候选媒体类型不匹配。请在单片刮削中确认是否保留本地分类')
+            metadata = aligned
+        kind = metadata.get('kind', 'movie')
         external = {str(k).lower():str(v) for k,v in metadata.get('external_ids',{}).items() if v is not None and str(v)}
         if target_id and external_ids_conflict(
                 self.library.db.execute('SELECT namespace,value FROM external_ids WHERE work_id=?',(target_id,)), external):

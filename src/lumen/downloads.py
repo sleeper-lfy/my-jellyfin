@@ -11,6 +11,7 @@ import uuid
 import time
 import httpx
 from .core import ImportCancelled, check_cancelled
+from .media_libraries import BUILTIN_SCOPE, KINDS, attach, get, list_libraries, owner_for_path, scoped_files
 
 
 def download_direct(library, plugin_id, url, target, progress=None, cancelled=None, overwrite=False, *, resolve_target=None):
@@ -80,11 +81,64 @@ def default_download_root(library, kind):
     return Path(configured or organized or Path.home() / 'Videos' / 'Lumen' / FOLDERS[kind]).expanduser().absolute()
 
 
-def download_folder(library, work_id):
+def work_folder_name(work):
     from .files import safe_name
+    return safe_name(work['title'])[:100] + (f" ({work['year']})" if work['year'] else '')
+
+
+def download_folder(library, work_id):
     work = library.work(work_id)
     override = library.setting('download-folder:' + str(work_id))
-    return Path(override).expanduser().absolute() if override else default_download_root(library, work['kind']) / (safe_name(work['title'])[:100] + (f" ({work['year']})" if work['year'] else ''))
+    return Path(override).expanduser().absolute() if override else default_download_root(library, work['kind']) / work_folder_name(work)
+
+
+def download_choices(library, work):
+    kinds = [work['kind']] if work['files'] else list(FOLDERS)
+    choices = [{'kind':kind, 'media_library_id':BUILTIN_SCOPE, 'label':'自带媒体库 · ' + KINDS[kind]} for kind in kinds]
+    for item in list_libraries(library):
+        if item['kind'] in kinds and (item['config']['destination'] or item['config']['roots']):
+            choices.append({'kind':item['kind'], 'media_library_id':item['id'], 'label':item['name']+' · '+KINDS[item['kind']]})
+    return choices
+
+
+def download_target(library, work_id, *, kind=None, media_library_id=None, directory=None):
+    work = library.work(work_id)
+    kind = work['kind'] if kind is None else kind
+    if not isinstance(kind, str) or kind not in FOLDERS or work['kind'] not in FOLDERS:
+        raise ValueError('请选择电影、电视剧或 VR 电影分类')
+    if kind != work['kind']:
+        if work['files']:
+            raise ValueError('作品已有本地视频，请选择作品当前分类下的媒体库')
+        library._check_film_kind(work, kind)
+    if media_library_id not in (None, BUILTIN_SCOPE):
+        item = get(library, media_library_id)
+        if item['kind'] != kind:
+            raise ValueError('所选媒体库的分类与下载分类不一致')
+        config = item['config']
+        root = config['destination'] or next((entry['path'] for entry in config['roots']), '')
+        if not root and not directory:
+            raise ValueError('请先在 PC 为该媒体库配置目录')
+        folder = Path(directory) if directory else Path(root) / work_folder_name(work)
+    elif directory:
+        folder = Path(directory)
+    elif kind != work['kind']:
+        folder = default_download_root(library, kind) / work_folder_name(work)
+    else:
+        folder = download_folder(library, work_id)
+    folder = folder.resolve()
+    owner = owner_for_path(library, folder)
+    if media_library_id is not None and owner is not None and owner != media_library_id:
+        raise ValueError('下载目录属于另一个媒体库，请改用所选媒体库的目录')
+    if media_library_id is None:
+        if owner is not None and get(library, owner)['kind'] != kind:
+            raise ValueError('下载目录的媒体库分类与所选分类不一致')
+        media_library_id = owner or BUILTIN_SCOPE
+    return {'kind':kind, 'media_library_id':media_library_id, 'directory':str(folder)}
+
+
+def external_download_target(library, work_id):
+    target = library.setting('external-download-target:' + str(work_id), {})
+    return download_target(library, work_id, **target)
 
 
 def set_download_folder(library, work_id, directory):
@@ -126,13 +180,13 @@ def video_filename(headers, url, title):
     return safe_name(Path(filename).stem)[:115] + Path(filename).suffix.lower()
 
 
-def write_download_metadata(library, work_id, folder, video=None, season=None, episode=None):
+def write_download_metadata(library, work_id, folder, video=None, season=None, episode=None, *, kind=None):
     """Portable sidecars; never replace a user's existing NFO or artwork."""
     import xml.etree.ElementTree as ET
     from .artwork import still_paths
     work = library.work(work_id); metadata = work['metadata']; folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    series = work['kind'] == 'series'
+    series = (kind or work['kind']) == 'series'
     root = ET.Element('tvshow' if series else 'movie')
     for key,value in [('title',work['title']),('year',work['year']),('plot',metadata.get('overview'))]:
         if value is not None: ET.SubElement(root,key).text = str(value)
@@ -166,26 +220,27 @@ def write_download_metadata(library, work_id, folder, video=None, season=None, e
     return warnings
 
 
-def register_download(library, work_id, path, root, digest=None, progress=None, cancelled=None):
+def register_download(library, work_id, path, root, digest=None, progress=None, cancelled=None, *, kind=None, media_library_id=None):
     from .core import fingerprint, probe, parse_name, quick_fingerprint
     work = library.work(work_id); path=Path(path).resolve(strict=True); root=Path(root).resolve(strict=True)
     if not path.is_relative_to(root) or not path.is_file(): raise ValueError('视频不在当前下载目录内')
+    target = download_target(library, work_id, kind=kind, media_library_id=media_library_id, directory=root)
+    kind, scope = target['kind'], target['media_library_id']
+    owner = owner_for_path(library, path)
+    if scope is not None and owner is not None and owner != scope:
+        raise ValueError('视频文件位于另一个媒体库的目录')
     before = path.stat()
-    existing = library.db.execute('SELECT id,work_id FROM files WHERE path=?',(str(path),)).fetchone()
-    if existing:
-        if existing['work_id'] != work_id: raise ValueError('此文件已关联其他作品，未重新关联')
-        return {'file_id':existing['id'],'work_id':work_id,'path':str(path),'duplicate':True}
     if progress: progress(0,0,'检查下载视频并关联影视资料')
     # No network protocols are needed when probing a completed local download.
     duration = probe(path,cancelled=cancelled,local_only=True)
     warnings=[]
     from . import nfo
-    local=nfo.load(path,root,work['kind'],warnings)
+    local=nfo.load(path,root,kind,warnings)
     local['work']=None  # A downloaded folder must not rename the explicitly selected work.
     if work['thumbnail']: local['poster']=None
     if work['metadata'].get('nfo_backdrop'): local['backdrop']=None
     season=episode=None
-    if work['kind']=='series':
+    if kind=='series':
         try:
             parsed=parse_name(path,'series');season,episode=parsed['season'],parsed['episode']
         except ValueError:
@@ -198,14 +253,29 @@ def register_download(library, work_id, path, root, digest=None, progress=None, 
     check_cancelled(cancelled)
     after=path.stat()
     if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns): raise ValueError('文件仍在变化，请下载完成后再入库')
-    duplicate=library.db.execute('SELECT id,work_id FROM files WHERE digest=?',(digest,)).fetchone()
-    if duplicate:
-        if duplicate['work_id']!=work_id: raise ValueError('相同视频已属于另一部作品，请核对后合并')
-        return {'file_id':duplicate['id'],'work_id':work_id,'path':str(path),'duplicate':True}
     quick=quick_fingerprint(path)
     with library.db:
+        library.db.execute('BEGIN IMMEDIATE')
+        download_target(library, work_id, **target)
+        work = library.work(work_id)
+        existing = library.db.execute('SELECT f.id,f.work_id,m.library_id FROM files f LEFT JOIN media_library_files m '
+                                      'ON m.file_id=f.id WHERE f.path=?', (str(path),)).fetchone()
+        if existing:
+            if existing['work_id'] != work_id:
+                raise ValueError('此文件已关联其他作品，未重新关联')
+            if scope is not None and (existing['library_id'] or BUILTIN_SCOPE) != scope:
+                raise ValueError('此文件已归入其他媒体库，请选择该库或使用独立文件')
+            return {'file_id':existing['id'],'work_id':work_id,'path':str(path),'duplicate':True}
+        prefix, params = scoped_files(library, scope)
+        duplicate=library.db.execute(prefix+'SELECT id,work_id FROM files WHERE digest=?', [*params,digest]).fetchone()
+        if duplicate:
+            if duplicate['work_id']!=work_id: raise ValueError('相同视频已属于另一部作品，请核对后合并')
+            return {'file_id':duplicate['id'],'work_id':work_id,'path':str(path),'duplicate':True}
+        library._set_film_kind(work, kind)
         file_id=library.db.execute('INSERT INTO files(work_id,path,digest,root,season,episode,duration) VALUES (?,?,?,?,?,?,?)',
             (work_id,str(path),digest,str(root),season,episode,duration)).lastrowid
+        if type(scope) is int:
+            attach(library, file_id, scope)
         library.db.execute('INSERT INTO import_cache VALUES (?,?,?,?,?,?,?)',(file_id,after.st_size,after.st_mtime_ns,quick,digest,'',1 if not work['thumbnail'] else 0))
         nfo.apply(library,work_id,file_id,local,False,True,root,warnings)
     try: warnings.extend(write_download_metadata(library,work_id,root,path,season,episode))
@@ -213,13 +283,15 @@ def register_download(library, work_id, path, root, digest=None, progress=None, 
     return {'file_id':file_id,'work_id':work_id,'path':str(path),'duplicate':False,'warnings':warnings}
 
 
-def download_to_library(library, work_id, index, progress=None, cancelled=None, task_id=None, *, directory=None, expected_url=None):
+def download_to_library(library, work_id, index, progress=None, cancelled=None, task_id=None, *, directory=None,
+                        expected_url=None, kind=None, media_library_id=None):
     work, entry, method = resource(library,work_id,index)
     if method != 'direct': raise ValueError('此资源须使用外部磁力下载器')
     if expected_url is not None and entry['url'] != expected_url: raise ValueError('下载资源已变化，请刷新详情后重试')
-    folder=Path(directory) if directory else download_folder(library,work_id); folder.mkdir(parents=True,exist_ok=True)
+    target = download_target(library, work_id, kind=kind, media_library_id=media_library_id, directory=directory)
+    folder = Path(target['directory']); folder.mkdir(parents=True,exist_ok=True)
     task_id=task_id or uuid.uuid4().hex
-    payload={'work_id':work_id,'index':index,'directory':str(folder),'bytes':0,'total':0}
+    payload={'work_id':work_id,'index':index,'expected_url':entry['url'],**target,'bytes':0,'total':0}
     def report(done,total,message):
         elapsed=max(.001,time.monotonic()-report.previous[0]);speed=max(0,done-report.previous[1])/elapsed;report.previous=(time.monotonic(),done)
         payload.update(bytes=done,total=total,message=message,bytes_per_second=round(speed,2))
@@ -238,14 +310,36 @@ def download_to_library(library, work_id, index, progress=None, cancelled=None, 
         def import_progress(done,total,message):
             payload['message']=message;library.task(task_id,'download-library','importing',payload)
             if progress:progress(done,total,message)
-        result=register_download(library,work_id,saved['path'],folder,saved['sha256'],import_progress,cancelled)
+        result=register_download(library,work_id,saved['path'],folder,saved['sha256'],import_progress,cancelled,
+                                 kind=target['kind'],media_library_id=target['media_library_id'])
         result.update(bytes=saved['bytes'],task_id=task_id)
         library.task(task_id,'download-library','done',payload,result)
         return result
     except Exception as error:
         library.task(task_id,'download-library','cancelled' if isinstance(error,ImportCancelled) else 'partial' if saved else 'failed',payload,error=str(error))
-        if saved and not isinstance(error,ImportCancelled): raise ValueError(f"视频已保存到 {saved['path']}，入库未完成：{error}。可在详情页点击“检查下载文件并入库”重试。") from error
+        if saved and not isinstance(error,ImportCancelled): raise ValueError(f"视频已保存到 {saved['path']}，入库未完成：{error}。可在任务中心重试入库。") from error
         raise
+
+
+def retry_library_download(library, task_id, payload, progress=None, cancelled=None):
+    target = {key:payload.get(key) for key in ('kind', 'media_library_id', 'directory')}
+    work_id = payload['work_id']
+    path = payload.get('path')
+    if payload.get('action') == 'import':
+        result = import_download_folder(library, work_id, progress, cancelled, **target)
+        library.task(task_id, 'download-library', 'done', payload, result)
+        return result
+    if path and Path(path).is_file():
+        result = register_download(library, work_id, path, target.pop('directory'), progress=progress,
+                                   cancelled=cancelled, **target)
+        library.task(task_id, 'download-library', 'done', payload, result)
+        return result
+    if resource(library, work_id, payload['index'])[2] == 'magnet':
+        result = launch_magnet(library, work_id, payload['index'], expected_url=payload.get('expected_url'), **target)
+        library.task(task_id, 'download-library', 'external', payload, result)
+        return result
+    return download_to_library(library, work_id, payload['index'], progress, cancelled, task_id=task_id,
+                               expected_url=payload.get('expected_url'), **target)
 
 
 def qbittorrent_executable(library):
@@ -264,12 +358,13 @@ def qbittorrent_executable(library):
     return None
 
 
-def launch_magnet(library, work_id, index, *, directory=None, expected_url=None):
+def launch_magnet(library, work_id, index, *, directory=None, expected_url=None, kind=None, media_library_id=None):
     work,entry,method=resource(library,work_id,index)
     if method!='magnet' or urlparse(entry['url']).scheme!='magnet': raise ValueError('无效磁力资源')
     if expected_url is not None and entry['url'] != expected_url: raise ValueError('下载资源已变化，请刷新详情后重试')
-    folder=Path(directory) if directory else download_folder(library,work_id);folder.mkdir(parents=True,exist_ok=True)
-    warnings=write_download_metadata(library,work_id,folder)
+    target = download_target(library, work_id, kind=kind, media_library_id=media_library_id, directory=directory)
+    folder=Path(target['directory']); folder.mkdir(parents=True,exist_ok=True)
+    warnings=write_download_metadata(library,work_id,folder,kind=target['kind'])
     config=library.setting('downloads',{})
     if config.get('magnet_client')=='custom' and not config.get('magnet_executable'): raise ValueError('自定义下载器须指定程序路径')
     executable=qbittorrent_executable(library) if config.get('magnet_client','auto')!='system' else None
@@ -286,20 +381,24 @@ def launch_magnet(library, work_id, index, *, directory=None, expected_url=None)
         else: subprocess.Popen(['open' if sys.platform=='darwin' else 'xdg-open',entry['url']],shell=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         result={'directory':str(folder),'directory_sent':False,'client':'系统默认下载器','warnings':warnings,
                 'message':'系统 magnet 协议无法指定目录；请在下载器中选择此目录，或在设置中使用 qBittorrent。'}
-    library.task(uuid.uuid4().hex,'magnet','external',{'work_id':work_id,'index':index},result)
+    library.set_setting('external-download-target:' + str(work_id), target)
+    library.task(uuid.uuid4().hex,'magnet','external',{'work_id':work_id,'index':index,**target},result)
     return result
 
 
-def import_download_folder(library, work_id, progress=None, cancelled=None, *, directory=None):
+def import_download_folder(library, work_id, progress=None, cancelled=None, *, directory=None, kind=None, media_library_id=None):
     from .core import VIDEO_EXTENSIONS
-    folder=Path(directory) if directory else download_folder(library,work_id)
+    target = (external_download_target(library, work_id) if directory is None and kind is None and media_library_id is None
+              else download_target(library, work_id, kind=kind, media_library_id=media_library_id, directory=directory))
+    folder = Path(target['directory'])
     if not folder.is_dir(): raise ValueError('当前下载目录尚不存在')
     files=sorted(path for path in folder.rglob('*') if path.is_file() and not path.is_symlink() and path.suffix.lower() in VIDEO_EXTENSIONS)
     result={'imported':0,'duplicates':0,'errors':[],'work_id':work_id}
     for index,path in enumerate(files):
         check_cancelled(cancelled)
         try:
-            attached=register_download(library,work_id,path,folder,cancelled=cancelled)
+            attached=register_download(library,work_id,path,folder,cancelled=cancelled,
+                                       kind=target['kind'],media_library_id=target['media_library_id'])
             result['duplicates' if attached['duplicate'] else 'imported']+=1
         except ImportCancelled: raise
         except Exception as error: result['errors'].append({'path':str(path),'reason':str(error)})
@@ -331,7 +430,7 @@ class DownloadQueue:
         while self.paused.is_set() and not self.closed.is_set() and identifier not in self.cancelled_ids:self.closed.wait(.1)
         return self.closed.is_set() or identifier in self.cancelled_ids
 
-    def submit(self, work_id, index=None, action='download'):
+    def submit(self, work_id, index=None, action='download', *, kind=None, media_library_id=None):
         import threading
         from .core import Library
         library=Library(self.directory,initialize=False)
@@ -340,13 +439,15 @@ class DownloadQueue:
             if action=='download':url=resource(library,work_id,index)[1]['url']
             elif action=='import':library.work(work_id)
             else:raise ValueError('无效下载操作')
-            key=(work_id,url,action)
+            target = (external_download_target(library, work_id) if action=='import' and kind is None and media_library_id is None
+                      else download_target(library, work_id, kind=kind, media_library_id=media_library_id))
+            key=(work_id,url,action,target['kind'],target['media_library_id'])
             with self.lock:
                 if self.closed.is_set():raise ValueError('下载服务正在停止')
                 if key in self.active:return self.active[key]
                 if self.pending.full():raise ValueError('下载队列已满，请稍后重试')
-            task_id=uuid.uuid4().hex;directory=str(download_folder(library,work_id))
-            payload={'work_id':work_id,'index':index,'action':action,'directory':directory}
+            task_id=uuid.uuid4().hex
+            payload={'work_id':work_id,'index':index,'action':action,'expected_url':url,**target}
             # SQLite can be busy during import. Never hold the control lock
             # while writing: PC pause/cancel must remain immediate.
             library.task(task_id,'download-library','queued',payload)
@@ -357,7 +458,7 @@ class DownloadQueue:
                 elif self.pending.full():error='下载队列已满，请稍后重试'
                 else:
                     self.active[key]=task_id
-                    self.pending.put_nowait((task_id,work_id,index,action,url,directory))
+                    self.pending.put_nowait((task_id,key,payload,target))
                     if self.thread is None:
                         for index in range(3):
                             worker=threading.Thread(target=self.run,name=f'LumenDownloads-{index}',daemon=True);self.threads.append(worker);worker.start()
@@ -373,22 +474,22 @@ class DownloadQueue:
         import queue
         from .core import Library
         while not self.closed.is_set():
-            try: task_id,work_id,index,action,url,directory=self.pending.get(timeout=.2)
+            try: task_id,key,payload,target=self.pending.get(timeout=.2)
             except queue.Empty: continue
+            work_id,index,action,url = (payload[field] for field in ('work_id','index','action','expected_url'))
             library=Library(self.directory,initialize=False)
             library.parent_task_id=task_id
-            payload={'work_id':work_id,'index':index,'action':action,'directory':directory}
             acquired=False
             try:
                 self.budget.acquire(lambda:self.cancelled(task_id),resource='disk');acquired=True
                 check_cancelled(lambda:self.cancelled(task_id))
                 if action=='import':
-                    result=import_download_folder(library,work_id,cancelled=lambda:self.cancelled(task_id),directory=directory)
+                    result=import_download_folder(library,work_id,cancelled=lambda:self.cancelled(task_id),**target)
                     library.task(task_id,'download-library','done',payload,result)
                 elif resource(library,work_id,index)[2]=='magnet':
-                    result=launch_magnet(library,work_id,index,directory=directory,expected_url=url)
+                    result=launch_magnet(library,work_id,index,expected_url=url,**target)
                     library.task(task_id,'download-library','external',payload,result)
-                else: download_to_library(library,work_id,index,cancelled=lambda:self.cancelled(task_id),task_id=task_id,directory=directory,expected_url=url)
+                else: download_to_library(library,work_id,index,cancelled=lambda:self.cancelled(task_id),task_id=task_id,expected_url=url,**target)
             except Exception as error:
                 row=library.db.execute('SELECT status,payload FROM tasks WHERE id=?',(task_id,)).fetchone()
                 if not row or row['status'] not in {'failed','partial','cancelled'}:
@@ -396,7 +497,7 @@ class DownloadQueue:
             finally:
                 library.close()
                 if acquired:self.budget.release()
-                with self.lock:self.active.pop((work_id,url,action),None);self.cancelled_ids.discard(task_id)
+                with self.lock:self.active.pop(key,None);self.cancelled_ids.discard(task_id)
                 self.pending.task_done()
 
     def stop(self):
@@ -404,10 +505,10 @@ class DownloadQueue:
         import queue
         self.closed.set()
         while True:
-            try: task_id,work_id,index,action,url,directory=self.pending.get_nowait()
+            try: task_id,key,payload,target=self.pending.get_nowait()
             except queue.Empty: break
             library=Library(self.directory,initialize=False)
-            try: library.task(task_id,'download-library','cancelled',{'work_id':work_id},error='服务已停止，尚未开始下载')
+            try: library.task(task_id,'download-library','cancelled',payload,error='服务已停止，尚未开始下载')
             finally: library.close()
             self.pending.task_done()
         for thread in self.threads:thread.join(timeout=1)

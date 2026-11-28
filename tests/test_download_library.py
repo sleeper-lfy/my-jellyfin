@@ -223,3 +223,93 @@ def test_external_series_import_reads_episode_nfo_and_stills(qapp,library,tmp_pa
     work=library.work(work_id);file=work['files'][0]
     assert work['title']=='Canonical show' and file['season']==3 and file['episode']==7
     assert file['title']=='Actual episode title' and file['overview']=='Episode story' and file['stills']
+
+
+def test_api_download_can_assign_a_discovered_movie_to_a_named_series_library(library,media_site,tmp_path):
+    from lumen.media_libraries import BUILTIN_SCOPE, save
+    base,requests,_,episode=media_site
+    work_id=discovery(library,base,url='/episode?id=chosen',title='Chosen series')
+    library.update_personal(work_id,rating=9,favorite=True)
+    named=save(library,'自定义剧集','series',{'roots':[{'path':str(tmp_path/'TV')}]})
+    server=LanServer(library.directory,host='127.0.0.1',port=0,discovery_port=None);server.start()
+    try:
+        with httpx.Client(base_url=f'http://127.0.0.1:{server.port}',headers={'Authorization':'Bearer '+server.token},trust_env=False) as client:
+            route=f'/api/works/{work_id}'
+            choices=client.get(route).json()['download_targets']
+            assert {'label':'自定义剧集 · 电视剧','kind':'series','media_library_id':named['id']} in choices
+            assert client.post(route+'/downloads',json={'index':0,'kind':'movie','media_library_id':named['id']}).status_code==400
+            assert not requests
+            response=client.post(route+'/downloads',json={'index':0,'kind':'series','media_library_id':named['id']})
+            assert response.status_code==202,response.text
+            task_id=response.json()['task_id']; deadline=time.monotonic()+8
+            while time.monotonic()<deadline:
+                task=client.get('/api/downloads/'+task_id).json()
+                if task['status'] in {'done','failed','partial'}:break
+                time.sleep(.03)
+            assert task['status']=='done',task
+            assert task['payload']['kind']=='series' and task['payload']['media_library_id']==named['id']
+            work=library.work(work_id,named['id']);file,=work['files']
+            assert (work['kind'],work['rating'],work['favorite'])==('series',9,1)
+            assert (file['season'],file['episode'])==(2,3)
+            path=Path(file['path']);assert path.read_bytes()==episode and path.parent.parent==tmp_path/'TV'
+            assert (path.parent/'tvshow.nfo').exists()
+            assert library.query({'kinds':['series'],'media_library_id':BUILTIN_SCOPE})==[]
+            assert {choice['kind'] for choice in client.get(route).json()['download_targets']}=={'series'}
+            assert client.post(route+'/downloads',json={'index':0,'kind':'movie','media_library_id':BUILTIN_SCOPE}).status_code==400
+    finally:server.stop()
+    manager=Plugins(library)
+    assert manager.merge('catalog-json',{'id':'sample','title':'Updated title','kind':'movie','year':2024,'url':base+'/detail/sample'})==work_id
+    assert library.work(work_id,named['id'])['kind']=='series'
+    assert library.work(work_id)['title']=='Updated title'
+
+
+def test_cancelled_download_does_not_reclassify_discovered_work(library,media_site,tmp_path):
+    base,_,_,_=media_site; work_id=discovery(library,base,url='/episode?cancel')
+    library.set_setting('downloads',{'series':str(tmp_path/'TV')})
+    with pytest.raises(ImportCancelled):
+        download_to_library(library,work_id,0,kind='series',media_library_id='builtin',cancelled=lambda:True)
+    assert library.work(work_id)['kind']=='movie'
+    assert not library.work(work_id)['files']
+
+
+def test_desktop_discovery_download_prompts_and_uses_the_selected_builtin_category(qapp,library,media_site,tmp_path,monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+    base,requests,_,_=media_site;work_id=discovery(library,base)
+    library.set_setting('downloads',{'vr':str(tmp_path/'VR')})
+    window=MainWindow(library.directory)
+    try:
+        window.media_scheduler.stop()
+        window.navigate('discover');window.open_details(work_id,fetch=False)
+        def choose(parent,title,label,items,index,editable):
+            assert title=='选择入库分类' and items[index]=='自带媒体库 · 电影'
+            assert not requests
+            return next(item for item in items if item.endswith('VR 电影')),True
+        monkeypatch.setattr(QInputDialog,'getItem',choose)
+        window.detail_page.resource_buttons[0].click()
+        deadline=time.monotonic()+8
+        while (window.jobs or window.job_queue) and time.monotonic()<deadline:
+            qapp.processEvents();time.sleep(.01)
+        work=library.work(work_id)
+        assert work['kind']=='vr' and Path(work['files'][0]['path']).is_relative_to(tmp_path/'VR')
+    finally:window.close()
+
+
+def test_external_check_uses_the_target_chosen_when_the_downloader_started(library,tmp_path,video_factory,monkeypatch):
+    import shutil
+    from lumen.media_libraries import save
+    work_id=discovery(library,'http://localhost')
+    metadata=library.work(work_id)['metadata'];metadata['download_method']='magnet';metadata['download_url']=[{'url':'magnet:?xt=urn:btih:'+'a'*40}]
+    with library.db:
+        library.db.execute('UPDATE works SET metadata=? WHERE id=?',(json.dumps(metadata),work_id))
+    named=save(library,'命名剧集','series',{'roots':[{'path':str(tmp_path/'Episodes')}]})
+    video=video_factory('Chosen.S01E02.mp4')
+    with monkeypatch.context() as scoped:
+        scoped.setattr('lumen.downloads.qbittorrent_executable',lambda _:str(tmp_path/'qBittorrent.exe'))
+        scoped.setattr('lumen.downloads.subprocess.Popen',lambda *args,**kwargs:None)
+        external=launch_magnet(library,work_id,0,kind='series',media_library_id=named['id'])
+    assert library.work(work_id)['kind']=='movie'
+    folder=Path(external['directory']);shutil.copy2(video,folder/video.name)
+    set_download_folder(library,work_id,str(tmp_path/'Changed after launch'))
+    result=import_download_folder(library,work_id)
+    assert result['imported']==1,result
+    assert library.work(work_id,named['id'])['files'][0]['episode']==2

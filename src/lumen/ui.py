@@ -953,15 +953,35 @@ class Details(QWidget):
         from .downloads import set_download_folder
         self.download_directory_label.setText('保存位置：'+set_download_folder(self.library,self.work_id,''))
 
+    def download_selection(self, *, external=False):
+        from .downloads import download_choices, download_target, external_download_target
+        work = self.library.work(self.work_id)
+        if external and self.library.setting('external-download-target:' + str(self.work_id)):
+            return external_download_target(self.library, self.work_id)
+        if self.window.section != 'discover':
+            return download_target(self.library, self.work_id, media_library_id=self.media_library_id)
+        choices = download_choices(self.library, work)
+        labels = [choice['label'] for choice in choices]
+        default = next(index for index, choice in enumerate(choices) if choice['kind'] == work['kind'])
+        selected, accepted = QInputDialog.getItem(self, '选择入库分类', '下载文件将加入', labels, default, False)
+        if not accepted:
+            return None
+        choice = choices[labels.index(selected)]
+        return download_target(self.library, self.work_id, kind=choice['kind'], media_library_id=choice['media_library_id'])
+
     def import_downloads(self):
         from .downloads import import_download_folder
         work_id=self.work_id
+        try:target=self.download_selection(external=True)
+        except ValueError as error:
+            QMessageBox.warning(self,'无法选择下载目录',str(error));return
+        if target is None:return
         def complete(result):
             self.window.reload_details(work_id)
             self.window.status.setText(f"下载入库：新增 {result['imported']} · 已入库 {result['duplicates']} · 待检查 {len(result['errors'])}")
             if result['errors']:
                 QMessageBox.information(self.window,'部分下载尚未入库','请确认外部下载器已完成下载后重试。\n'+'\n'.join(item['path']+'：'+item['reason'] for item in result['errors'][:5]))
-        self.window.run_job('检查下载文件并入库',lambda lib,p:import_download_folder(lib,work_id,p,p.cancelled),complete)
+        self.window.run_job('检查下载文件并入库',lambda lib,p:import_download_folder(lib,work_id,p,p.cancelled,**target),complete)
 
     def start_download(self, entry):
         from .downloads import download_to_library,launch_magnet
@@ -971,6 +991,10 @@ class Details(QWidget):
             QMessageBox.information(self,'资源已变化','请刷新详情后重试。');return
         method=entry.get('method',work['metadata'].get('download_method'))
         work_id=self.work_id
+        try:target=self.download_selection()
+        except ValueError as error:
+            QMessageBox.warning(self,'无法选择下载目录',str(error));return
+        if target is None:return
         if method=='magnet':
             def launched(result):
                 message='已交给 '+result['client']+'，保存位置：'+result['directory']
@@ -981,12 +1005,12 @@ class Details(QWidget):
                 if self.window.detail_page is not None and self.window.detail_page.work_id==work_id:
                     self.window.detail_page.gallery_status.setText(message)
                 self.window.status.setText('磁力下载任务已交给外部工具')
-            self.window.run_job('启动磁力下载器',lambda lib,p:launch_magnet(lib,work_id,index),launched)
+            self.window.run_job('启动磁力下载器',lambda lib,p:launch_magnet(lib,work_id,index,expected_url=entry['url'],**target),launched)
         else:
             def complete(result):
                 self.window.reload_details(work_id)
                 self.window.status.setText('下载完成并已关联影视资料：'+result['path'])
-            self.window.run_job('直接下载并入库',lambda lib,p:download_to_library(lib,work_id,index,p,p.cancelled),complete)
+            self.window.run_job('直接下载并入库',lambda lib,p:download_to_library(lib,work_id,index,p,p.cancelled,expected_url=entry['url'],**target),complete)
 
     def accept(self):
         if self.window.detail_page is self:
@@ -1108,7 +1132,10 @@ class Details(QWidget):
 
     def scrape(self):
         from . import tmdb
-        available = [p for p in Plugins(self.library).installed() if p['config'].get('enabled') and self.work['kind'] in p.get('media_kinds', ['movie','series','vr']) and ('search' in p['capabilities'] or 'detail' in p['capabilities'])]
+        known = {source['plugin'] for source in self.work['sources']}
+        available = [p for p in Plugins(self.library).installed() if p['config'].get('enabled')
+                     and (p['id'] in known or self.work['kind'] in p.get('media_kinds', ['movie','series','vr']))
+                     and ('search' in p['capabilities'] or 'detail' in p['capabilities'])]
         setup_tmdb = self.work['kind'] in {'movie', 'series'} and not any(p['id'] == tmdb.ID for p in available)
         if not available and not setup_tmdb:
             QMessageBox.information(self, '刮削插件', '请先在设置 → 按需刮削引擎中安装并启用 Javinizer-Go，或启用支持搜索的站点插件。')
@@ -1166,6 +1193,19 @@ class Details(QWidget):
                 work_id = self.work_id
                 def saved(result):
                     if self.window.detail_page is not self:return
+                    if isinstance(result,dict) and result.get('type_conflict'):
+                        candidate = result['candidate']
+                        local = KINDS[result['type_conflict']]
+                        remote = KINDS[candidate['kind']]
+                        message = f'来源将「{candidate["title"]}」标为{remote}，当前作品属于{local}。保留本地分类并更新资料？'
+                        if QMessageBox.question(self, '确认候选分类', message,
+                                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                                                QMessageBox.StandardButton.Cancel) != QMessageBox.StandardButton.Yes:
+                            return
+                        self.window.run_job('按本地分类更新资料',
+                            lambda lib,p:apply_match(lib,plugin,'detail',candidate,work_id,cancelled=p.cancelled,
+                                force=force,interactive=True,snapshot=result['snapshot'],media_library_id=rule_scope,confirmed_kind=True),saved)
+                        return
                     if isinstance(result,dict) and result.get('conflict'):
                         from .matching import MatchConflictDialog
                         conflict=result['conflict'];dialog=MatchConflictDialog(conflict,self.window)
@@ -2915,9 +2955,9 @@ class MainWindow(QMainWindow):
             elif task['kind']=='download':
                 from .downloads import download_direct
                 dialog.accept();self.run_job('重试直接下载',lambda lib,p:download_direct(lib,payload['plugin'],payload['url'],payload['target'],p,p.cancelled))
-            elif task['kind']=='download-library' and type(payload.get('index')) is int:
-                from .downloads import download_to_library
-                dialog.accept();self.run_job('重试下载入库',lambda lib,p:download_to_library(lib,payload['work_id'],payload['index'],p,p.cancelled,directory=payload.get('directory')))
+            elif task['kind']=='download-library' and (type(payload.get('index')) is int or payload.get('action')=='import'):
+                from .downloads import retry_library_download
+                dialog.accept();self.run_job('重试下载入库',lambda lib,p:retry_library_download(lib,task['id'],payload,p,p.cancelled))
             elif task['kind'] == 'media':
                 dialog.accept()
                 with self.library.db:

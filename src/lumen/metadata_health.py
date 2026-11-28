@@ -86,9 +86,10 @@ def scan_health(library, work_ids=None, progress=None, cancelled=None, *, includ
 
 
 def _providers(library, work, manager, plugin_ids):
-    enabled={p['id']:p for p in manager.installed() if p['config'].get('enabled')
-             and (not p.get('media_kinds') or work['kind'] in p['media_kinds'])}
     associated=[dict(row) for row in library.db.execute('SELECT plugin,source_id,url FROM sources WHERE work_id=?',(work['id'],))]
+    known = {source['plugin'] for source in associated}
+    enabled={p['id']:p for p in manager.installed() if p['config'].get('enabled')
+             and (p['id'] in known or not p.get('media_kinds') or work['kind'] in p['media_kinds'])}
     if plugin_ids is None:
         rule=library.setting('partition:'+work['kind'],{})
         ids=[source['plugin'] for source in associated]
@@ -125,9 +126,11 @@ def _detail(library, work, manager, plugin, source, *, refresh=False, cancelled=
     if not by_title:
         current=library.work(work['id'])
         if work_codes(current):choose(current,[record])
-    kind=record.get('kind','movie')
-    if kind!=work['kind'] and not (kind=='movie' and work['kind']=='vr'): raise ValueError('候选类型不匹配')
-    return record
+    from .plugins import match_media_kind
+    aligned = match_media_kind(library, plugin['id'], record, work['id'], work['kind'])
+    if aligned is None:
+        raise ValueError('候选分类与本地作品不同，请在单片刮削中确认')
+    return aligned
 
 
 def _fill(library, work_id, plugin, record):
@@ -331,9 +334,10 @@ def overwrite_metadata(library, plugin, record, work_id, *, cancelled=None, snap
     work,selected=snapshot if snapshot is not None else overwrite_snapshot(library,work_id)
     if work['kind'] not in {'movie','series','vr'}:
         raise ValueError('该分类不使用影视资料修复')
-    kind=record.get('kind','movie')
-    if kind!=work['kind'] and not (kind=='movie' and work['kind']=='vr'):
-        raise ValueError('候选媒体类型不匹配')
+    from .plugins import match_media_kind
+    record = match_media_kind(library, plugin['id'], record, work_id, work['kind'])
+    if record is None:
+        raise ValueError('候选分类与本地作品不同，请在单片刮削中确认')
     manager=Plugins(library);manager.cancelled=cancelled
     return _overwrite(library,work,plugin,record,manager,cancelled,selected)
 
