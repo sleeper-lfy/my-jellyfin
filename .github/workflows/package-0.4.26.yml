@@ -1,0 +1,132 @@
+name: Build 0.4.26 installers
+on:
+  push:
+    branches: ['package/0.4.26']
+env:
+  PACKAGE_SOURCE: a64f599452bd779c444558c933c57ce4c0183f8f
+  PACKAGE_VERSION: '0.4.26'
+permissions:
+  contents: read
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PACKAGE_SOURCE }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source and package version
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:PACKAGE_SOURCE) { throw 'Unexpected source commit' }
+          python -c "import os, tomllib; assert tomllib.load(open('pyproject.toml','rb'))['project']['version'] == os.environ['PACKAGE_VERSION']"
+          if ($LASTEXITCODE -ne 0) { throw 'Unexpected package version' }
+      - name: Install packaging tools
+        shell: pwsh
+        run: |
+          choco install ffmpeg innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging tools unavailable' }
+      - name: Test, build, install and uninstall the exact installer
+        shell: pwsh
+        run: |
+          ./scripts/build-windows.ps1
+          ./scripts/build-installer-windows.ps1
+          ./scripts/verify-installer-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lumen-0.4.26-Windows-x64
+          path: |
+            dist/installer/Lumen-Setup-x64.exe
+            dist/installer/Lumen-Setup-x64.exe.sha256
+            dist/installer/acceptance.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Lumen-0.4.26-Windows-x64-diagnostics
+          path: .local/*.json
+          if-no-files-found: ignore
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PACKAGE_SOURCE }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore the existing signing certificate
+        env:
+          SIGNING_KEY: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          test -n "$SIGNING_KEY" || { echo 'Persistent signing key is required'; exit 1; }
+          mkdir -p .local
+          printf '%s' "$SIGNING_KEY" | base64 --decode > .local/android-debug.keystore
+          echo "LUMEN_ANDROID_KEYSTORE=$GITHUB_WORKSPACE/.local/android-debug.keystore" >> "$GITHUB_ENV"
+      - name: Check version and install verified Android tools
+        run: |
+          test "$(git rev-parse HEAD)" = "$PACKAGE_SOURCE"
+          GITHUB_REF_NAME="v${PACKAGE_VERSION}-preview.1" python scripts/preview-release.py version
+          python -m pip install httpx==0.28.1
+          python scripts/setup-android-cloud.py
+      - name: Test, lint and build the signed APK
+        run: python scripts/build-android-cloud.py :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+      - name: Verify APK signature, version and tests
+        run: GITHUB_REF_NAME="v${PACKAGE_VERSION}-preview.1" GITHUB_SHA="$PACKAGE_SOURCE" python scripts/preview-release.py android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lumen-0.4.26-Android
+          path: .local/preview-android/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: preview-android-diagnostics
+          path: android/app/build/reports/
+          if-no-files-found: ignore
+
+  verify:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PACKAGE_SOURCE }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: Lumen-0.4.26-Windows-x64
+          path: .local/package-windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: Lumen-0.4.26-Android
+          path: .local/package-android
+      - name: Verify both archives match the requested source
+        run: |
+          python - <<'PY'
+          import json, os, runpy
+          from pathlib import Path
+          preview = runpy.run_path('scripts/preview-release.py')
+          windows = Path('.local/package-windows')
+          android = Path('.local/package-android')
+          acceptance = json.loads((windows/'acceptance.json').read_text(encoding='utf-8-sig'))
+          proof = json.loads((android/'android-verification.json').read_text())
+          preview['validate_artifacts'](windows/'Lumen-Setup-x64.exe', android/'Lumen-android-debug.apk',
+                                       acceptance, proof, os.environ['PACKAGE_SOURCE'], os.environ['PACKAGE_VERSION'])
+          assert proof['version_code'] == 45
+          print(json.dumps({'version': proof['version'], 'source_commit': proof['source_commit'],
+                            'windows_tests': acceptance['automated']['tests'], 'android_tests': proof['tests'],
+                            'android_certificate_sha256': proof['certificate_sha256']}, ensure_ascii=False))
+          PY
