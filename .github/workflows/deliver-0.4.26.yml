@@ -1,0 +1,71 @@
+name: Publish verified Lumen 0.4.26 and clean up earlier previews
+
+on:
+  push:
+    branches: [delivery/0.4.26]
+    paths: ['.github/workflows/deliver-0.4.26.yml', 'scripts/deliver-0.4.26.py', 'docs/releases/0.4.26.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: explicit-preview-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate and publish the original verified installers
+        run: python scripts/deliver-0.4.26.py publish
+      - name: Verify all six downloads without credentials
+        run: python scripts/deliver-0.4.26.py verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-0.4.26-public-verification
+          path: .local/preview-0.4.26-public-verification.json
+          if-no-files-found: error
+
+  cleanup:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: preview-0.4.26-public-verification
+          path: .local
+      - name: Confirm the new release and snapshot the older releases
+        run: python scripts/deliver-0.4.26.py plan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-0.4.26-release-cleanup-plan
+          path: .local/preview-0.4.26-release-cleanup-plan.json
+          if-no-files-found: error
+      - name: Delete only the confirmed old release records and assets
+        run: python scripts/deliver-0.4.26.py cleanup
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-0.4.26-release-cleanup-result
+          path: .local/preview-0.4.26-release-cleanup-result.json
+          if-no-files-found: ignore
